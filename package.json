@@ -20,6 +20,7 @@
   },
   "homepage": "https://github.com/vitorfgnascimento/OnboardingDigital#readme",
   "dependencies": {
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "multer": "^2.3.0"
   }
 }

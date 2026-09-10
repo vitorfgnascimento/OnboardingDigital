@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const multer = require('multer');
 
 const app = express();
 
@@ -9,6 +10,31 @@ app.use(express.static('public'));
 
 // Caminho absoluto do arquivo de persistência local (banco de dados simples em JSON)
 const ARQUIVO_CANDIDATOS = path.join(__dirname, 'candidatos.json');
+
+// Pasta onde os documentos PDF dos candidatos são armazenados
+const PASTA_UPLOADS = path.join(__dirname, 'uploads');
+
+// Garante que a pasta de uploads exista antes de qualquer envio
+if (!fs.existsSync(PASTA_UPLOADS)) {
+  fs.mkdirSync(PASTA_UPLOADS, { recursive: true });
+}
+
+// Tipos de documento aceitos na jornada de admissão (uma aba para cada)
+const TIPOS_DOCUMENTO = [
+  'identidade',
+  'cpf',
+  'comprovanteResidencia',
+  'comprovanteEscolaridade',
+  'reservista',
+  'carteiraTrabalho'
+];
+
+// Opções válidas para o campo de gênero
+const GENEROS_VALIDOS = ['Masculino', 'Feminino', 'Outro', 'Prefiro não informar'];
+
+// ---------------------------------------------------------------------------
+// PERSISTÊNCIA
+// ---------------------------------------------------------------------------
 
 // Lê a lista de candidatos do arquivo. Se o arquivo ainda não existir, retorna lista vazia.
 function lerCandidatos() {
@@ -35,7 +61,82 @@ function gerarId() {
 }
 
 // ---------------------------------------------------------------------------
-// ROTA: cadastro de nova ficha de candidato
+// REGRAS DE NEGÓCIO DOS DOCUMENTOS
+// ---------------------------------------------------------------------------
+
+// Cria a estrutura inicial dos 6 documentos, já aplicando a regra do reservista.
+function criarDocumentosIniciais(genero) {
+  const documentos = {};
+
+  TIPOS_DOCUMENTO.forEach((tipo) => {
+    documentos[tipo] = { arquivo: null, status: 'VERMELHO', atualizadoEm: null };
+  });
+
+  // Regra do Certificado de Reservista: obrigatório apenas para gênero Masculino.
+  // Nos demais casos a aba é dispensada e o status já nasce APROVADO (VERDE).
+  if (genero !== 'Masculino') {
+    documentos.reservista.status = 'VERDE';
+    documentos.reservista.atualizadoEm = new Date().toISOString();
+  }
+
+  return documentos;
+}
+
+// Reavalia a regra do reservista quando o gênero do candidato muda.
+function aplicarRegraReservista(candidato) {
+  const doc = candidato.documentos.reservista;
+
+  if (candidato.genero !== 'Masculino') {
+    // Dispensado: aba desabilitada e status automático VERDE
+    doc.status = 'VERDE';
+    doc.arquivo = null;
+    doc.atualizadoEm = new Date().toISOString();
+  } else if (doc.status === 'VERDE' && !doc.arquivo) {
+    // Voltou a ser obrigatório e ainda não há PDF enviado: retorna a PENDENTE
+    doc.status = 'VERMELHO';
+    doc.atualizadoEm = new Date().toISOString();
+  }
+}
+
+// Quando "CPF incluso na identidade" está marcado, a aba CPF herda o status da Identidade.
+function aplicarRegraCpfIncluso(candidato) {
+  if (candidato.cpfInclusoNaIdentidade) {
+    candidato.documentos.cpf.status = candidato.documentos.identidade.status;
+    candidato.documentos.cpf.arquivo = null;
+    candidato.documentos.cpf.atualizadoEm = new Date().toISOString();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// UPLOAD DE PDF (multer)
+// ---------------------------------------------------------------------------
+
+const armazenamento = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, PASTA_UPLOADS),
+  filename: (req, file, cb) => {
+    // O campo "tipo" precisa ser enviado ANTES do arquivo no FormData
+    const tipo = req.body.tipo || 'documento';
+    cb(null, `${req.params.id}-${tipo}-${Date.now()}.pdf`);
+  }
+});
+
+// Aceita somente arquivos PDF
+const filtroPdf = (req, file, cb) => {
+  if (file.mimetype === 'application/pdf') {
+    cb(null, true);
+  } else {
+    cb(new Error('Apenas arquivos PDF são aceitos.'));
+  }
+};
+
+const upload = multer({
+  storage: armazenamento,
+  fileFilter: filtroPdf,
+  limits: { fileSize: 10 * 1024 * 1024 } // 10 MB por arquivo
+});
+
+// ---------------------------------------------------------------------------
+// ROTA: cadastro de nova ficha de candidato (Etapa 1 - Dados Pessoais)
 // ---------------------------------------------------------------------------
 app.post('/api/candidato', (req, res) => {
   const {
@@ -47,7 +148,8 @@ app.post('/api/candidato', (req, res) => {
     numero,
     complemento,
     email,
-    whatsapp
+    whatsapp,
+    genero
   } = req.body;
 
   if (!nomeCompleto || !cpf || !email) {
@@ -56,7 +158,10 @@ app.post('/api/candidato', (req, res) => {
     });
   }
 
-  // Monta o registro com ID único, status inicial VERMELHO e data de criação.
+  if (genero && !GENEROS_VALIDOS.includes(genero)) {
+    return res.status(400).json({ erro: 'Gênero inválido.' });
+  }
+
   const novoCandidato = {
     id: gerarId(),
     nomeCompleto,
@@ -68,11 +173,13 @@ app.post('/api/candidato', (req, res) => {
     complemento,
     email,
     whatsapp,
+    genero: genero || null,
     status: 'VERMELHO',
+    cpfInclusoNaIdentidade: false,
+    documentos: criarDocumentosIniciais(genero),
     criadoEm: new Date().toISOString()
   };
 
-  // Adiciona o registro à lista existente e persiste no arquivo local.
   const candidatos = lerCandidatos();
   candidatos.push(novoCandidato);
   salvarCandidatos(candidatos);
@@ -82,10 +189,123 @@ app.post('/api/candidato', (req, res) => {
   console.log('Nome:', nomeCompleto);
   console.log('CPF:', cpf);
   console.log('E-mail:', email);
+  console.log('Gênero:', novoCandidato.genero);
 
   return res.status(201).json({
     mensagem: 'Ficha do candidato cadastrada com sucesso!',
     candidato: novoCandidato
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ROTA: atualização dos dados pessoais / regras (gênero e CPF incluso)
+// ---------------------------------------------------------------------------
+app.patch('/api/candidato/:id/dados', (req, res) => {
+  const { id } = req.params;
+  const { genero, cpfInclusoNaIdentidade } = req.body;
+
+  const candidatos = lerCandidatos();
+  const candidato = candidatos.find((c) => c.id === id);
+
+  if (!candidato) {
+    return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  }
+
+  if (genero !== undefined) {
+    if (!GENEROS_VALIDOS.includes(genero)) {
+      return res.status(400).json({ erro: 'Gênero inválido.' });
+    }
+    candidato.genero = genero;
+    aplicarRegraReservista(candidato);
+  }
+
+  if (cpfInclusoNaIdentidade !== undefined) {
+    candidato.cpfInclusoNaIdentidade = Boolean(cpfInclusoNaIdentidade);
+    aplicarRegraCpfIncluso(candidato);
+  }
+
+  candidato.atualizadoEm = new Date().toISOString();
+  salvarCandidatos(candidatos);
+
+  return res.status(200).json({
+    mensagem: 'Dados do candidato atualizados com sucesso!',
+    candidato
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ROTA: envio de um documento PDF para uma das abas
+// ---------------------------------------------------------------------------
+app.post('/api/candidato/:id/documento', (req, res) => {
+  upload.single('arquivo')(req, res, (erroUpload) => {
+    if (erroUpload) {
+      return res.status(400).json({ erro: erroUpload.message });
+    }
+
+    const { id } = req.params;
+    const { tipo, cpfIncluso } = req.body;
+
+    // Remove do disco um arquivo aceito pelo multer mas recusado por regra de negócio.
+    const descartarArquivo = () => {
+      if (req.file && fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+    };
+
+    if (!TIPOS_DOCUMENTO.includes(tipo)) {
+      descartarArquivo();
+      return res.status(400).json({ erro: 'Tipo de documento inválido.' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ erro: 'Nenhum arquivo PDF foi enviado.' });
+    }
+
+    const candidatos = lerCandidatos();
+    const candidato = candidatos.find((c) => c.id === id);
+
+    if (!candidato) {
+      descartarArquivo();
+      return res.status(404).json({ erro: 'Candidato não encontrado.' });
+    }
+
+    // Regra: reservista dispensado para gênero diferente de Masculino
+    if (tipo === 'reservista' && candidato.genero !== 'Masculino') {
+      descartarArquivo();
+      return res.status(400).json({
+        erro: 'Certificado de Reservista não é exigido para este candidato.'
+      });
+    }
+
+    // Regra: aba CPF desabilitada quando o CPF está incluso na identidade
+    if (tipo === 'cpf' && candidato.cpfInclusoNaIdentidade) {
+      descartarArquivo();
+      return res.status(400).json({
+        erro: 'A aba CPF está desabilitada (CPF incluso na Identidade).'
+      });
+    }
+
+    // Registra o arquivo enviado e move o documento para "Em Análise" (AMARELO)
+    candidato.documentos[tipo] = {
+      arquivo: 'uploads/' + req.file.filename,
+      status: 'AMARELO',
+      atualizadoEm: new Date().toISOString()
+    };
+
+    // Na aba Identidade o candidato pode declarar que o CPF está incluso no RG
+    if (tipo === 'identidade' && cpfIncluso !== undefined) {
+      candidato.cpfInclusoNaIdentidade = cpfIncluso === 'true' || cpfIncluso === true;
+      aplicarRegraCpfIncluso(candidato);
+    }
+
+    salvarCandidatos(candidatos);
+
+    console.log(`--- Documento recebido --- ID: ${id} | Tipo: ${tipo} | Arquivo: ${req.file.filename}`);
+
+    return res.status(201).json({
+      mensagem: 'Documento enviado com sucesso!',
+      candidato
+    });
   });
 });
 
@@ -98,13 +318,12 @@ app.get('/api/candidatos', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// ROTA: alteração de status do candidato pelo RH (AMARELO ou VERDE)
+// ROTA: alteração do status geral do candidato pelo RH (AMARELO ou VERDE)
 // ---------------------------------------------------------------------------
 app.patch('/api/candidato/:id/status', (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  // O RH só pode mover a ficha para "Em Análise" (AMARELO) ou "Aprovado" (VERDE).
   if (status !== 'AMARELO' && status !== 'VERDE') {
     return res.status(400).json({
       erro: "Status inválido. Use 'AMARELO' (Em Análise) ou 'VERDE' (Aprovado)."
