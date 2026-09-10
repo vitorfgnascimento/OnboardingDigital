@@ -13,6 +13,7 @@
       --amarelo: #ffc107;
       --verde: #28a745;
       --cinza-borda: #cccccc;
+      --cinza-barra: #f8f9fa;
       --texto: #2c3e50;
     }
     * { box-sizing: border-box; }
@@ -37,76 +38,13 @@
       padding-bottom: 10px;
       margin-top: 0;
     }
+    h3 {
+      color: #1a252f;
+      margin: 30px 0 15px;
+      font-size: 18px;
+    }
 
-    /* --- BARRA DE ABAS HORIZONTAL (WIZARD) --- */
-    .abas {
-      display: flex;
-      gap: 4px;
-      overflow-x: auto;
-      border-bottom: 2px solid #e6e9ee;
-      margin-bottom: 25px;
-      scrollbar-width: thin;
-    }
-    .aba {
-      flex: 0 0 auto;
-      padding: 10px 14px;
-      font-size: 13px;
-      font-weight: 600;
-      color: #6c757d;
-      background: none;
-      border: none;
-      border-bottom: 3px solid transparent;
-      cursor: pointer;
-      white-space: nowrap;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      transition: color 0.2s, border-color 0.2s;
-    }
-    .aba:hover:not(.aba-desabilitada) {
-      color: var(--verde-intelbras-escuro);
-    }
-    .aba.aba-ativa {
-      color: var(--verde-intelbras);
-      border-bottom-color: var(--verde-intelbras);
-    }
-    .aba:focus-visible {
-      outline: 2px solid var(--verde-intelbras);
-      outline-offset: 2px;
-    }
-    .aba-desabilitada {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-    .aba-num {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      background: #e6e9ee;
-      color: #6c757d;
-      font-size: 11px;
-    }
-    .aba.aba-ativa .aba-num {
-      background: var(--verde-intelbras);
-      color: #ffffff;
-    }
-    .ponto-status {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: var(--vermelho);
-      flex: 0 0 auto;
-    }
-    .ponto-amarelo { background: var(--amarelo); }
-    .ponto-verde  { background: var(--verde); }
-
-    /* --- PAINÉIS --- */
-    .painel { display: none; }
-    .painel.painel-ativo { display: block; }
-
+    /* --- FORMULÁRIO DE DADOS PESSOAIS --- */
     .grid-campos {
       display: grid;
       grid-template-columns: 2fr 1fr 1fr;
@@ -140,7 +78,7 @@
       border-color: var(--verde-intelbras);
       box-shadow: 0 0 0 3px rgba(0, 163, 53, 0.15);
     }
-    button {
+    button.principal {
       background-color: var(--verde-intelbras);
       color: #ffffff;
       border: none;
@@ -150,15 +88,10 @@
       border-radius: 5px;
       cursor: pointer;
       margin-top: 15px;
+      width: 100%;
       transition: background-color 0.2s;
     }
-    button:hover { background-color: var(--verde-intelbras-escuro); }
-    button.secundario {
-      background: #ffffff;
-      color: var(--verde-intelbras);
-      border: 1px solid var(--verde-intelbras);
-    }
-    button.secundario:hover { background: rgba(0, 163, 53, 0.08); }
+    button.principal:hover { background-color: var(--verde-intelbras-escuro); }
 
     .status-badge {
       display: inline-block;
@@ -168,11 +101,11 @@
       font-size: 12px;
       color: white;
       background-color: var(--vermelho);
-      margin-bottom: 15px;
       transition: background-color 0.3s ease;
     }
     .status-amarelo { background-color: var(--amarelo) !important; color: #212529 !important; }
     .status-verde   { background-color: var(--verde) !important; }
+    #badgeStatus { margin-bottom: 15px; }
 
     .erro-texto {
       color: var(--vermelho);
@@ -181,22 +114,60 @@
       display: none;
     }
 
-    /* --- DROPZONE DE UPLOAD DE PDF --- */
-    .doc-cabecalho {
+    /* --- BARRAS EXPANSÍVEIS LARGAS (ACCORDION) --- */
+    .barra {
+      background: var(--cinza-barra);
+      border-left: 4px solid var(--verde-intelbras);
+      border-radius: 6px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .barra-cabecalho {
+      width: 100%;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-bottom: 15px;
+      gap: 14px;
+      padding: 16px 18px;
+      background: none;
+      border: none;
+      margin: 0;
+      cursor: pointer;
+      text-align: left;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--texto);
     }
-    .doc-cabecalho h3 { margin: 0; font-size: 18px; color: #1a252f; }
+    .barra-cabecalho:focus-visible {
+      outline: 2px solid var(--verde-intelbras);
+      outline-offset: -2px;
+    }
+    .barra-titulo { flex: 1; }
+    .barra-seta {
+      font-size: 12px;
+      color: var(--verde-intelbras);
+      flex: 0 0 auto;
+      min-width: 16px;
+      text-align: center;
+    }
+    .barra-painel {
+      display: none;
+      padding: 4px 18px 20px;
+    }
+    .barra.ativa .barra-painel { display: block; }
 
+    .barra-desabilitada {
+      opacity: 0.65;
+      border-left-color: var(--cinza-borda);
+    }
+    .barra-desabilitada .barra-cabecalho { cursor: not-allowed; }
+    .barra-desabilitada .barra-seta { color: #6c757d; }
+
+    /* --- DROPZONE DE UPLOAD DE PDF --- */
     .dropzone {
       display: block;
       border: 2px dashed var(--verde-intelbras);
       border-radius: 8px;
-      padding: 40px 20px;
+      padding: 34px 20px;
       text-align: center;
       color: #6c757d;
       background: rgba(0, 163, 53, 0.04);
@@ -210,15 +181,9 @@
     .dropzone strong { color: var(--verde-intelbras-escuro); }
     .dropzone input[type="file"] { display: none; }
     .dropzone-arquivo {
-      margin-top: 12px;
+      margin-top: 10px;
       font-size: 13px;
       color: var(--texto);
-    }
-    .dropzone-desabilitada {
-      border-color: var(--cinza-borda);
-      background: #f1f3f5;
-      color: #adb5bd;
-      cursor: not-allowed;
     }
     .aviso-regra {
       background: rgba(0, 163, 53, 0.08);
@@ -228,19 +193,20 @@
       font-size: 13px;
       margin-bottom: 15px;
     }
+    .aviso-regra[hidden] { display: none; }
     .check-linha {
       display: flex;
       align-items: center;
       gap: 8px;
-      margin: 12px 0;
+      margin: 0 0 15px;
       font-size: 14px;
     }
+    .check-linha[hidden] { display: none; }
     .check-linha input[type="checkbox"] {
       width: 16px;
       height: 16px;
       accent-color: var(--verde-intelbras);
     }
-    .check-linha[hidden] { display: none; }
     .mensagem-envio {
       font-size: 13px;
       margin-top: 10px;
@@ -254,116 +220,90 @@
     <div class="status-badge" id="badgeStatus">STATUS: PENDENTE (VERMELHO)</div>
     <h2>Ficha Única de Admissão</h2>
 
-    <!-- Barra de abas / wizard -->
-    <div class="abas" id="barraAbas"></div>
+    <!-- CAIXA DE DADOS PESSOAIS (sempre no topo) -->
+    <form id="formCandidato">
+      <div class="grid-campos">
 
-    <!-- ETAPA 1: DADOS PESSOAIS -->
-    <section class="painel painel-ativo" data-painel="dadosPessoais">
-      <form id="formCandidato">
-        <div class="grid-campos">
-
-          <div class="campo span-3">
-            <label for="nomeCompleto">Nome Completo *</label>
-            <input type="text" id="nomeCompleto" placeholder="Digite o nome completo" required>
-            <span class="erro-texto" id="erroNome">Informe nome e sobrenome sem sequências repetidas.</span>
-          </div>
-
-          <div class="campo span-1">
-            <label for="dataNascimento">Data de Nascimento *</label>
-            <input type="text" id="dataNascimento" placeholder="DD/MM/AAAA" maxlength="10" required>
-          </div>
-
-          <div class="campo span-1">
-            <label for="cpf">CPF *</label>
-            <input type="text" id="cpf" placeholder="000.000.000-00" maxlength="14" required>
-          </div>
-
-          <div class="campo span-1">
-            <label for="genero">Gênero *</label>
-            <select id="genero" required>
-              <option value="">Selecione...</option>
-              <option value="Masculino">Masculino</option>
-              <option value="Feminino">Feminino</option>
-              <option value="Outro">Outro</option>
-              <option value="Prefiro não informar">Prefiro não informar</option>
-            </select>
-          </div>
-
-          <div class="campo span-1">
-            <label for="cep">CEP *</label>
-            <input type="text" id="cep" placeholder="00000-000" maxlength="9" required>
-          </div>
-
-          <div class="campo span-2">
-            <label for="endereco">Endereço (Rua/Avenida/Bairro) *</label>
-            <input type="text" id="endereco" placeholder="Ex: Rua das Flores, Centro" required>
-          </div>
-
-          <div class="campo span-1">
-            <label for="numero">Número *</label>
-            <input type="text" id="numero" placeholder="Ex: 123" required>
-          </div>
-
-          <div class="campo span-3">
-            <label for="complemento">Complemento (Facultativo)</label>
-            <input type="text" id="complemento" placeholder="Ex: Bloco A, Apto 102 / Fundos">
-          </div>
-
-          <div class="campo span-2">
-            <label for="email">E-mail de Contato *</label>
-            <input type="email" id="email" placeholder="nome@dominio.com" required>
-            <span class="erro-texto" id="erroEmail">Digite um e-mail válido com domínio (ex: .com).</span>
-          </div>
-
-          <div class="campo span-1">
-            <label for="whatsapp">WhatsApp / Telefone *</label>
-            <input type="tel" id="whatsapp" placeholder="(00) 00000-0000" maxlength="15" required>
-          </div>
-
+        <div class="campo span-3">
+          <label for="nomeCompleto">Nome Completo *</label>
+          <input type="text" id="nomeCompleto" placeholder="Digite o nome completo" required>
+          <span class="erro-texto" id="erroNome">Informe nome e sobrenome sem sequências repetidas.</span>
         </div>
 
-        <button type="submit" id="btnSalvar">Salvar e Iniciar Admissão</button>
-      </form>
-    </section>
+        <div class="campo span-1">
+          <label for="dataNascimento">Data de Nascimento *</label>
+          <input type="text" id="dataNascimento" placeholder="DD/MM/AAAA" maxlength="10" required>
+        </div>
 
-    <!-- ETAPAS 2 a 7: DOCUMENTOS (conteúdo trocado dinamicamente) -->
-    <section class="painel" data-painel="documento" id="painelDocumento">
-      <div class="doc-cabecalho">
-        <h3 id="docTitulo">Documento</h3>
-        <span class="status-badge" id="docBadge">STATUS: PENDENTE (VERMELHO)</span>
+        <div class="campo span-1">
+          <label for="cpf">CPF *</label>
+          <input type="text" id="cpf" placeholder="000.000.000-00" maxlength="14" required>
+        </div>
+
+        <div class="campo span-1">
+          <label for="genero">Gênero *</label>
+          <select id="genero" required>
+            <option value="">Selecione...</option>
+            <option value="Masculino">Masculino</option>
+            <option value="Feminino">Feminino</option>
+            <option value="Outro">Outro</option>
+            <option value="Prefiro não informar">Prefiro não informar</option>
+          </select>
+        </div>
+
+        <div class="campo span-1">
+          <label for="cep">CEP *</label>
+          <input type="text" id="cep" placeholder="00000-000" maxlength="9" required>
+        </div>
+
+        <div class="campo span-2">
+          <label for="endereco">Endereço (Rua/Avenida/Bairro) *</label>
+          <input type="text" id="endereco" placeholder="Ex: Rua das Flores, Centro" required>
+        </div>
+
+        <div class="campo span-1">
+          <label for="numero">Número *</label>
+          <input type="text" id="numero" placeholder="Ex: 123" required>
+        </div>
+
+        <div class="campo span-3">
+          <label for="complemento">Complemento (Facultativo)</label>
+          <input type="text" id="complemento" placeholder="Ex: Bloco A, Apto 102 / Fundos">
+        </div>
+
+        <div class="campo span-2">
+          <label for="email">E-mail de Contato *</label>
+          <input type="email" id="email" placeholder="nome@dominio.com" required>
+          <span class="erro-texto" id="erroEmail">Digite um e-mail válido com domínio (ex: .com).</span>
+        </div>
+
+        <div class="campo span-1">
+          <label for="whatsapp">WhatsApp / Telefone *</label>
+          <input type="tel" id="whatsapp" placeholder="(00) 00000-0000" maxlength="15" required>
+        </div>
+
       </div>
 
-      <div class="aviso-regra" id="docAviso" hidden></div>
+      <button type="submit" class="principal" id="btnSalvar">Salvar e Iniciar Admissão</button>
+    </form>
 
-      <div class="check-linha" id="linhaCpfIncluso" hidden>
-        <input type="checkbox" id="checkCpfIncluso">
-        <label for="checkCpfIncluso" style="margin:0;font-weight:600;">CPF incluso na Identidade</label>
-      </div>
+    <!-- CONTÊINER DE DOCUMENTOS OBRIGATÓRIOS (barras accordion) -->
+    <h3>Documentos Obrigatórios</h3>
+    <div id="containerDocumentos"></div>
 
-      <label class="dropzone" id="dropzone" for="inputPdf">
-        <div>Arraste o PDF aqui ou <strong>clique para selecionar</strong></div>
-        <div class="dropzone-arquivo" id="dropzoneArquivo">Somente arquivos PDF (até 10 MB)</div>
-        <input type="file" id="inputPdf" accept="application/pdf">
-      </label>
-
-      <div class="mensagem-envio" id="mensagemEnvio"></div>
-
-      <button type="button" class="secundario" id="btnVoltar">Voltar aos Dados Pessoais</button>
-    </section>
   </div>
 
   <script>
     // =========================================================================
-    // CONFIGURAÇÃO DAS ETAPAS DA JORNADA
+    // CONFIGURAÇÃO DOS DOCUMENTOS OBRIGATÓRIOS
     // =========================================================================
-    const ETAPAS = [
-      { chave: 'dadosPessoais',           titulo: 'Dados Pessoais',              documento: false },
-      { chave: 'identidade',              titulo: 'Identidade (RG)',             documento: true },
-      { chave: 'cpf',                     titulo: 'CPF',                         documento: true },
-      { chave: 'comprovanteResidencia',   titulo: 'Comprovante de Residência',   documento: true },
-      { chave: 'comprovanteEscolaridade', titulo: 'Comprovante de Escolaridade', documento: true },
-      { chave: 'reservista',              titulo: 'Certificado de Reservista',   documento: true },
-      { chave: 'carteiraTrabalho',        titulo: 'Carteira de Trabalho',        documento: true }
+    const DOCUMENTOS = [
+      { tipo: 'identidade',              titulo: '1. Identidade (RG)' },
+      { tipo: 'cpf',                     titulo: '2. CPF' },
+      { tipo: 'comprovanteResidencia',   titulo: '3. Comprovante de Residência' },
+      { tipo: 'comprovanteEscolaridade', titulo: '4. Comprovante de Escolaridade' },
+      { tipo: 'reservista',              titulo: '5. Certificado de Reservista' },
+      { tipo: 'carteiraTrabalho',        titulo: '6. Carteira de Trabalho' }
     ];
 
     const ROTULO_STATUS = {
@@ -372,11 +312,10 @@
       VERDE: 'APROVADO (VERDE)'
     };
     const CLASSE_BADGE = { VERMELHO: '', AMARELO: 'status-amarelo', VERDE: 'status-verde' };
-    const CLASSE_PONTO = { VERMELHO: '', AMARELO: 'ponto-amarelo', VERDE: 'ponto-verde' };
 
-    // Estado da aplicação
-    let candidato = null;          // objeto retornado pelo backend
-    let etapaAtual = 'dadosPessoais';
+    // Variável global com o ID do candidato salvo (null até salvar os Dados Pessoais)
+    let candidatoId = null;
+    let candidato = null; // objeto completo retornado pelo backend
 
     // =========================================================================
     // MÁSCARAS COM PRESERVAÇÃO DE CURSOR
@@ -412,117 +351,258 @@
     document.getElementById('numero').addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, ''); });
 
     // =========================================================================
-    // REGRAS CONDICIONAIS (espelham as regras do backend)
+    // REGRAS CONDICIONAIS (espelham o backend)
     // =========================================================================
-    // Aba desabilitada quando: ainda não há candidato salvo, OU regra de negócio.
-    function abaDesabilitada(chave) {
-      if (chave === 'dadosPessoais') return false;
-      if (!candidato) return true;
-      if (chave === 'reservista' && candidato.genero !== 'Masculino') return true;
-      if (chave === 'cpf' && candidato.cpfInclusoNaIdentidade) return true;
+    function barraDesabilitada(tipo) {
+      if (!candidato) return false;
+      if (tipo === 'reservista' && candidato.genero !== 'Masculino') return true;
+      if (tipo === 'cpf' && candidato.cpfInclusoNaIdentidade) return true;
       return false;
     }
 
-    function statusDocumento(chave) {
-      if (!candidato || !candidato.documentos[chave]) return 'VERMELHO';
-      return candidato.documentos[chave].status;
+    function statusDocumento(tipo) {
+      if (!candidato || !candidato.documentos || !candidato.documentos[tipo]) return 'VERMELHO';
+      return candidato.documentos[tipo].status;
     }
 
     // =========================================================================
-    // RENDERIZAÇÃO DA BARRA DE ABAS
+    // CONSTRUÇÃO DAS BARRAS (uma única vez)
     // =========================================================================
-    function renderizarAbas() {
-      const barra = document.getElementById('barraAbas');
-      barra.innerHTML = '';
+    function construirBarras() {
+      const container = document.getElementById('containerDocumentos');
+      container.innerHTML = '';
 
-      ETAPAS.forEach((etapa, indice) => {
-        const botao = document.createElement('button');
-        botao.type = 'button';
-        botao.className = 'aba';
-        botao.dataset.chave = etapa.chave;
+      DOCUMENTOS.forEach((doc) => {
+        const barra = document.createElement('div');
+        barra.className = 'barra';
+        barra.dataset.tipo = doc.tipo;
 
-        if (etapa.chave === etapaAtual) botao.classList.add('aba-ativa');
-        if (abaDesabilitada(etapa.chave)) botao.classList.add('aba-desabilitada');
+        // Cabeçalho: título + badge + seta
+        const cabecalho = document.createElement('button');
+        cabecalho.type = 'button';
+        cabecalho.className = 'barra-cabecalho';
+        cabecalho.innerHTML = `
+          <span class="barra-titulo">${doc.titulo}</span>
+          <span class="status-badge" data-badge></span>
+          <span class="barra-seta" data-seta>&#9660;</span>
+        `;
+        cabecalho.addEventListener('click', () => alternarBarra(doc.tipo));
 
-        const numero = `<span class="aba-num">${indice + 1}</span>`;
-        let indicador = '';
-        if (etapa.documento) {
-          const st = statusDocumento(etapa.chave);
-          indicador = `<span class="ponto-status ${CLASSE_PONTO[st]}"></span>`;
+        // Painel interno
+        const painel = document.createElement('div');
+        painel.className = 'barra-painel';
+
+        const aviso = document.createElement('div');
+        aviso.className = 'aviso-regra';
+        aviso.hidden = true;
+        aviso.dataset.aviso = '';
+        painel.appendChild(aviso);
+
+        // Checkbox "CPF incluso na Identidade" apenas na barra 1
+        if (doc.tipo === 'identidade') {
+          const linha = document.createElement('div');
+          linha.className = 'check-linha';
+          linha.innerHTML = `
+            <input type="checkbox" id="checkCpfIncluso">
+            <label for="checkCpfIncluso" style="margin:0;font-weight:600;">CPF incluso na Identidade</label>
+          `;
+          painel.appendChild(linha);
+          linha.querySelector('input').addEventListener('change', aoMarcarCpfIncluso);
         }
-        botao.innerHTML = `${numero}<span>${etapa.titulo}</span>${indicador}`;
 
-        botao.addEventListener('click', () => irParaEtapa(etapa.chave));
-        barra.appendChild(botao);
+        // Dropzone específica deste documento
+        const dropzone = document.createElement('label');
+        dropzone.className = 'dropzone';
+        dropzone.innerHTML = `
+          <div>Arraste o PDF aqui ou <strong>clique para selecionar</strong></div>
+          <div class="dropzone-arquivo" data-arquivo>Somente arquivos PDF (até 10 MB)</div>
+          <input type="file" accept="application/pdf" data-input>
+        `;
+        painel.appendChild(dropzone);
+
+        const mensagem = document.createElement('div');
+        mensagem.className = 'mensagem-envio';
+        mensagem.dataset.mensagem = '';
+        painel.appendChild(mensagem);
+
+        configurarDropzone(dropzone, doc.tipo);
+
+        barra.appendChild(cabecalho);
+        barra.appendChild(painel);
+        container.appendChild(barra);
+      });
+
+      atualizarBarras();
+    }
+
+    // =========================================================================
+    // ATUALIZAÇÃO DE ESTADO DAS BARRAS (badge / seta / desabilitada / aviso)
+    // =========================================================================
+    function atualizarBarras() {
+      document.querySelectorAll('.barra').forEach((barra) => {
+        const tipo = barra.dataset.tipo;
+        const st = statusDocumento(tipo);
+        const desabilitada = barraDesabilitada(tipo);
+
+        barra.classList.toggle('barra-desabilitada', desabilitada);
+
+        const badge = barra.querySelector('[data-badge]');
+        badge.textContent = 'STATUS: ' + ROTULO_STATUS[st];
+        badge.className = 'status-badge ' + CLASSE_BADGE[st];
+
+        const seta = barra.querySelector('[data-seta]');
+        if (tipo === 'reservista' && desabilitada) {
+          seta.innerHTML = '&#128274;'; // cadeado
+        } else {
+          seta.innerHTML = barra.classList.contains('ativa') ? '&#9650;' : '&#9660;'; // ▲ / ▼
+        }
+
+        // Aviso de regra dentro do painel
+        const aviso = barra.querySelector('[data-aviso]');
+        if (tipo === 'reservista' && candidato && candidato.genero !== 'Masculino') {
+          aviso.hidden = false;
+          aviso.textContent = 'Certificado de Reservista não é exigido para este candidato. Status definido automaticamente como APROVADO (VERDE).';
+        } else if (tipo === 'cpf' && candidato && candidato.cpfInclusoNaIdentidade) {
+          aviso.hidden = false;
+          aviso.textContent = 'CPF incluso na Identidade: esta barra está desabilitada e herda o status da Identidade.';
+        } else {
+          aviso.hidden = true;
+        }
+
+        // Barra desabilitada não permanece aberta
+        if (desabilitada) barra.classList.remove('ativa');
+
+        const input = barra.querySelector('[data-input]');
+        input.disabled = desabilitada;
       });
     }
 
     // =========================================================================
-    // NAVEGAÇÃO ENTRE ETAPAS
+    // EXPANSÃO / RECOLHIMENTO DA BARRA
     // =========================================================================
-    function irParaEtapa(chave) {
-      if (abaDesabilitada(chave)) return;
-      etapaAtual = chave;
+    function alternarBarra(tipo) {
+      // Regra: exige Dados Pessoais salvos antes de qualquer interação
+      if (!candidatoId) {
+        alert('Preencha e salve a ficha de Dados Pessoais antes de anexar documentos.');
+        return;
+      }
 
-      const ehDocumento = ETAPAS.find((e) => e.chave === chave).documento;
-      document.querySelector('[data-painel="dadosPessoais"]').classList.toggle('painel-ativo', !ehDocumento);
-      document.getElementById('painelDocumento').classList.toggle('painel-ativo', ehDocumento);
+      const barra = document.querySelector(`.barra[data-tipo="${tipo}"]`);
+      if (barra.classList.contains('barra-desabilitada')) return;
 
-      if (ehDocumento) renderizarPainelDocumento(chave);
-      renderizarAbas();
+      barra.classList.toggle('ativa');
+      atualizarBarras();
     }
 
     // =========================================================================
-    // PAINEL DE DOCUMENTO (dropzone + badge + regras)
+    // DROPZONE: SELEÇÃO E ENVIO DO PDF
     // =========================================================================
-    function renderizarPainelDocumento(chave) {
-      const etapa = ETAPAS.find((e) => e.chave === chave);
-      const st = statusDocumento(chave);
+    function configurarDropzone(dropzone, tipo) {
+      const input = dropzone.querySelector('[data-input]');
 
-      document.getElementById('docTitulo').textContent = etapa.titulo;
+      ['dragenter', 'dragover'].forEach((evt) => {
+        dropzone.addEventListener(evt, (e) => {
+          e.preventDefault();
+          if (!input.disabled) dropzone.classList.add('dropzone-sobre');
+        });
+      });
+      ['dragleave', 'drop'].forEach((evt) => {
+        dropzone.addEventListener(evt, () => dropzone.classList.remove('dropzone-sobre'));
+      });
+      dropzone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (input.disabled) return;
+        if (e.dataTransfer.files.length) enviarDocumento(tipo, e.dataTransfer.files[0]);
+      });
+      input.addEventListener('change', () => {
+        if (input.files.length) enviarDocumento(tipo, input.files[0]);
+      });
+    }
 
-      const badge = document.getElementById('docBadge');
-      badge.textContent = 'STATUS: ' + ROTULO_STATUS[st];
-      badge.className = 'status-badge ' + CLASSE_BADGE[st];
-
-      const aviso = document.getElementById('docAviso');
-      const dropzone = document.getElementById('dropzone');
-      const inputPdf = document.getElementById('inputPdf');
-      const linhaCpf = document.getElementById('linhaCpfIncluso');
-      document.getElementById('mensagemEnvio').textContent = '';
-      document.getElementById('dropzoneArquivo').textContent = 'Somente arquivos PDF (até 10 MB)';
-
-      // Checkbox "CPF incluso na Identidade" só aparece na aba Identidade
-      linhaCpf.hidden = (chave !== 'identidade');
-      if (chave === 'identidade') {
-        document.getElementById('checkCpfIncluso').checked = Boolean(candidato && candidato.cpfInclusoNaIdentidade);
+    async function enviarDocumento(tipo, arquivo) {
+      // Regra: exige Dados Pessoais salvos
+      if (!candidatoId) {
+        alert('Preencha e salve a ficha de Dados Pessoais antes de anexar documentos.');
+        return;
       }
 
-      // Regras que desabilitam o envio de PDF nesta aba
-      let desabilitarDropzone = false;
-      aviso.hidden = true;
+      const barra = document.querySelector(`.barra[data-tipo="${tipo}"]`);
+      const mensagem = barra.querySelector('[data-mensagem]');
+      const input = barra.querySelector('[data-input]');
 
-      if (chave === 'reservista' && candidato && candidato.genero !== 'Masculino') {
-        aviso.hidden = false;
-        aviso.textContent = 'Certificado de Reservista não é exigido para este candidato. Status definido automaticamente como APROVADO (VERDE).';
-        desabilitarDropzone = true;
+      if (arquivo.type !== 'application/pdf') {
+        mensagem.style.color = '#dc3545';
+        mensagem.textContent = 'Apenas arquivos PDF são aceitos.';
+        return;
       }
 
-      if (chave === 'cpf' && candidato && candidato.cpfInclusoNaIdentidade) {
-        aviso.hidden = false;
-        aviso.textContent = 'CPF incluso na Identidade: esta aba está desabilitada e herda o status da aba Identidade.';
-        desabilitarDropzone = true;
-      }
+      barra.querySelector('[data-arquivo]').textContent = 'Selecionado: ' + arquivo.name;
+      mensagem.style.color = '#6c757d';
+      mensagem.textContent = 'Enviando...';
 
-      dropzone.classList.toggle('dropzone-desabilitada', desabilitarDropzone);
-      inputPdf.disabled = desabilitarDropzone;
+      // A ordem importa: "tipoDocumento" precisa vir ANTES do arquivo no FormData
+      const dados = new FormData();
+      dados.append('tipoDocumento', tipo);
+      if (tipo === 'identidade') {
+        const check = document.getElementById('checkCpfIncluso');
+        dados.append('cpfIncluso', check ? check.checked : false);
+      }
+      dados.append('arquivo', arquivo);
+
+      try {
+        const resposta = await fetch('/api/candidato/' + candidatoId + '/documento', {
+          method: 'POST',
+          body: dados
+        });
+        const resultado = await resposta.json();
+
+        if (!resposta.ok) {
+          mensagem.style.color = '#dc3545';
+          mensagem.textContent = 'Erro: ' + resultado.erro;
+          return;
+        }
+
+        candidato = resultado.candidato;
+        atualizarBarras();
+        mensagem.style.color = '#00812a';
+        mensagem.textContent = 'Documento enviado! Status: EM ANÁLISE.';
+      } catch (erro) {
+        mensagem.style.color = '#dc3545';
+        mensagem.textContent = 'Falha ao comunicar com o servidor.';
+      } finally {
+        input.value = '';
+      }
     }
 
     // =========================================================================
-    // ETAPA 1: SALVAR DADOS PESSOAIS
+    // CHECKBOX "CPF INCLUSO NA IDENTIDADE"
     // =========================================================================
-    const form = document.getElementById('formCandidato');
-    form.addEventListener('submit', async (event) => {
+    async function aoMarcarCpfIncluso(e) {
+      if (!candidatoId) {
+        e.target.checked = false;
+        alert('Preencha e salve a ficha de Dados Pessoais antes.');
+        return;
+      }
+      try {
+        const resposta = await fetch('/api/candidato/' + candidatoId + '/dados', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cpfInclusoNaIdentidade: e.target.checked })
+        });
+        const resultado = await resposta.json();
+        if (resposta.ok) {
+          candidato = resultado.candidato;
+          atualizarBarras();
+        }
+      } catch (erro) {
+        alert('Falha ao atualizar a regra de CPF incluso.');
+      }
+    }
+
+    // =========================================================================
+    // SALVAR DADOS PESSOAIS
+    // =========================================================================
+    document.getElementById('formCandidato').addEventListener('submit', async (event) => {
       event.preventDefault();
 
       const nome = document.getElementById('nomeCompleto').value.trim();
@@ -581,111 +661,20 @@
           return;
         }
 
+        // Guarda o ID retornado na variável global
         candidato = resultado.candidato;
+        candidatoId = candidato.id;
+
         atualizarBadgeGeral();
-        renderizarAbas();
-        alert('Ficha enviada com sucesso! Agora anexe os documentos nas abas.');
-        irParaEtapa('identidade');
+        atualizarBarras();
+        alert('Ficha salva com sucesso! Agora expanda cada barra e anexe o PDF correspondente.');
       } catch (erro) {
         alert('Falha ao comunicar com o servidor.');
       }
     });
 
     // =========================================================================
-    // CHECKBOX "CPF INCLUSO NA IDENTIDADE"
-    // =========================================================================
-    document.getElementById('checkCpfIncluso').addEventListener('change', async (e) => {
-      if (!candidato) return;
-      try {
-        const resposta = await fetch(`/api/candidato/${candidato.id}/dados`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cpfInclusoNaIdentidade: e.target.checked })
-        });
-        const resultado = await resposta.json();
-        if (resposta.ok) {
-          candidato = resultado.candidato;
-          renderizarAbas();
-          renderizarPainelDocumento('identidade');
-        }
-      } catch (erro) {
-        alert('Falha ao atualizar a regra de CPF incluso.');
-      }
-    });
-
-    // =========================================================================
-    // DROPZONE: SELEÇÃO E ENVIO DO PDF
-    // =========================================================================
-    const dropzone = document.getElementById('dropzone');
-    const inputPdf = document.getElementById('inputPdf');
-
-    ['dragenter', 'dragover'].forEach((evt) => {
-      dropzone.addEventListener(evt, (e) => {
-        e.preventDefault();
-        if (!inputPdf.disabled) dropzone.classList.add('dropzone-sobre');
-      });
-    });
-    ['dragleave', 'drop'].forEach((evt) => {
-      dropzone.addEventListener(evt, () => dropzone.classList.remove('dropzone-sobre'));
-    });
-    dropzone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      if (inputPdf.disabled) return;
-      if (e.dataTransfer.files.length) enviarDocumento(e.dataTransfer.files[0]);
-    });
-    inputPdf.addEventListener('change', () => {
-      if (inputPdf.files.length) enviarDocumento(inputPdf.files[0]);
-    });
-
-    async function enviarDocumento(arquivo) {
-      const mensagem = document.getElementById('mensagemEnvio');
-
-      if (arquivo.type !== 'application/pdf') {
-        mensagem.style.color = '#dc3545';
-        mensagem.textContent = 'Apenas arquivos PDF são aceitos.';
-        return;
-      }
-
-      document.getElementById('dropzoneArquivo').textContent = 'Selecionado: ' + arquivo.name;
-      mensagem.style.color = '#6c757d';
-      mensagem.textContent = 'Enviando...';
-
-      // A ordem importa: "tipo" precisa vir ANTES do arquivo no FormData
-      const dados = new FormData();
-      dados.append('tipo', etapaAtual);
-      if (etapaAtual === 'identidade') {
-        dados.append('cpfIncluso', document.getElementById('checkCpfIncluso').checked);
-      }
-      dados.append('arquivo', arquivo);
-
-      try {
-        const resposta = await fetch(`/api/candidato/${candidato.id}/documento`, {
-          method: 'POST',
-          body: dados
-        });
-        const resultado = await resposta.json();
-
-        if (!resposta.ok) {
-          mensagem.style.color = '#dc3545';
-          mensagem.textContent = 'Erro: ' + resultado.erro;
-          return;
-        }
-
-        candidato = resultado.candidato;
-        renderizarAbas();
-        renderizarPainelDocumento(etapaAtual);
-        mensagem.style.color = '#00812a';
-        mensagem.textContent = 'Documento enviado! Status: EM ANÁLISE.';
-      } catch (erro) {
-        mensagem.style.color = '#dc3545';
-        mensagem.textContent = 'Falha ao comunicar com o servidor.';
-      } finally {
-        inputPdf.value = '';
-      }
-    }
-
-    // =========================================================================
-    // BADGE GERAL E BOTÃO VOLTAR
+    // BADGE GERAL
     // =========================================================================
     function atualizarBadgeGeral() {
       const badge = document.getElementById('badgeStatus');
@@ -694,10 +683,8 @@
       badge.className = 'status-badge ' + CLASSE_BADGE[st];
     }
 
-    document.getElementById('btnVoltar').addEventListener('click', () => irParaEtapa('dadosPessoais'));
-
-    // Render inicial
-    renderizarAbas();
+    // Render inicial: barras recolhidas
+    construirBarras();
   </script>
 </body>
 </html>
