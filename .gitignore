@@ -141,3 +141,6 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Base de dados local de candidatos (dados pessoais - LGPD, nao versionar)
+candidatos.json
