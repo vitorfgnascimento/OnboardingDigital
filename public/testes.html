@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Onboarding Digital - Testes de Funcionalidade</title>
+  <style>
+    :root {
+      --verde-intelbras: #00A335;
+      --verde-intelbras-escuro: #00812a;
+      --vermelho: #dc3545;
+      --amarelo: #ffc107;
+      --texto: #2c3e50;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f4f6f9;
+      margin: 0;
+      padding: 30px 15px;
+      color: var(--texto);
+    }
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    h2 {
+      color: #1a252f;
+      border-bottom: 2px solid var(--verde-intelbras);
+      padding-bottom: 10px;
+      margin-top: 0;
+    }
+    p.intro { font-size: 14px; color: #6c757d; }
+
+    .barra-topo {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin: 20px 0;
+    }
+    button {
+      background-color: var(--verde-intelbras);
+      color: #ffffff;
+      border: none;
+      padding: 12px 20px;
+      font-size: 15px;
+      font-weight: bold;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    button:hover { background-color: var(--verde-intelbras-escuro); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .resumo {
+      font-size: 15px;
+      font-weight: bold;
+    }
+    .resumo .ok { color: var(--verde-intelbras); }
+    .resumo .falha { color: var(--vermelho); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      font-size: 13px;
+    }
+    thead th {
+      background-color: #1a252f;
+      color: #ffffff;
+      text-align: left;
+      padding: 10px;
+    }
+    tbody td {
+      padding: 10px;
+      border-bottom: 1px solid #e6e9ee;
+      vertical-align: top;
+    }
+    tbody tr:hover { background-color: #f8f9fb; }
+
+    .tag {
+      display: inline-block;
+      padding: 3px 9px;
+      border-radius: 12px;
+      font-weight: bold;
+      font-size: 11px;
+      color: #ffffff;
+      white-space: nowrap;
+    }
+    .tag-passou    { background-color: var(--verde-intelbras); }
+    .tag-falhou    { background-color: var(--vermelho); }
+    .tag-rodando   { background-color: var(--amarelo); color: #212529; }
+    .tag-pendente  { background-color: #adb5bd; }
+
+    .detalhe {
+      color: #6c757d;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .grupo td {
+      background: #eef7f0;
+      font-weight: bold;
+      color: var(--verde-intelbras-escuro);
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h2>Testes de Funcionalidade - Onboarding Digital</h2>
+    <p class="intro">
+      Executa uma bateria de verificações automáticas contra a API em execução
+      (<code>/api/*</code>). Cria candidatos e arquivos de teste no
+      <code>candidatos.json</code> / <code>uploads/</code> - use em ambiente de desenvolvimento.
+    </p>
+
+    <div class="barra-topo">
+      <button id="btnRodar" type="button">Rodar todos os testes</button>
+      <span class="resumo" id="resumo">Pronto para iniciar.</span>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width:34%;">Cenário</th>
+          <th style="width:12%;">Resultado</th>
+          <th style="width:54%;">Detalhe</th>
+        </tr>
+      </thead>
+      <tbody id="corpo"></tbody>
+    </table>
+  </div>
+
+  <script>
+    // =========================================================================
+    // UTILITÁRIOS
+    // =========================================================================
+    const API = '/api';
+
+    // Gera um PDF mínimo válido como File, permitindo forçar o mimetype
+    // (útil para testar o caso Windows: octet-stream em vez de application/pdf).
+    function pdfDeTeste(nome, mimetype) {
+      const bytes = new TextEncoder().encode('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF');
+      return new File([bytes], nome, { type: mimetype === undefined ? 'application/pdf' : mimetype });
+    }
+
+    async function postJson(caminho, corpo) {
+      const r = await fetch(API + caminho, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(corpo)
+      });
+      return { status: r.status, corpo: await r.json().catch(() => ({})) };
+    }
+
+    async function patchJson(caminho, corpo) {
+      const r = await fetch(API + caminho, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(corpo)
+      });
+      return { status: r.status, corpo: await r.json().catch(() => ({})) };
+    }
+
+    async function enviarDocumento(id, tipoDocumento, arquivo, extras) {
+      const dados = new FormData();
+      dados.append('tipoDocumento', tipoDocumento);
+      if (extras) Object.entries(extras).forEach(([k, v]) => dados.append(k, v));
+      dados.append('arquivo', arquivo);
+      const r = await fetch(API + '/candidato/' + id + '/documento', { method: 'POST', body: dados });
+      return { status: r.status, corpo: await r.json().catch(() => ({})) };
+    }
+
+    function fichaValida(extra) {
+      return Object.assign({
+        nomeCompleto: 'Candidato Teste',
+        dataNascimento: '10/05/1990',
+        cpf: '123.456.789-09',
+        cep: '01310-930',
+        endereco: 'Avenida Teste',
+        numero: '100',
+        complemento: '',
+        email: 'teste@exemplo.com',
+        whatsapp: '(11) 98765-4321',
+        genero: 'Masculino'
+      }, extra || {});
+    }
+
+    // =========================================================================
+    // DEFINIÇÃO DOS TESTES
+    // Cada teste retorna { ok: boolean, detalhe: string }
+    // =========================================================================
+    const TESTES = [
+      { grupo: 'Cadastro (POST /api/candidato)' },
+
+      {
+        nome: 'Recusa cadastro sem campos obrigatórios (400)',
+        run: async () => {
+          const r = await postJson('/candidato', { nomeCompleto: 'Só Nome' });
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Cria candidato Masculino (201, status VERMELHO, 6 documentos)',
+        run: async () => {
+          const r = await postJson('/candidato', fichaValida());
+          const c = r.corpo.candidato || {};
+          const docs = c.documentos ? Object.keys(c.documentos).length : 0;
+          const ok = r.status === 201 && c.status === 'VERMELHO' && docs === 6 && !!c.id;
+          window.__idMasculino = c.id;
+          return { ok, detalhe: `status ${r.status}, geral ${c.status}, documentos ${docs}, id ${c.id}` };
+        }
+      },
+      {
+        nome: 'Candidato Masculino: reservista começa PENDENTE (VERMELHO)',
+        run: async () => {
+          const r = await postJson('/candidato', fichaValida());
+          const st = r.corpo.candidato?.documentos?.reservista?.status;
+          return { ok: st === 'VERMELHO', detalhe: `reservista = ${st}` };
+        }
+      },
+      {
+        nome: 'Candidato Feminino: reservista já APROVADO (VERDE)',
+        run: async () => {
+          const r = await postJson('/candidato', fichaValida({ genero: 'Feminino' }));
+          window.__idFeminino = r.corpo.candidato?.id;
+          const st = r.corpo.candidato?.documentos?.reservista?.status;
+          return { ok: st === 'VERDE', detalhe: `reservista = ${st}` };
+        }
+      },
+
+      { grupo: 'Upload de documentos (POST /api/candidato/:id/documento)' },
+
+      {
+        nome: 'Envia PDF (application/pdf) para identidade → EM ANÁLISE (AMARELO)',
+        run: async () => {
+          const r = await enviarDocumento(window.__idMasculino, 'identidade', pdfDeTeste('rg.pdf'));
+          const st = r.corpo.candidato?.documentos?.identidade?.status;
+          return { ok: r.status === 201 && st === 'AMARELO', detalhe: `status ${r.status}, identidade = ${st}` };
+        }
+      },
+      {
+        nome: 'Aceita PDF enviado como application/octet-stream (fix Windows)',
+        run: async () => {
+          const r = await enviarDocumento(window.__idMasculino, 'comprovanteResidencia',
+            pdfDeTeste('comprovante.pdf', 'application/octet-stream'));
+          return { ok: r.status === 201, detalhe: `status ${r.status} — ${r.corpo.erro || r.corpo.mensagem || ''}` };
+        }
+      },
+      {
+        nome: 'Recusa arquivo não-PDF (400)',
+        run: async () => {
+          const txt = new File([new TextEncoder().encode('nao sou pdf')], 'nota.txt', { type: 'text/plain' });
+          const r = await enviarDocumento(window.__idMasculino, 'carteiraTrabalho', txt);
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Recusa upload de reservista para candidato Feminino (400)',
+        run: async () => {
+          const r = await enviarDocumento(window.__idFeminino, 'reservista', pdfDeTeste('res.pdf'));
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Tipo de documento inválido (400)',
+        run: async () => {
+          const r = await enviarDocumento(window.__idMasculino, 'foto3x4', pdfDeTeste('foto.pdf'));
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+
+      { grupo: 'Regras condicionais (PATCH /api/candidato/:id/dados)' },
+
+      {
+        nome: 'CPF incluso na Identidade: aba CPF herda o status da Identidade',
+        run: async () => {
+          const r = await patchJson('/candidato/' + window.__idMasculino + '/dados', { cpfInclusoNaIdentidade: true });
+          const c = r.corpo.candidato || {};
+          const ok = r.status === 200 && c.cpfInclusoNaIdentidade === true
+            && c.documentos.cpf.status === c.documentos.identidade.status;
+          return { ok, detalhe: `identidade ${c.documentos?.identidade?.status} / cpf ${c.documentos?.cpf?.status}` };
+        }
+      },
+      {
+        nome: 'Com CPF incluso, upload direto na aba CPF é recusado (400)',
+        run: async () => {
+          const r = await enviarDocumento(window.__idMasculino, 'cpf', pdfDeTeste('cpf.pdf'));
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Mudar gênero para Feminino zera exigência do reservista (VERDE)',
+        run: async () => {
+          const r = await patchJson('/candidato/' + window.__idFeminino + '/dados', { genero: 'Feminino' });
+          const st = r.corpo.candidato?.documentos?.reservista?.status;
+          return { ok: r.status === 200 && st === 'VERDE', detalhe: `reservista = ${st}` };
+        }
+      },
+      {
+        nome: 'Gênero inválido é recusado (400)',
+        run: async () => {
+          const r = await patchJson('/candidato/' + window.__idMasculino + '/dados', { genero: 'Outros' });
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+
+      { grupo: 'Painel do RH (GET /api/candidatos, PATCH .../status)' },
+
+      {
+        nome: 'GET /api/candidatos retorna uma lista',
+        run: async () => {
+          const r = await fetch(API + '/candidatos');
+          const lista = await r.json();
+          return { ok: r.status === 200 && Array.isArray(lista), detalhe: `status ${r.status}, ${Array.isArray(lista) ? lista.length + ' candidatos' : 'não é lista'}` };
+        }
+      },
+      {
+        nome: 'RH aprova candidato: status geral vira VERDE',
+        run: async () => {
+          const r = await patchJson('/candidato/' + window.__idMasculino + '/status', { status: 'VERDE' });
+          return { ok: r.status === 200 && r.corpo.candidato?.status === 'VERDE', detalhe: `status ${r.status}, geral = ${r.corpo.candidato?.status}` };
+        }
+      },
+      {
+        nome: 'RH não pode definir status arbitrário (400)',
+        run: async () => {
+          const r = await patchJson('/candidato/' + window.__idMasculino + '/status', { status: 'AZUL' });
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Alterar status de candidato inexistente (404)',
+        run: async () => {
+          const r = await patchJson('/candidato/id-que-nao-existe/status', { status: 'VERDE' });
+          return { ok: r.status === 404, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      }
+    ];
+
+    // =========================================================================
+    // EXECUÇÃO E RENDERIZAÇÃO
+    // =========================================================================
+    const corpo = document.getElementById('corpo');
+    const resumo = document.getElementById('resumo');
+    const btnRodar = document.getElementById('btnRodar');
+
+    // Monta a tabela com todas as linhas em estado "pendente"
+    function montarTabela() {
+      corpo.innerHTML = '';
+      TESTES.forEach((t, i) => {
+        if (t.grupo) {
+          const tr = document.createElement('tr');
+          tr.className = 'grupo';
+          tr.innerHTML = `<td colspan="3">${t.grupo}</td>`;
+          corpo.appendChild(tr);
+          return;
+        }
+        const tr = document.createElement('tr');
+        tr.dataset.indice = i;
+        tr.innerHTML = `
+          <td>${t.nome}</td>
+          <td><span class="tag tag-pendente" data-tag>PENDENTE</span></td>
+          <td class="detalhe" data-detalhe>—</td>
+        `;
+        corpo.appendChild(tr);
+      });
+    }
+
+    function definirLinha(indice, classe, rotulo, detalhe) {
+      const tr = corpo.querySelector(`tr[data-indice="${indice}"]`);
+      if (!tr) return;
+      const tag = tr.querySelector('[data-tag]');
+      tag.className = 'tag ' + classe;
+      tag.textContent = rotulo;
+      tr.querySelector('[data-detalhe]').textContent = detalhe;
+    }
+
+    async function rodarTodos() {
+      btnRodar.disabled = true;
+      montarTabela();
+      resumo.textContent = 'Executando...';
+
+      let passou = 0;
+      let falhou = 0;
+
+      for (let i = 0; i < TESTES.length; i++) {
+        const t = TESTES[i];
+        if (t.grupo) continue;
+
+        definirLinha(i, 'tag-rodando', 'RODANDO', '...');
+        try {
+          const resultado = await t.run();
+          if (resultado.ok) {
+            passou++;
+            definirLinha(i, 'tag-passou', 'PASSOU', resultado.detalhe || '');
+          } else {
+            falhou++;
+            definirLinha(i, 'tag-falhou', 'FALHOU', resultado.detalhe || '');
+          }
+        } catch (erro) {
+          falhou++;
+          definirLinha(i, 'tag-falhou', 'FALHOU', 'Exceção: ' + erro.message);
+        }
+      }
+
+      resumo.innerHTML = `<span class="ok">${passou} passaram</span> · <span class="falha">${falhou} falharam</span>`;
+      btnRodar.disabled = false;
+    }
+
+    btnRodar.addEventListener('click', rodarTodos);
+    montarTabela();
+  </script>
+</body>
+</html>
