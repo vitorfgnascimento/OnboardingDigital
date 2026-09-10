@@ -78,20 +78,11 @@
       border-color: var(--verde-intelbras);
       box-shadow: 0 0 0 3px rgba(0, 163, 53, 0.15);
     }
-    button.principal {
-      background-color: var(--verde-intelbras);
-      color: #ffffff;
-      border: none;
-      padding: 14px;
-      font-size: 16px;
-      font-weight: bold;
-      border-radius: 5px;
-      cursor: pointer;
-      margin-top: 15px;
-      width: 100%;
-      transition: background-color 0.2s;
+    input:disabled, select:disabled {
+      background: #eef0f2;
+      color: #6c757d;
+      cursor: not-allowed;
     }
-    button.principal:hover { background-color: var(--verde-intelbras-escuro); }
 
     .status-badge {
       display: inline-block;
@@ -180,11 +171,49 @@
     }
     .dropzone strong { color: var(--verde-intelbras-escuro); }
     .dropzone input[type="file"] { display: none; }
-    .dropzone-arquivo {
-      margin-top: 10px;
-      font-size: 13px;
-      color: var(--texto);
+    .dropzone.dropzone-travada {
+      border-color: var(--cinza-borda);
+      background: #eef0f2;
+      color: #adb5bd;
+      cursor: not-allowed;
     }
+
+    /* Arquivo anexado: nome + botão "x" */
+    .arquivo-anexado {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 12px;
+      padding: 10px 14px;
+      background: #ffffff;
+      border: 1px solid var(--verde-intelbras);
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .arquivo-anexado.visivel { display: flex; }
+    .arquivo-nome {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .btn-remover {
+      flex: 0 0 auto;
+      width: 26px;
+      height: 26px;
+      border: none;
+      border-radius: 50%;
+      background: var(--vermelho);
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: bold;
+      line-height: 1;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .btn-remover:hover { background: #b02a37; }
+    .btn-remover:disabled { opacity: 0.4; cursor: not-allowed; }
+
     .aviso-regra {
       background: rgba(0, 163, 53, 0.08);
       border-left: 4px solid var(--verde-intelbras);
@@ -207,11 +236,47 @@
       height: 16px;
       accent-color: var(--verde-intelbras);
     }
-    .mensagem-envio {
-      font-size: 13px;
-      margin-top: 10px;
-      min-height: 18px;
+
+    /* --- BOTÃO ÚNICO DE CONCLUSÃO (fim da página) --- */
+    .rodape-envio {
+      margin-top: 35px;
+      border-top: 2px solid #e6e9ee;
+      padding-top: 25px;
     }
+    #btnConcluir {
+      width: 100%;
+      background-color: var(--verde-intelbras);
+      color: #ffffff;
+      border: none;
+      padding: 18px;
+      font-size: 18px;
+      font-weight: bold;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    #btnConcluir:hover { background-color: var(--verde-intelbras-escuro); }
+    #btnConcluir:disabled { opacity: 0.5; cursor: not-allowed; }
+    #mensagemEnvioGeral {
+      font-size: 13px;
+      margin-top: 12px;
+      min-height: 18px;
+      text-align: center;
+    }
+
+    /* --- AVISO DE FICHA BLOQUEADA --- */
+    .aviso-bloqueio {
+      display: none;
+      margin-top: 20px;
+      padding: 16px 18px;
+      background: rgba(255, 193, 7, 0.15);
+      border: 1px solid var(--amarelo);
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #7a5c00;
+    }
+    .aviso-bloqueio.visivel { display: block; }
   </style>
 </head>
 <body>
@@ -220,8 +285,8 @@
     <div class="status-badge" id="badgeStatus">STATUS: PENDENTE (VERMELHO)</div>
     <h2>Ficha Única de Admissão</h2>
 
-    <!-- CAIXA DE DADOS PESSOAIS (sempre no topo) -->
-    <form id="formCandidato">
+    <!-- CAIXA DE DADOS PESSOAIS (sem botão de salvar próprio) -->
+    <form id="formCandidato" onsubmit="return false;">
       <div class="grid-campos">
 
         <div class="campo span-3">
@@ -283,13 +348,22 @@
         </div>
 
       </div>
-
-      <button type="submit" class="principal" id="btnSalvar">Salvar e Iniciar Admissão</button>
     </form>
 
     <!-- CONTÊINER DE DOCUMENTOS OBRIGATÓRIOS (barras accordion) -->
     <h3>Documentos Obrigatórios</h3>
     <div id="containerDocumentos"></div>
+
+    <!-- BOTÃO ÚNICO DE CONCLUSÃO -->
+    <div class="rodape-envio">
+      <button type="button" id="btnConcluir">Concluir e Enviar Admissão Completa</button>
+      <div id="mensagemEnvioGeral"></div>
+    </div>
+
+    <!-- AVISO DE FICHA BLOQUEADA -->
+    <div class="aviso-bloqueio" id="avisoBloqueio">
+      Sua ficha foi enviada com sucesso e está em análise pelo RH. Os campos foram bloqueados para alteração.
+    </div>
 
   </div>
 
@@ -313,9 +387,11 @@
     };
     const CLASSE_BADGE = { VERMELHO: '', AMARELO: 'status-amarelo', VERDE: 'status-verde' };
 
-    // Variável global com o ID do candidato salvo (null até salvar os Dados Pessoais)
-    let candidatoId = null;
-    let candidato = null; // objeto completo retornado pelo backend
+    // Estado da aplicação
+    let candidatoId = null;                 // definido após o envio da ficha
+    let candidato = null;                   // objeto retornado pelo backend
+    let fichaBloqueada = false;             // modo somente leitura após envio
+    const arquivosPendentes = {};           // tipo -> File selecionado localmente (antes do envio)
 
     // =========================================================================
     // MÁSCARAS COM PRESERVAÇÃO DE CURSOR
@@ -351,22 +427,53 @@
     document.getElementById('numero').addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, ''); });
 
     // =========================================================================
-    // REGRAS CONDICIONAIS (espelham o backend)
+    // LEITURA DE ESTADO (valores atuais do formulário / regras)
     // =========================================================================
+    function generoAtual() {
+      if (candidato && candidato.genero) return candidato.genero;
+      return document.getElementById('genero').value;
+    }
+
+    function cpfInclusoAtual() {
+      if (candidato) return Boolean(candidato.cpfInclusoNaIdentidade);
+      const chk = document.getElementById('checkCpfIncluso');
+      return chk ? chk.checked : false;
+    }
+
+    // Uma barra é bloqueada quando: ficha travada, regra do reservista ou CPF incluso.
     function barraDesabilitada(tipo) {
-      if (!candidato) return false;
-      if (tipo === 'reservista' && candidato.genero !== 'Masculino') return true;
-      if (tipo === 'cpf' && candidato.cpfInclusoNaIdentidade) return true;
+      if (fichaBloqueada) return true;
+      if (tipo === 'reservista' && generoAtual() !== 'Masculino') return true;
+      if (tipo === 'cpf' && cpfInclusoAtual()) return true;
       return false;
     }
 
-    function statusDocumento(tipo) {
-      if (!candidato || !candidato.documentos || !candidato.documentos[tipo]) return 'VERMELHO';
-      return candidato.documentos[tipo].status;
+    // Status visual da barra: prioriza o que o backend devolveu; senão usa o estado local.
+    function statusBarra(tipo) {
+      if (candidato && candidato.documentos && candidato.documentos[tipo]) {
+        const doc = candidato.documentos[tipo];
+        if (doc.status !== 'VERMELHO' || doc.arquivo) return doc.status;
+      }
+      if (tipo === 'reservista' && generoAtual() !== 'Masculino') return 'VERDE';
+      if (tipo === 'cpf' && cpfInclusoAtual()) return statusBarra('identidade');
+      if (arquivosPendentes[tipo]) return 'AMARELO';
+      return 'VERMELHO';
+    }
+
+    // Documentos que o candidato precisa anexar antes de concluir.
+    function documentosObrigatoriosFaltando() {
+      const faltando = [];
+      DOCUMENTOS.forEach((doc) => {
+        if (barraDesabilitada(doc.tipo)) return;          // dispensado por regra
+        const jaEnviado = candidato && candidato.documentos
+          && candidato.documentos[doc.tipo] && candidato.documentos[doc.tipo].arquivo;
+        if (!arquivosPendentes[doc.tipo] && !jaEnviado) faltando.push(doc.titulo);
+      });
+      return faltando;
     }
 
     // =========================================================================
-    // CONSTRUÇÃO DAS BARRAS (uma única vez)
+    // CONSTRUÇÃO DAS BARRAS
     // =========================================================================
     function construirBarras() {
       const container = document.getElementById('containerDocumentos');
@@ -377,7 +484,6 @@
         barra.className = 'barra';
         barra.dataset.tipo = doc.tipo;
 
-        // Cabeçalho: título + badge + seta
         const cabecalho = document.createElement('button');
         cabecalho.type = 'button';
         cabecalho.className = 'barra-cabecalho';
@@ -388,7 +494,6 @@
         `;
         cabecalho.addEventListener('click', () => alternarBarra(doc.tipo));
 
-        // Painel interno
         const painel = document.createElement('div');
         painel.className = 'barra-painel';
 
@@ -398,7 +503,6 @@
         aviso.dataset.aviso = '';
         painel.appendChild(aviso);
 
-        // Checkbox "CPF incluso na Identidade" apenas na barra 1
         if (doc.tipo === 'identidade') {
           const linha = document.createElement('div');
           linha.className = 'check-linha';
@@ -410,20 +514,26 @@
           linha.querySelector('input').addEventListener('change', aoMarcarCpfIncluso);
         }
 
-        // Dropzone específica deste documento
         const dropzone = document.createElement('label');
         dropzone.className = 'dropzone';
+        dropzone.dataset.dropzone = '';
         dropzone.innerHTML = `
           <div>Arraste o PDF aqui ou <strong>clique para selecionar</strong></div>
-          <div class="dropzone-arquivo" data-arquivo>Somente arquivos PDF (até 10 MB)</div>
+          <div style="margin-top:8px;font-size:12px;">Somente arquivos PDF (até 10 MB)</div>
           <input type="file" accept="application/pdf" data-input>
         `;
         painel.appendChild(dropzone);
 
-        const mensagem = document.createElement('div');
-        mensagem.className = 'mensagem-envio';
-        mensagem.dataset.mensagem = '';
-        painel.appendChild(mensagem);
+        // Linha do arquivo anexado (nome + botão x)
+        const anexo = document.createElement('div');
+        anexo.className = 'arquivo-anexado';
+        anexo.dataset.anexo = '';
+        anexo.innerHTML = `
+          <span class="arquivo-nome" data-nome></span>
+          <button type="button" class="btn-remover" data-remover title="Remover PDF">&times;</button>
+        `;
+        anexo.querySelector('[data-remover]').addEventListener('click', () => removerDocumento(doc.tipo));
+        painel.appendChild(anexo);
 
         configurarDropzone(dropzone, doc.tipo);
 
@@ -436,12 +546,12 @@
     }
 
     // =========================================================================
-    // ATUALIZAÇÃO DE ESTADO DAS BARRAS (badge / seta / desabilitada / aviso)
+    // ATUALIZAÇÃO DE ESTADO DAS BARRAS
     // =========================================================================
     function atualizarBarras() {
       document.querySelectorAll('.barra').forEach((barra) => {
         const tipo = barra.dataset.tipo;
-        const st = statusDocumento(tipo);
+        const st = statusBarra(tipo);
         const desabilitada = barraDesabilitada(tipo);
 
         barra.classList.toggle('barra-desabilitada', desabilitada);
@@ -451,51 +561,75 @@
         badge.className = 'status-badge ' + CLASSE_BADGE[st];
 
         const seta = barra.querySelector('[data-seta]');
-        if (tipo === 'reservista' && desabilitada) {
+        if (tipo === 'reservista' && desabilitada && !fichaBloqueada) {
           seta.innerHTML = '&#128274;'; // cadeado
         } else {
-          seta.innerHTML = barra.classList.contains('ativa') ? '&#9650;' : '&#9660;'; // ▲ / ▼
+          seta.innerHTML = barra.classList.contains('ativa') ? '&#9650;' : '&#9660;';
         }
 
-        // Aviso de regra dentro do painel
         const aviso = barra.querySelector('[data-aviso]');
-        if (tipo === 'reservista' && candidato && candidato.genero !== 'Masculino') {
+        if (tipo === 'reservista' && generoAtual() !== 'Masculino') {
           aviso.hidden = false;
           aviso.textContent = 'Certificado de Reservista não é exigido para este candidato. Status definido automaticamente como APROVADO (VERDE).';
-        } else if (tipo === 'cpf' && candidato && candidato.cpfInclusoNaIdentidade) {
+        } else if (tipo === 'cpf' && cpfInclusoAtual()) {
           aviso.hidden = false;
           aviso.textContent = 'CPF incluso na Identidade: esta barra está desabilitada e herda o status da Identidade.';
         } else {
           aviso.hidden = true;
         }
 
-        // Barra desabilitada não permanece aberta
         if (desabilitada) barra.classList.remove('ativa');
 
+        // Dropzone e arquivo anexado
+        const dropzone = barra.querySelector('[data-dropzone]');
         const input = barra.querySelector('[data-input]');
-        input.disabled = desabilitada;
+        const anexo = barra.querySelector('[data-anexo]');
+        const nome = barra.querySelector('[data-nome]');
+        const btnRemover = barra.querySelector('[data-remover]');
+
+        const bloquearUpload = desabilitada || fichaBloqueada;
+        input.disabled = bloquearUpload;
+        dropzone.classList.toggle('dropzone-travada', bloquearUpload);
+        btnRemover.disabled = fichaBloqueada;
+
+        const nomeArquivo = arquivosPendentes[tipo]
+          ? arquivosPendentes[tipo].name
+          : (candidato && candidato.documentos && candidato.documentos[tipo] && candidato.documentos[tipo].arquivo
+              ? candidato.documentos[tipo].arquivo.split('/').pop()
+              : null);
+
+        if (nomeArquivo) {
+          anexo.classList.add('visivel');
+          nome.textContent = 'Anexado: ' + nomeArquivo;
+          dropzone.style.display = 'none';
+        } else {
+          anexo.classList.remove('visivel');
+          dropzone.style.display = 'block';
+        }
       });
+
+      atualizarCheckboxCpf();
+    }
+
+    function atualizarCheckboxCpf() {
+      const chk = document.getElementById('checkCpfIncluso');
+      if (!chk) return;
+      if (candidato) chk.checked = Boolean(candidato.cpfInclusoNaIdentidade);
+      chk.disabled = fichaBloqueada;
     }
 
     // =========================================================================
     // EXPANSÃO / RECOLHIMENTO DA BARRA
     // =========================================================================
     function alternarBarra(tipo) {
-      // Regra: exige Dados Pessoais salvos antes de qualquer interação
-      if (!candidatoId) {
-        alert('Preencha e salve a ficha de Dados Pessoais antes de anexar documentos.');
-        return;
-      }
-
       const barra = document.querySelector(`.barra[data-tipo="${tipo}"]`);
       if (barra.classList.contains('barra-desabilitada')) return;
-
       barra.classList.toggle('ativa');
       atualizarBarras();
     }
 
     // =========================================================================
-    // DROPZONE: SELEÇÃO E ENVIO DO PDF
+    // DROPZONE: SELEÇÃO LOCAL DO PDF (o envio real ocorre na conclusão)
     // =========================================================================
     function configurarDropzone(dropzone, tipo) {
       const input = dropzone.querySelector('[data-input]');
@@ -512,103 +646,83 @@
       dropzone.addEventListener('drop', (e) => {
         e.preventDefault();
         if (input.disabled) return;
-        if (e.dataTransfer.files.length) enviarDocumento(tipo, e.dataTransfer.files[0]);
+        if (e.dataTransfer.files.length) anexarArquivo(tipo, e.dataTransfer.files[0]);
       });
       input.addEventListener('change', () => {
-        if (input.files.length) enviarDocumento(tipo, input.files[0]);
+        if (input.files.length) anexarArquivo(tipo, input.files[0]);
       });
     }
 
-    async function enviarDocumento(tipo, arquivo) {
-      // Regra: exige Dados Pessoais salvos
-      if (!candidatoId) {
-        alert('Preencha e salve a ficha de Dados Pessoais antes de anexar documentos.');
-        return;
-      }
+    function anexarArquivo(tipo, arquivo) {
+      if (fichaBloqueada) return;
 
-      const barra = document.querySelector(`.barra[data-tipo="${tipo}"]`);
-      const mensagem = barra.querySelector('[data-mensagem]');
-      const input = barra.querySelector('[data-input]');
-
-      // Alguns navegadores no Windows não preenchem arquivo.type para PDF,
-      // então a validação principal é pela extensão do nome do arquivo.
       const ehPdf = /\.pdf$/i.test(arquivo.name) &&
         (arquivo.type === '' || /pdf|octet-stream/i.test(arquivo.type));
       if (!ehPdf) {
-        mensagem.style.color = '#dc3545';
-        mensagem.textContent = 'Apenas arquivos PDF são aceitos.';
+        alert('Apenas arquivos PDF são aceitos.');
         return;
       }
 
-      barra.querySelector('[data-arquivo]').textContent = 'Selecionado: ' + arquivo.name;
-      mensagem.style.color = '#6c757d';
-      mensagem.textContent = 'Enviando...';
+      arquivosPendentes[tipo] = arquivo;
+      atualizarBarras();
+    }
 
-      // A ordem importa: "tipoDocumento" precisa vir ANTES do arquivo no FormData
-      const dados = new FormData();
-      dados.append('tipoDocumento', tipo);
-      if (tipo === 'identidade') {
-        const check = document.getElementById('checkCpfIncluso');
-        dados.append('cpfIncluso', check ? check.checked : false);
-      }
-      dados.append('arquivo', arquivo);
+    // =========================================================================
+    // REMOÇÃO DO PDF (botão "x")
+    // =========================================================================
+    async function removerDocumento(tipo) {
+      if (fichaBloqueada) return;
 
-      try {
-        const resposta = await fetch('/api/candidato/' + candidatoId + '/documento', {
-          method: 'POST',
-          body: dados
-        });
-        const resultado = await resposta.json();
+      delete arquivosPendentes[tipo];
 
-        if (!resposta.ok) {
-          mensagem.style.color = '#dc3545';
-          mensagem.textContent = 'Erro: ' + resultado.erro;
-          return;
+      const barra = document.querySelector(`.barra[data-tipo="${tipo}"]`);
+      barra.querySelector('[data-input]').value = '';
+
+      // Se o documento já foi persistido no servidor, exclui o arquivo físico
+      if (candidatoId && candidato && candidato.documentos[tipo] && candidato.documentos[tipo].arquivo) {
+        try {
+          const resposta = await fetch('/api/candidato/' + candidatoId + '/documento/' + tipo, { method: 'DELETE' });
+          const resultado = await resposta.json();
+          if (resposta.ok) candidato = resultado.candidato;
+        } catch (erro) {
+          alert('Falha ao excluir o documento no servidor.');
         }
-
-        candidato = resultado.candidato;
-        atualizarBarras();
-        mensagem.style.color = '#00812a';
-        mensagem.textContent = 'Documento enviado! Status: EM ANÁLISE.';
-      } catch (erro) {
-        mensagem.style.color = '#dc3545';
-        mensagem.textContent = 'Falha ao comunicar com o servidor.';
-      } finally {
-        input.value = '';
+      } else if (candidato && candidato.documentos[tipo]) {
+        candidato.documentos[tipo] = { arquivo: null, status: 'VERMELHO', atualizadoEm: null };
       }
+
+      atualizarBarras();
     }
 
     // =========================================================================
     // CHECKBOX "CPF INCLUSO NA IDENTIDADE"
     // =========================================================================
     async function aoMarcarCpfIncluso(e) {
-      if (!candidatoId) {
-        e.target.checked = false;
-        alert('Preencha e salve a ficha de Dados Pessoais antes.');
-        return;
-      }
-      try {
-        const resposta = await fetch('/api/candidato/' + candidatoId + '/dados', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cpfInclusoNaIdentidade: e.target.checked })
-        });
-        const resultado = await resposta.json();
-        if (resposta.ok) {
-          candidato = resultado.candidato;
-          atualizarBarras();
+      if (fichaBloqueada) { e.target.checked = !e.target.checked; return; }
+
+      if (candidatoId) {
+        try {
+          const resposta = await fetch('/api/candidato/' + candidatoId + '/dados', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cpfInclusoNaIdentidade: e.target.checked })
+          });
+          const resultado = await resposta.json();
+          if (resposta.ok) candidato = resultado.candidato;
+        } catch (erro) {
+          alert('Falha ao atualizar a regra de CPF incluso.');
         }
-      } catch (erro) {
-        alert('Falha ao atualizar a regra de CPF incluso.');
       }
+      atualizarBarras();
     }
 
-    // =========================================================================
-    // SALVAR DADOS PESSOAIS
-    // =========================================================================
-    document.getElementById('formCandidato').addEventListener('submit', async (event) => {
-      event.preventDefault();
+    // O gênero altera a regra do reservista em tempo real
+    document.getElementById('genero').addEventListener('change', atualizarBarras);
 
+    // =========================================================================
+    // CONCLUSÃO: VALIDA, ENVIA A FICHA E OS PDFs EM FLUXO CONTÍNUO
+    // =========================================================================
+    function validarDadosPessoais() {
       const nome = document.getElementById('nomeCompleto').value.trim();
       const email = document.getElementById('email').value.trim();
       const genero = document.getElementById('genero').value;
@@ -617,65 +731,154 @@
       const possuiSobrenome = nome.split(' ').filter((p) => p.length > 0).length >= 2;
       let valido = true;
 
-      if (!possuiSobrenome || regexRepeticao.test(nome)) {
-        document.getElementById('erroNome').style.display = 'block';
-        valido = false;
-      } else {
-        document.getElementById('erroNome').style.display = 'none';
-      }
+      document.getElementById('erroNome').style.display =
+        (!possuiSobrenome || regexRepeticao.test(nome)) ? 'block' : 'none';
+      if (!possuiSobrenome || regexRepeticao.test(nome)) valido = false;
 
       const regexEmail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-      if (!regexEmail.test(email)) {
-        document.getElementById('erroEmail').style.display = 'block';
-        valido = false;
-      } else {
-        document.getElementById('erroEmail').style.display = 'none';
+      document.getElementById('erroEmail').style.display = regexEmail.test(email) ? 'none' : 'block';
+      if (!regexEmail.test(email)) valido = false;
+
+      const obrigatorios = ['dataNascimento', 'cpf', 'cep', 'endereco', 'numero', 'whatsapp'];
+      const faltamCampos = obrigatorios.some((id) => !document.getElementById(id).value.trim());
+
+      if (!genero) { alert('Selecione o gênero para continuar.'); valido = false; }
+      if (faltamCampos) { alert('Preencha todos os campos obrigatórios dos Dados Pessoais.'); valido = false; }
+
+      return valido;
+    }
+
+    async function uploadArquivo(tipo, arquivo) {
+      const dados = new FormData();
+      dados.append('tipoDocumento', tipo);
+      if (tipo === 'identidade') {
+        const chk = document.getElementById('checkCpfIncluso');
+        dados.append('cpfIncluso', chk ? chk.checked : false);
+      }
+      dados.append('arquivo', arquivo);
+
+      const resposta = await fetch('/api/candidato/' + candidatoId + '/documento', { method: 'POST', body: dados });
+      const resultado = await resposta.json();
+      if (!resposta.ok) throw new Error(resultado.erro || 'Falha no upload de ' + tipo);
+      candidato = resultado.candidato;
+    }
+
+    document.getElementById('btnConcluir').addEventListener('click', async () => {
+      if (fichaBloqueada) return;
+
+      const mensagem = document.getElementById('mensagemEnvioGeral');
+      mensagem.style.color = '#6c757d';
+      mensagem.textContent = '';
+
+      // 1) valida dados pessoais
+      if (!validarDadosPessoais()) return;
+
+      // 2) valida presença dos PDFs obrigatórios
+      const faltando = documentosObrigatoriosFaltando();
+      if (faltando.length) {
+        alert('Anexe o PDF dos seguintes documentos antes de concluir:\n\n- ' + faltando.join('\n- '));
+        return;
       }
 
-      if (!genero) {
-        alert('Selecione o gênero para continuar.');
-        valido = false;
-      }
-
-      if (!valido) return;
-
-      const dadosCandidato = {
-        nomeCompleto: nome,
-        dataNascimento: document.getElementById('dataNascimento').value,
-        cpf: document.getElementById('cpf').value,
-        cep: document.getElementById('cep').value,
-        endereco: document.getElementById('endereco').value,
-        numero: document.getElementById('numero').value,
-        complemento: document.getElementById('complemento').value,
-        email: email,
-        whatsapp: document.getElementById('whatsapp').value,
-        genero: genero
-      };
+      const btn = document.getElementById('btnConcluir');
+      btn.disabled = true;
+      mensagem.textContent = 'Enviando ficha e documentos...';
 
       try {
-        const resposta = await fetch('/api/candidato', {
+        // 3) cria a ficha do candidato
+        const dadosCandidato = {
+          nomeCompleto: document.getElementById('nomeCompleto').value.trim(),
+          dataNascimento: document.getElementById('dataNascimento').value,
+          cpf: document.getElementById('cpf').value,
+          cep: document.getElementById('cep').value,
+          endereco: document.getElementById('endereco').value,
+          numero: document.getElementById('numero').value,
+          complemento: document.getElementById('complemento').value,
+          email: document.getElementById('email').value.trim(),
+          whatsapp: document.getElementById('whatsapp').value,
+          genero: document.getElementById('genero').value
+        };
+
+        const respFicha = await fetch('/api/candidato', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(dadosCandidato)
         });
-        const resultado = await resposta.json();
+        const resFicha = await respFicha.json();
+        if (!respFicha.ok) throw new Error(resFicha.erro || 'Falha ao salvar a ficha.');
 
-        if (!resposta.ok) {
-          alert('Erro: ' + resultado.erro);
-          return;
-        }
-
-        // Guarda o ID retornado na variável global
-        candidato = resultado.candidato;
+        candidato = resFicha.candidato;
         candidatoId = candidato.id;
 
-        atualizarBadgeGeral();
-        atualizarBarras();
-        alert('Ficha salva com sucesso! Agora expanda cada barra e anexe o PDF correspondente.');
+        // 4) aplica a regra do CPF incluso, se marcada
+        const chk = document.getElementById('checkCpfIncluso');
+        if (chk && chk.checked) {
+          const respDados = await fetch('/api/candidato/' + candidatoId + '/dados', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cpfInclusoNaIdentidade: true })
+          });
+          const resDados = await respDados.json();
+          if (respDados.ok) candidato = resDados.candidato;
+        }
+
+        // 5) envia cada PDF anexado (respeitando as regras)
+        for (const doc of DOCUMENTOS) {
+          if (!arquivosPendentes[doc.tipo]) continue;
+          if (barraDesabilitada(doc.tipo)) continue;
+          await uploadArquivo(doc.tipo, arquivosPendentes[doc.tipo]);
+        }
+
+        // 6) move o status geral para EM ANÁLISE (AMARELO)
+        const respStatus = await fetch('/api/candidato/' + candidatoId + '/status', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'AMARELO' })
+        });
+        const resStatus = await respStatus.json();
+        if (respStatus.ok) candidato = resStatus.candidato;
+
+        // 7) bloqueia a ficha
+        bloquearFicha();
+        mensagem.style.color = '#00812a';
+        mensagem.textContent = 'Admissão enviada com sucesso!';
       } catch (erro) {
-        alert('Falha ao comunicar com o servidor.');
+        btn.disabled = false;
+        mensagem.style.color = '#dc3545';
+        mensagem.textContent = 'Erro: ' + erro.message;
       }
     });
+
+    // =========================================================================
+    // BLOQUEIO DA FICHA (MODO SOMENTE LEITURA)
+    // =========================================================================
+    function bloquearFicha() {
+      // Trava a ficha em modo somente leitura após o envio bem-sucedido.
+      // A reabertura para edição só deve ocorrer se, num carregamento futuro,
+      // a API devolver o candidato com status de edição (não implementado neste MVP).
+      fichaBloqueada = true;
+
+      // a) badge principal e documentos obrigatórios -> EM ANÁLISE (AMARELO)
+      candidato.status = 'AMARELO';
+      DOCUMENTOS.forEach((doc) => {
+        const atual = candidato.documentos[doc.tipo];
+        if (atual.status === 'VERDE') return; // reservista dispensado permanece VERDE
+        atual.status = 'AMARELO';
+      });
+      atualizarBadgeGeral();
+
+      // b) desabilita todos os campos, seletores, checkboxes e uploads
+      document.querySelectorAll('#formCandidato input, #formCandidato select').forEach((el) => { el.disabled = true; });
+      const chk = document.getElementById('checkCpfIncluso');
+      if (chk) chk.disabled = true;
+      document.querySelectorAll('.barra [data-input]').forEach((el) => { el.disabled = true; });
+      document.getElementById('btnConcluir').disabled = true;
+
+      // c) aviso visual
+      document.getElementById('avisoBloqueio').classList.add('visivel');
+
+      atualizarBarras();
+    }
 
     // =========================================================================
     // BADGE GERAL
@@ -687,7 +890,7 @@
       badge.className = 'status-badge ' + CLASSE_BADGE[st];
     }
 
-    // Render inicial: barras recolhidas
+    // Render inicial
     construirBarras();
   </script>
 </body>

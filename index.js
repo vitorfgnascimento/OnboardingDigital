@@ -319,6 +319,52 @@ app.post('/api/candidato/:id/documento', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// ROTA: exclusão de um documento PDF já anexado
+// ---------------------------------------------------------------------------
+app.delete('/api/candidato/:id/documento/:tipo', (req, res) => {
+  const { id, tipo } = req.params;
+
+  if (!TIPOS_DOCUMENTO.includes(tipo)) {
+    return res.status(400).json({ erro: 'Tipo de documento inválido.' });
+  }
+
+  const candidatos = lerCandidatos();
+  const candidato = candidatos.find((c) => c.id === id);
+
+  if (!candidato) {
+    return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  }
+
+  const documento = candidato.documentos[tipo];
+
+  // Remove o arquivo físico da pasta uploads/ (se houver), ignorando "arquivo inexistente".
+  if (documento && documento.arquivo) {
+    const caminhoFisico = path.join(__dirname, documento.arquivo);
+    fs.unlink(caminhoFisico, (erro) => {
+      if (erro && erro.code !== 'ENOENT') {
+        console.error('Falha ao excluir arquivo:', caminhoFisico, erro.message);
+      }
+    });
+  }
+
+  // Limpa a referência do documento no candidatos.json (volta a PENDENTE)
+  candidato.documentos[tipo] = { arquivo: null, status: 'VERMELHO', atualizadoEm: new Date().toISOString() };
+
+  // Reaplica as regras que podem manter o status automático mesmo sem arquivo
+  if (tipo === 'reservista') aplicarRegraReservista(candidato);
+  if (tipo === 'identidade') aplicarRegraCpfIncluso(candidato);
+
+  salvarCandidatos(candidatos);
+
+  console.log(`--- Documento excluído --- ID: ${id} | Tipo: ${tipo}`);
+
+  return res.status(200).json({
+    mensagem: 'Documento excluído com sucesso!',
+    candidato
+  });
+});
+
+// ---------------------------------------------------------------------------
 // ROTA: listagem completa de candidatos (consumida pelo painel do RH)
 // ---------------------------------------------------------------------------
 app.get('/api/candidatos', (req, res) => {
