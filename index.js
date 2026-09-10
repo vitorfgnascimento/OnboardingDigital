@@ -114,8 +114,8 @@ function aplicarRegraCpfIncluso(candidato) {
 const armazenamento = multer.diskStorage({
   destination: (req, file, cb) => cb(null, PASTA_UPLOADS),
   filename: (req, file, cb) => {
-    // O campo "tipo" precisa ser enviado ANTES do arquivo no FormData
-    const tipo = req.body.tipo || 'documento';
+    // O campo "tipoDocumento" precisa ser enviado ANTES do arquivo no FormData
+    const tipo = req.body.tipoDocumento || 'documento';
     cb(null, `${req.params.id}-${tipo}-${Date.now()}.pdf`);
   }
 });
@@ -243,7 +243,8 @@ app.post('/api/candidato/:id/documento', (req, res) => {
     }
 
     const { id } = req.params;
-    const { tipo, cpfIncluso } = req.body;
+    const { tipoDocumento, cpfIncluso } = req.body;
+    const tipo = tipoDocumento;
 
     // Remove do disco um arquivo aceito pelo multer mas recusado por regra de negócio.
     const descartarArquivo = () => {
