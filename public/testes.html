@@ -276,6 +276,27 @@
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
+      {
+        nome: 'DELETE documento: remove o arquivo e volta a PENDENTE (VERMELHO)',
+        run: async () => {
+          const up = await enviarDocumento(window.__idMasculino, 'comprovanteEscolaridade', pdfDeTeste('hist.pdf'));
+          if (up.status !== 201) return { ok: false, detalhe: `upload prévio falhou (${up.status})` };
+          const r = await fetch(API + '/candidato/' + window.__idMasculino + '/documento/comprovanteEscolaridade', { method: 'DELETE' });
+          const corpo = await r.json().catch(() => ({}));
+          const doc = corpo.candidato?.documentos?.comprovanteEscolaridade;
+          return {
+            ok: r.status === 200 && doc && doc.arquivo === null && doc.status === 'VERMELHO',
+            detalhe: `status ${r.status}, arquivo ${doc?.arquivo}, badge ${doc?.status}`
+          };
+        }
+      },
+      {
+        nome: 'DELETE de candidato inexistente (404)',
+        run: async () => {
+          const r = await fetch(API + '/candidato/nao-existe/documento/cpf', { method: 'DELETE' });
+          return { ok: r.status === 404, detalhe: `status ${r.status}` };
+        }
+      },
 
       { grupo: 'Regras condicionais (PATCH /api/candidato/:id/dados)' },
 
