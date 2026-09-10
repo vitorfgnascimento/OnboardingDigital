@@ -530,7 +530,11 @@
       const mensagem = barra.querySelector('[data-mensagem]');
       const input = barra.querySelector('[data-input]');
 
-      if (arquivo.type !== 'application/pdf') {
+      // Alguns navegadores no Windows não preenchem arquivo.type para PDF,
+      // então a validação principal é pela extensão do nome do arquivo.
+      const ehPdf = /\.pdf$/i.test(arquivo.name) &&
+        (arquivo.type === '' || /pdf|octet-stream/i.test(arquivo.type));
+      if (!ehPdf) {
         mensagem.style.color = '#dc3545';
         mensagem.textContent = 'Apenas arquivos PDF são aceitos.';
         return;

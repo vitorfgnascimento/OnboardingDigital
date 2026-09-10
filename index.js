@@ -120,9 +120,17 @@ const armazenamento = multer.diskStorage({
   }
 });
 
-// Aceita somente arquivos PDF
+// Aceita somente arquivos PDF.
+// Alguns navegadores (sobretudo no Windows) enviam o PDF com mimetype
+// 'application/octet-stream' ou 'application/x-pdf'; por isso também
+// validamos pela extensão do nome do arquivo.
+const MIMETYPES_PDF = ['application/pdf', 'application/x-pdf', 'application/octet-stream'];
+
 const filtroPdf = (req, file, cb) => {
-  if (file.mimetype === 'application/pdf') {
+  const extensaoPdf = path.extname(file.originalname).toLowerCase() === '.pdf';
+  const mimetypeAceito = MIMETYPES_PDF.includes(file.mimetype);
+
+  if (extensaoPdf && mimetypeAceito) {
     cb(null, true);
   } else {
     cb(new Error('Apenas arquivos PDF são aceitos.'));
