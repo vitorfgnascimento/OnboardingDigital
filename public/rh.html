@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Onboarding Digital - Painel do RH</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f4f6f9;
+      margin: 0;
+      padding: 30px 15px;
+      color: #2c3e50;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    h2 {
+      color: #1a252f;
+      border-bottom: 2px solid #007bff;
+      padding-bottom: 10px;
+      margin-top: 0;
+    }
+    .barra-topo {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .btn-atualizar {
+      background-color: #007bff;
+      color: #ffffff;
+      border: none;
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: bold;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .btn-atualizar:hover {
+      background-color: #0069d9;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      font-size: 13px;
+    }
+    thead th {
+      background-color: #1a252f;
+      color: #ffffff;
+      text-align: left;
+      padding: 10px;
+      font-weight: 600;
+    }
+    tbody td {
+      padding: 10px;
+      border-bottom: 1px solid #e6e9ee;
+      vertical-align: middle;
+    }
+    tbody tr:hover {
+      background-color: #f8f9fb;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: bold;
+      font-size: 11px;
+      color: #ffffff;
+      white-space: nowrap;
+    }
+    .badge-vermelho { background-color: #dc3545; }
+    .badge-amarelo  { background-color: #ffc107; color: #212529; }
+    .badge-verde    { background-color: #28a745; }
+
+    .acoes {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .btn-acao {
+      border: none;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+      color: #ffffff;
+    }
+    .btn-analise  { background-color: #ffc107; color: #212529; }
+    .btn-analise:hover  { background-color: #e0a800; }
+    .btn-aprovar  { background-color: #28a745; }
+    .btn-aprovar:hover  { background-color: #218838; }
+    .btn-acao:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .vazio {
+      text-align: center;
+      padding: 30px;
+      color: #6c757d;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div class="barra-topo">
+      <h2>Painel do RH - Processos Admissionais</h2>
+      <button class="btn-atualizar" id="btnAtualizar" type="button">Atualizar lista</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Nome Completo</th>
+          <th>CPF</th>
+          <th>E-mail</th>
+          <th>WhatsApp</th>
+          <th>Endereço</th>
+          <th>Criado em</th>
+          <th>Status</th>
+          <th>Ações do RH</th>
+        </tr>
+      </thead>
+      <tbody id="corpoTabela">
+        <tr><td colspan="8" class="vazio">Carregando candidatos...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    // Mapa de status para a classe visual do badge correspondente.
+    const CLASSE_BADGE = {
+      VERMELHO: 'badge-vermelho',
+      AMARELO: 'badge-amarelo',
+      VERDE: 'badge-verde'
+    };
+
+    const ROTULO_STATUS = {
+      VERMELHO: 'PENDENTE',
+      AMARELO: 'EM ANÁLISE',
+      VERDE: 'APROVADO'
+    };
+
+    // Formata a data ISO para o padrão brasileiro (dd/mm/aaaa hh:mm).
+    function formatarData(iso) {
+      if (!iso) return '-';
+      const d = new Date(iso);
+      return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+    }
+
+    // Monta o endereço completo em uma única string legível.
+    function montarEndereco(c) {
+      const partes = [c.endereco, c.numero, c.complemento].filter((p) => p && p.trim());
+      return partes.join(', ') || '-';
+    }
+
+    // Busca a lista de candidatos no backend e redesenha a tabela.
+    async function carregarCandidatos() {
+      const corpo = document.getElementById('corpoTabela');
+      corpo.innerHTML = '<tr><td colspan="8" class="vazio">Carregando candidatos...</td></tr>';
+
+      try {
+        const resposta = await fetch('/api/candidatos');
+        const candidatos = await resposta.json();
+
+        if (!Array.isArray(candidatos) || candidatos.length === 0) {
+          corpo.innerHTML = '<tr><td colspan="8" class="vazio">Nenhum candidato cadastrado ainda.</td></tr>';
+          return;
+        }
+
+        corpo.innerHTML = '';
+
+        candidatos.forEach((c) => {
+          const tr = document.createElement('tr');
+
+          const classeBadge = CLASSE_BADGE[c.status] || 'badge-vermelho';
+          const rotulo = ROTULO_STATUS[c.status] || c.status;
+
+          tr.innerHTML = `
+            <td>${c.nomeCompleto || '-'}</td>
+            <td>${c.cpf || '-'}</td>
+            <td>${c.email || '-'}</td>
+            <td>${c.whatsapp || '-'}</td>
+            <td>${montarEndereco(c)}</td>
+            <td>${formatarData(c.criadoEm)}</td>
+            <td><span class="badge ${classeBadge}">${rotulo}</span></td>
+            <td>
+              <div class="acoes">
+                <button class="btn-acao btn-analise" data-id="${c.id}" data-status="AMARELO"
+                        ${c.status === 'AMARELO' ? 'disabled' : ''}>Em Análise</button>
+                <button class="btn-acao btn-aprovar" data-id="${c.id}" data-status="VERDE"
+                        ${c.status === 'VERDE' ? 'disabled' : ''}>Aprovado</button>
+              </div>
+            </td>
+          `;
+
+          corpo.appendChild(tr);
+        });
+      } catch (erro) {
+        corpo.innerHTML = '<tr><td colspan="8" class="vazio">Falha ao carregar candidatos.</td></tr>';
+      }
+    }
+
+    // Envia a alteração de status para o backend e recarrega a tabela.
+    async function alterarStatus(id, status) {
+      try {
+        const resposta = await fetch(`/api/candidato/${id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status })
+        });
+
+        const resultado = await resposta.json();
+
+        if (!resposta.ok) {
+          alert('Erro: ' + (resultado.erro || 'não foi possível atualizar.'));
+          return;
+        }
+
+        await carregarCandidatos();
+      } catch (erro) {
+        alert('Falha ao comunicar com o servidor.');
+      }
+    }
+
+    // Delegação de eventos: captura os cliques nos botões de ação da tabela.
+    document.getElementById('corpoTabela').addEventListener('click', (e) => {
+      const botao = e.target.closest('.btn-acao');
+      if (!botao) return;
+      alterarStatus(botao.dataset.id, botao.dataset.status);
+    });
+
+    document.getElementById('btnAtualizar').addEventListener('click', carregarCandidatos);
+
+    // Carrega a lista assim que a página abre.
+    carregarCandidatos();
+  </script>
+</body>
+</html>
