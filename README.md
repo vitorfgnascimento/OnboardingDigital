@@ -26,6 +26,10 @@ A interface do candidato está funcional, cobrindo:
 - "CPF incluso na Identidade": ao marcar, a barra do CPF é desabilitada e herda o status da Identidade.
 - Certificado de Reservista: exigido apenas para o gênero Masculino; nos demais casos a barra é dispensada e marcada automaticamente como Aprovado (verde).
 
+### Nota sobre o painel do RH
+
+O repositório já contém um `public/rh.html` e rotas de listagem/alteração de status (`GET /api/candidatos`, `PATCH /api/candidato/:id/status`). Esse código é um **protótipo interno**, criado durante a construção do backend e ainda **não validado como entregável oficial** - a Etapa 1 concluída se refere exclusivamente à jornada e à ficha do candidato. O painel do RH será revisado, completado e homologado na Etapa 2.
+
 ## Próximas fases do roteiro de desenvolvimento
 
 ### Etapa 2: Módulo do RH, Painel de Gestão e Trilha de Auditoria LGPD
