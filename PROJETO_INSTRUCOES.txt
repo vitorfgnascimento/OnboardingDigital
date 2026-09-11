@@ -21,10 +21,6 @@ portfólio do Líder de Projeto no GitHub e LinkedIn, demonstrando competências
   Responsável pela direção estratégica, validação das regras de negócio,
   aprovação das alterações de código, controle de escopo e definição de UI/UX.
 
-- ARQUITETO SÊNIOR E CONSULTOR DE ENGENHARIA (Gemini):
-  Responsável pela especificação técnica detalhada, estruturação das regras de
-  negócio, elaboração dos direcionamentos e análise lógica do código.
-
 - AGENTE EXECUTOR DE CÓDIGO (Claude Code):
   Responsável pela execução técnica das instruções e comandos no terminal,
   mantendo o código limpo, comentado e alinhado aos padrões estabelecidos.
