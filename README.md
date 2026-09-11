@@ -36,6 +36,32 @@ A interface do candidato está funcional, cobrindo:
 - Sistema de chat para comunicação direta entre RH e candidato, com reabertura pontual de pendências.
 - Trilha de Auditoria e Conformidade LGPD (registro de IP e timestamp).
 
+## Como Executar o Projeto Localmente
+
+### Pré-requisitos
+- Node.js instalado na máquina
+- Git instalado na máquina
+
+### Passo a Passo
+
+1. Clonar o repositório:
+```bash
+git clone https://github.com/vitorfgnascimento/OnboardingDigital.git
+cd OnboardingDigital
+```
+
+2. Instalar as dependências do projeto:
+```bash
+npm install
+```
+
+3. Iniciar o servidor local:
+```bash
+node index.js
+```
+
+4. Acessar a aplicação no navegador: Abra o navegador e acesse a URL `http://localhost:3001`
+
 ## Tecnologias
 
 Node.js, Express e Multer no backend; HTML5, CSS3 e JavaScript puro (Vanilla JS) no frontend; persistência em arquivo JSON local; Git e GitHub para versionamento.
