@@ -404,7 +404,9 @@ app.patch('/api/candidato/:id/status', (req, res) => {
   });
 });
 
-const PORTA = 3000;
+// Porta configurável via variável de ambiente PORTA (padrão 3001 - evita
+// conflito com outros servidores locais, como o do projeto Pré-Vendas na 3000).
+const PORTA = process.env.PORTA || 3001;
 app.listen(PORTA, () => {
   console.log(`Servidor de Onboarding Digital rodando em http://localhost:${PORTA}`);
 });
