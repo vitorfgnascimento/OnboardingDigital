@@ -22,6 +22,10 @@ if (!fs.existsSync(PASTA_UPLOADS)) {
   fs.mkdirSync(PASTA_UPLOADS, { recursive: true });
 }
 
+// Serve os PDFs enviados pelos candidatos para visualização/download pelo RH
+// (candidato.documentos[tipo].arquivo é salvo como "uploads/arquivo.pdf")
+app.use('/uploads', express.static(PASTA_UPLOADS));
+
 // Tipos de documento aceitos na jornada de admissão (uma aba para cada)
 const TIPOS_DOCUMENTO = [
   'identidade',
