@@ -464,6 +464,10 @@ app.delete('/api/candidato/:id/documento/:tipo', (req, res) => {
     return res.status(404).json({ erro: 'Candidato não encontrado.' });
   }
 
+  if (candidato.decisaoFinal) {
+    return res.status(400).json({ erro: 'Esta ficha já foi decidida e está bloqueada para edição.' });
+  }
+
   const documento = candidato.documentos[tipo];
 
   // Remove o arquivo físico da pasta uploads/ (se houver), ignorando "arquivo inexistente".
@@ -476,8 +480,14 @@ app.delete('/api/candidato/:id/documento/:tipo', (req, res) => {
     });
   }
 
-  // Limpa a referência do documento no candidatos.json (volta a PENDENTE)
-  candidato.documentos[tipo] = { arquivo: null, status: 'VERMELHO', atualizadoEm: new Date().toISOString() };
+  // Limpa a referência do documento (volta a PENDENTE), preservando uma eventual
+  // pendência aberta pelo RH - remover o PDF antigo não deve travar o reenvio.
+  candidato.documentos[tipo] = {
+    arquivo: null,
+    status: 'VERMELHO',
+    atualizadoEm: new Date().toISOString(),
+    pendencia: (documento && documento.pendencia) || null
+  };
 
   // Reaplica as regras que podem manter o status automático mesmo sem arquivo
   if (tipo === 'reservista') aplicarRegraReservista(candidato);
