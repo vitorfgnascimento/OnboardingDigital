@@ -585,6 +585,12 @@
         `;
         painel.appendChild(dropzone);
 
+        // Mensagem de erro do upload (ex.: arquivo acima do limite de 10 MB)
+        const erroUpload = document.createElement('span');
+        erroUpload.className = 'erro-texto';
+        erroUpload.dataset.erroUpload = '';
+        painel.appendChild(erroUpload);
+
         // Linha do arquivo anexado (nome + botão x)
         const anexo = document.createElement('div');
         anexo.className = 'arquivo-anexado';
@@ -725,17 +731,23 @@
       if (uploadsEmProcessamento.has(tipo)) return;
       uploadsEmProcessamento.add(tipo);
 
+      const barra = document.querySelector(`.barra[data-tipo="${tipo}"]`);
+      const erroUpload = barra.querySelector('[data-erro-upload]');
+      erroUpload.style.display = 'none';
+
       try {
         const ehPdf = /\.pdf$/i.test(arquivo.name) &&
           (arquivo.type === '' || /pdf|octet-stream/i.test(arquivo.type));
         if (!ehPdf) {
-          alert('Apenas arquivos PDF são aceitos.');
+          erroUpload.textContent = 'Apenas arquivos PDF são aceitos.';
+          erroUpload.style.display = 'block';
           if (input) input.value = '';
           return;
         }
 
         if (arquivo.size > TAMANHO_MAXIMO_PDF) {
-          alert('Arquivo excedeu o tamanho limite de 10 MB');
+          erroUpload.textContent = 'Arquivo excedeu o tamanho limite de 10 MB';
+          erroUpload.style.display = 'block';
           if (input) input.value = '';
           delete arquivosPendentes[tipo];
           atualizarBarras();
