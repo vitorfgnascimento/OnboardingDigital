@@ -98,6 +98,20 @@
     .status-verde   { background-color: var(--verde) !important; }
     #badgeStatus { margin-bottom: 15px; }
 
+    /* --- BARRA SUPERIOR DE NAVEGAÇÃO ENTRE TELAS --- */
+    .barra-navegacao {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 10px;
+    }
+    .link-navegacao {
+      color: var(--verde-intelbras-escuro);
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .link-navegacao:hover { text-decoration: underline; }
+
     .erro-texto {
       color: var(--vermelho);
       font-size: 12px;
@@ -282,6 +296,9 @@
 <body>
 
   <div class="container">
+    <div class="barra-navegacao">
+      <a class="link-navegacao" href="/rh.html">Painel do RH &rarr;</a>
+    </div>
     <div class="status-badge" id="badgeStatus">STATUS: PENDENTE (VERMELHO)</div>
     <h2>Ficha Única de Admissão</h2>
 
