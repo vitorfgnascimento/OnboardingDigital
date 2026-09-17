@@ -33,18 +33,21 @@ O Painel de Gestão do RH (`public/rh.html`) está em construção, cobrindo at�
 - **Cards de resumo estatístico** - Total de Fichas, Pendentes, Em Análise e Aprovados, calculados em tempo real a partir das fichas recebidas.
 - **Tabela de gestão** - lista as fichas com Nome do Candidato, CPF, Data de Envio e Status Atual.
 - **Alteração de status pelo RH** - botões coloridos (vermelho/amarelo/verde) para mover a ficha entre Pendente, Em Análise e Aprovado.
-- **Trilha de auditoria (LGPD)** - toda alteração de status feita pelo RH é registrada em `auditoria.json` (não versionado) com `candidatoId`, status anterior, novo status, timestamp e IP de origem da requisição.
+- **Trilha de auditoria (LGPD)** - toda alteração de status, pendência de documento ou decisão final feita pelo RH é registrada em `auditoria.json` (não versionado) com `candidatoId`, dados do evento, timestamp e IP de origem da requisição.
+- **Visualização/download de PDFs** - cada documento enviado pode ser aberto/baixado em nova aba; documentos dispensados por regra ou ainda não enviados mostram "Não exigido"/"Pendente".
+- **Reabertura pontual de pendências** - o RH marca um documento já enviado como "Com Pendência", com justificativa obrigatória; só aquele documento é liberado para reenvio na Ficha do Candidato (o resto continua travado), e a pendência se encerra automaticamente quando o candidato reenvia o PDF.
+- **Chat RH ↔ Candidato** - conversa simples, com histórico persistido junto da ficha (ordenado por data/hora), disponível tanto no Painel do RH quanto na Ficha do Candidato (a partir do primeiro envio).
+- **Decisão final do processo** - botões "Aprovar Candidato"/"Reprovar Candidato" no Painel do RH; a Ficha do Candidato exibe um banner de sucesso ou de agradecimento e trava totalmente para edição, sem exceção (nem pendências residuais reabrem campos).
 
-Rotas do backend dedicadas ao painel: `GET /api/rh/fichas` e `PATCH /api/rh/fichas/:id/status`.
+Rotas do backend dedicadas ao painel: `GET /api/rh/fichas`, `PATCH /api/rh/fichas/:id/status`, `PATCH /api/rh/fichas/:id/documento/:tipo/pendencia`, `PATCH /api/rh/fichas/:id/decisao`. Rotas compartilhadas com o candidato: `GET /api/candidato/:id` (retorno via link `?id=`) e `POST /api/candidato/:id/mensagens` (chat).
 
-Ainda **não implementados** nesta etapa: autenticação do RH (login manual/OAuth), chat entre RH e candidato com reabertura de pendências, e declaração de consentimento do candidato na trilha de auditoria - a auditoria hoje cobre apenas as alterações de status feitas pelo RH.
+Ainda **não implementados** nesta etapa: autenticação do RH (login manual/OAuth) e declaração de consentimento do candidato na trilha de auditoria - a auditoria hoje cobre apenas as ações do RH (status, pendência, decisão).
 
 ## Próximas fases do roteiro de desenvolvimento
 
 ### Continuação da Etapa 2
 
 - Autenticação e Segurança (login manual e OAuth com Google) para acesso ao Painel do RH.
-- Sistema de chat para comunicação direta entre RH e candidato, com reabertura pontual de pendências.
 - Registro na trilha de auditoria também dos aceites/consentimentos do candidato (hoje ela cobre apenas as ações do RH).
 
 ## Como Executar o Projeto Localmente
