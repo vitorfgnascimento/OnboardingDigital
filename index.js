@@ -11,6 +11,9 @@ app.use(express.static('public'));
 // Caminho absoluto do arquivo de persistência local (banco de dados simples em JSON)
 const ARQUIVO_CANDIDATOS = path.join(__dirname, 'candidatos.json');
 
+// Caminho absoluto da trilha de auditoria (registro imutável de eventos do RH)
+const ARQUIVO_AUDITORIA = path.join(__dirname, 'auditoria.json');
+
 // Pasta onde os documentos PDF dos candidatos são armazenados
 const PASTA_UPLOADS = path.join(__dirname, 'uploads');
 
@@ -58,6 +61,31 @@ function salvarCandidatos(lista) {
 // Gera um identificador único para cada ficha (baseado em timestamp + sufixo aleatório).
 function gerarId() {
   return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+// ---------------------------------------------------------------------------
+// TRILHA DE AUDITORIA (LGPD) - registro imutável de eventos do RH
+// ---------------------------------------------------------------------------
+
+// Lê os eventos de auditoria já registrados. Se o arquivo ainda não existir, retorna lista vazia.
+function lerAuditoria() {
+  if (!fs.existsSync(ARQUIVO_AUDITORIA)) {
+    return [];
+  }
+
+  const conteudo = fs.readFileSync(ARQUIVO_AUDITORIA, 'utf-8').trim();
+  if (!conteudo) {
+    return [];
+  }
+
+  return JSON.parse(conteudo);
+}
+
+// Acrescenta um novo evento à trilha de auditoria (append-only).
+function registrarEventoAuditoria(evento) {
+  const eventos = lerAuditoria();
+  eventos.push(evento);
+  fs.writeFileSync(ARQUIVO_AUDITORIA, JSON.stringify(eventos, null, 2), 'utf-8');
 }
 
 // ---------------------------------------------------------------------------
@@ -406,6 +434,64 @@ app.patch('/api/candidato/:id/status', (req, res) => {
   return res.status(200).json({
     mensagem: 'Status do candidato atualizado com sucesso!',
     candidato
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ROTA: listagem de fichas para o Painel de Gestão do RH (Etapa 2)
+// ---------------------------------------------------------------------------
+app.get('/api/rh/fichas', (req, res) => {
+  const candidatos = lerCandidatos();
+  return res.status(200).json(candidatos);
+});
+
+// Status que o RH pode atribuir a uma ficha pelo Painel de Gestão.
+const STATUS_VALIDOS_RH = ['VERMELHO', 'AMARELO', 'VERDE'];
+
+// ---------------------------------------------------------------------------
+// ROTA: alteração de status de uma ficha pelo RH, com registro na trilha de
+// auditoria (LGPD): quem, quando (timestamp) e de onde (IP) a alteração partiu.
+// ---------------------------------------------------------------------------
+app.patch('/api/rh/fichas/:id/status', (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  if (!STATUS_VALIDOS_RH.includes(status)) {
+    return res.status(400).json({
+      erro: "Status inválido. Use 'VERMELHO' (Pendente), 'AMARELO' (Em Análise) ou 'VERDE' (Aprovado)."
+    });
+  }
+
+  const candidatos = lerCandidatos();
+  const candidato = candidatos.find((c) => c.id === id);
+
+  if (!candidato) {
+    return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  }
+
+  const statusAnterior = candidato.status;
+  const agora = new Date().toISOString();
+
+  candidato.status = status;
+  candidato.atualizadoEm = agora;
+  salvarCandidatos(candidatos);
+
+  const evento = {
+    id: gerarId(),
+    candidatoId: id,
+    statusAnterior,
+    statusNovo: status,
+    timestamp: agora,
+    ip: req.ip
+  };
+  registrarEventoAuditoria(evento);
+
+  console.log(`--- [Auditoria] Status alterado pelo RH --- ID: ${id} | ${statusAnterior} -> ${status} | IP: ${req.ip}`);
+
+  return res.status(200).json({
+    mensagem: 'Status da ficha atualizado com sucesso!',
+    candidato,
+    evento
   });
 });
 

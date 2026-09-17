@@ -145,6 +145,9 @@ vite.config.ts.timestamp-*
 # Base de dados local de candidatos (dados pessoais - LGPD, nao versionar)
 candidatos.json
 
+# Trilha de auditoria (contem IP e dados pessoais - LGPD, nao versionar)
+auditoria.json
+
 # Documentos PDF enviados pelos candidatos (dados pessoais - LGPD)
 uploads/*
 !uploads/.gitkeep

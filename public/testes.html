@@ -121,10 +121,10 @@
       <code>candidatos.json</code> / <code>uploads/</code> - use em ambiente de desenvolvimento.
     </p>
     <p class="intro">
-      <strong>Nota:</strong> o grupo "Painel do RH" cobre um protótipo interno
-      (<code>public/rh.html</code> e as rotas de status), ainda não validado como
-      entregável oficial. A Etapa 1 concluída se refere apenas à jornada e à
-      ficha do candidato - os demais grupos abaixo.
+      <strong>Nota:</strong> o primeiro grupo de RH (<code>/api/candidatos</code>,
+      <code>PATCH /candidato/:id/status</code>) é o protótipo original, mantido por
+      compatibilidade. O painel oficial da Etapa 2 (<code>public/rh.html</code>) usa
+      as rotas <code>/api/rh/fichas</code>, cobertas no grupo seguinte.
     </p>
 
     <div class="barra-topo">
@@ -340,7 +340,7 @@
         }
       },
 
-      { grupo: 'Painel do RH - protótipo interno, não validado (GET /api/candidatos, PATCH .../status)' },
+      { grupo: 'Painel do RH - rotas originais, mantidas por compatibilidade (GET /api/candidatos, PATCH .../status)' },
 
       {
         nome: 'GET /api/candidatos retorna uma lista',
@@ -368,6 +368,53 @@
         nome: 'Alterar status de candidato inexistente (404)',
         run: async () => {
           const r = await patchJson('/candidato/id-que-nao-existe/status', { status: 'VERDE' });
+          return { ok: r.status === 404, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+
+      { grupo: 'Painel de Gestão do RH - Etapa 2 (GET /api/rh/fichas, PATCH .../status)' },
+
+      {
+        nome: 'GET /api/rh/fichas retorna uma lista',
+        run: async () => {
+          const r = await fetch(API + '/rh/fichas');
+          const lista = await r.json();
+          return { ok: r.status === 200 && Array.isArray(lista), detalhe: `status ${r.status}, ${Array.isArray(lista) ? lista.length + ' fichas' : 'não é lista'}` };
+        }
+      },
+      {
+        nome: 'RH move ficha para Em Análise (AMARELO) e registra na auditoria',
+        run: async () => {
+          const r = await patchJson('/rh/fichas/' + window.__idMasculino + '/status', { status: 'AMARELO' });
+          const temEvento = r.corpo.evento && r.corpo.evento.statusNovo === 'AMARELO' && !!r.corpo.evento.timestamp && 'ip' in r.corpo.evento;
+          return { ok: r.status === 200 && r.corpo.candidato?.status === 'AMARELO' && temEvento, detalhe: `status ${r.status}, geral = ${r.corpo.candidato?.status}, evento = ${JSON.stringify(r.corpo.evento || {})}` };
+        }
+      },
+      {
+        nome: 'RH aprova ficha (VERDE) via /api/rh/fichas',
+        run: async () => {
+          const r = await patchJson('/rh/fichas/' + window.__idMasculino + '/status', { status: 'VERDE' });
+          return { ok: r.status === 200 && r.corpo.candidato?.status === 'VERDE', detalhe: `status ${r.status}, geral = ${r.corpo.candidato?.status}` };
+        }
+      },
+      {
+        nome: 'RH pode devolver ficha para Pendente (VERMELHO)',
+        run: async () => {
+          const r = await patchJson('/rh/fichas/' + window.__idMasculino + '/status', { status: 'VERMELHO' });
+          return { ok: r.status === 200 && r.corpo.candidato?.status === 'VERMELHO', detalhe: `status ${r.status}, geral = ${r.corpo.candidato?.status}` };
+        }
+      },
+      {
+        nome: 'RH não pode definir status arbitrário em /api/rh/fichas (400)',
+        run: async () => {
+          const r = await patchJson('/rh/fichas/' + window.__idMasculino + '/status', { status: 'AZUL' });
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Alterar status de ficha inexistente em /api/rh/fichas (404)',
+        run: async () => {
+          const r = await patchJson('/rh/fichas/id-que-nao-existe/status', { status: 'VERDE' });
           return { ok: r.status === 404, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       }
