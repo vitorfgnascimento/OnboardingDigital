@@ -153,6 +153,66 @@
       color: #6c757d;
     }
 
+    /* --- BARRA SUPERIOR DE NAVEGAÇÃO ENTRE TELAS --- */
+    .barra-navegacao {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 10px;
+    }
+    .link-navegacao {
+      color: var(--verde-intelbras-escuro);
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .link-navegacao:hover { text-decoration: underline; }
+
+    /* --- BOTÃO "VER DOCUMENTOS" E LINHA DE DETALHES EXPANSÍVEL --- */
+    .btn-documentos { background-color: #1a252f; }
+    .btn-documentos:hover { background-color: #0f151b; }
+
+    .linha-detalhes td {
+      background: var(--cinza-barra);
+      padding: 16px 18px;
+    }
+    .linha-detalhes[hidden] { display: none; }
+
+    .grade-documentos {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 10px;
+    }
+    .item-documento {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      background: #ffffff;
+      border: 1px solid var(--cinza-borda);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 12px;
+    }
+    .item-documento-titulo { font-weight: 600; }
+    .item-documento-situacao {
+      font-size: 11px;
+      color: #6c757d;
+    }
+    .btn-pdf {
+      flex: 0 0 auto;
+      background-color: var(--verde-intelbras);
+      color: #ffffff;
+      border: none;
+      padding: 6px 10px;
+      font-size: 11px;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .btn-pdf:hover { background-color: var(--verde-intelbras-escuro); }
+
     @media (max-width: 700px) {
       .cards-resumo { grid-template-columns: repeat(2, 1fr); }
     }
@@ -161,6 +221,9 @@
 <body>
 
   <div class="container">
+    <div class="barra-navegacao">
+      <a class="link-navegacao" href="/index.html">&larr; Ficha do Candidato</a>
+    </div>
     <div class="barra-topo">
       <h2>Painel do RH - Processos Admissionais</h2>
       <button class="btn-atualizar" id="btnAtualizar" type="button">Atualizar lista</button>
@@ -220,11 +283,51 @@
       VERDE: 'APROVADO'
     };
 
+    // Documentos obrigatórios da jornada do candidato (mesma lista de public/index.html).
+    const DOCUMENTOS = [
+      { tipo: 'identidade',              titulo: 'Identidade (RG)' },
+      { tipo: 'cpf',                     titulo: 'CPF' },
+      { tipo: 'comprovanteResidencia',   titulo: 'Comprovante de Residência' },
+      { tipo: 'comprovanteEscolaridade', titulo: 'Comprovante de Escolaridade' },
+      { tipo: 'reservista',              titulo: 'Certificado de Reservista' },
+      { tipo: 'carteiraTrabalho',        titulo: 'Carteira de Trabalho' }
+    ];
+
     // Formata a data ISO para o padrão brasileiro (dd/mm/aaaa hh:mm).
     function formatarData(iso) {
       if (!iso) return '-';
       const d = new Date(iso);
       return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+    }
+
+    // Monta o card de cada documento obrigatório: link para o PDF real, ou o motivo de não haver um.
+    function montarGradeDocumentos(ficha) {
+      return DOCUMENTOS.map((doc) => {
+        const documento = (ficha.documentos && ficha.documentos[doc.tipo]) || {};
+
+        if (documento.arquivo) {
+          return `
+            <div class="item-documento">
+              <span class="item-documento-titulo">${doc.titulo}</span>
+              <a class="btn-pdf" href="/${documento.arquivo}" target="_blank" rel="noopener noreferrer">Visualizar/Baixar PDF</a>
+            </div>
+          `;
+        }
+
+        let situacao = 'Pendente';
+        if (doc.tipo === 'reservista' && ficha.genero !== 'Masculino') {
+          situacao = 'Não exigido';
+        } else if (doc.tipo === 'cpf' && ficha.cpfInclusoNaIdentidade) {
+          situacao = 'Não exigido (incluso na Identidade)';
+        }
+
+        return `
+          <div class="item-documento">
+            <span class="item-documento-titulo">${doc.titulo}</span>
+            <span class="item-documento-situacao">${situacao}</span>
+          </div>
+        `;
+      }).join('');
     }
 
     // Atualiza os cards de resumo estatístico a partir da lista de fichas.
@@ -282,11 +385,23 @@
                         ${f.status === 'AMARELO' ? 'disabled' : ''}>Em Análise</button>
                 <button class="btn-acao btn-aprovar" data-id="${f.id}" data-status="VERDE"
                         ${f.status === 'VERDE' ? 'disabled' : ''}>Aprovado</button>
+                <button class="btn-acao btn-documentos" data-expandir="${f.id}" type="button"
+                        aria-expanded="false">Documentos</button>
               </div>
             </td>
           `;
-
           corpo.appendChild(tr);
+
+          const trDetalhes = document.createElement('tr');
+          trDetalhes.className = 'linha-detalhes';
+          trDetalhes.dataset.detalhesDe = f.id;
+          trDetalhes.hidden = true;
+          trDetalhes.innerHTML = `
+            <td colspan="5">
+              <div class="grade-documentos">${montarGradeDocumentos(f)}</div>
+            </td>
+          `;
+          corpo.appendChild(trDetalhes);
         });
       } catch (erro) {
         corpo.innerHTML = '<tr><td colspan="5" class="vazio">Falha ao carregar fichas.</td></tr>';
@@ -315,9 +430,23 @@
       }
     }
 
+    // Mostra/esconde a linha de documentos de uma ficha.
+    function alternarDetalhes(id, botao) {
+      const trDetalhes = document.querySelector(`tr[data-detalhes-de="${id}"]`);
+      if (!trDetalhes) return;
+      trDetalhes.hidden = !trDetalhes.hidden;
+      botao.setAttribute('aria-expanded', String(!trDetalhes.hidden));
+    }
+
     // Delegação de eventos: captura os cliques nos botões de ação da tabela.
     document.getElementById('corpoTabela').addEventListener('click', (e) => {
-      const botao = e.target.closest('.btn-acao');
+      const btnExpandir = e.target.closest('[data-expandir]');
+      if (btnExpandir) {
+        alternarDetalhes(btnExpandir.dataset.expandir, btnExpandir);
+        return;
+      }
+
+      const botao = e.target.closest('.btn-acao[data-status]');
       if (!botao) return;
       alterarStatus(botao.dataset.id, botao.dataset.status);
     });
