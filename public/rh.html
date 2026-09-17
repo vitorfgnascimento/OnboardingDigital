@@ -213,6 +213,171 @@
     }
     .btn-pdf:hover { background-color: var(--verde-intelbras-escuro); }
 
+    .item-documento {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+    }
+    .item-documento-linha-principal {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* --- BADGE DE DECISÃO FINAL (na linha principal da tabela) --- */
+    .badge-decisao {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-weight: bold;
+      font-size: 11px;
+      color: #ffffff;
+      white-space: nowrap;
+      margin-left: 6px;
+    }
+    .badge-decisao-aprovado { background-color: var(--verde); }
+    .badge-decisao-reprovado { background-color: var(--vermelho); }
+
+    /* --- PENDÊNCIA DE DOCUMENTO --- */
+    .btn-marcar-pendencia {
+      background: none;
+      border: 1px solid var(--vermelho);
+      color: var(--vermelho);
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .btn-marcar-pendencia:hover { background-color: rgba(220, 53, 69, 0.08); }
+    .form-pendencia { display: flex; flex-direction: column; gap: 6px; }
+    .form-pendencia[hidden] { display: none; }
+    .form-pendencia textarea {
+      width: 100%;
+      font-size: 12px;
+      font-family: inherit;
+      padding: 6px 8px;
+      border: 1px solid var(--cinza-borda);
+      border-radius: 4px;
+      resize: vertical;
+      min-height: 50px;
+    }
+    .form-pendencia .acoes-form { display: flex; gap: 6px; }
+    .btn-confirmar-pendencia {
+      background-color: var(--vermelho);
+      color: #ffffff;
+      border: none;
+      padding: 6px 10px;
+      font-size: 11px;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .btn-cancelar-pendencia {
+      background: none;
+      border: 1px solid var(--cinza-borda);
+      color: #6c757d;
+      padding: 6px 10px;
+      font-size: 11px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .aviso-pendencia-ativa {
+      background: rgba(220, 53, 69, 0.08);
+      border-left: 3px solid var(--vermelho);
+      padding: 6px 8px;
+      font-size: 11px;
+      color: #7a1220;
+      border-radius: 4px;
+    }
+
+    /* --- DECISÃO FINAL --- */
+    .secao-decisao {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--cinza-borda);
+    }
+    .secao-titulo {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .btn-decisao {
+      border: none;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+      color: #ffffff;
+      margin-right: 8px;
+    }
+    .btn-aprovar-candidato { background-color: var(--verde); }
+    .btn-aprovar-candidato:hover { background-color: #218838; }
+    .btn-reprovar-candidato { background-color: var(--vermelho); }
+    .btn-reprovar-candidato:hover { background-color: #b02a37; }
+    .btn-decisao:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* --- CHAT RH <-> CANDIDATO --- */
+    .secao-chat {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--cinza-borda);
+    }
+    .lista-mensagens {
+      max-height: 180px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 10px;
+      padding-right: 4px;
+    }
+    .mensagem {
+      max-width: 80%;
+      padding: 8px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+    .mensagem-rh {
+      align-self: flex-end;
+      background: rgba(0, 163, 53, 0.12);
+    }
+    .mensagem-candidato {
+      align-self: flex-start;
+      background: #eef0f2;
+    }
+    .mensagem-cabecalho {
+      font-size: 10px;
+      font-weight: 700;
+      color: #6c757d;
+      margin-bottom: 3px;
+    }
+    .mensagem-vazia { font-size: 12px; color: #6c757d; }
+    .form-chat { display: flex; gap: 8px; }
+    .form-chat textarea {
+      flex: 1;
+      font-size: 12px;
+      font-family: inherit;
+      padding: 8px 10px;
+      border: 1px solid var(--cinza-borda);
+      border-radius: 4px;
+      resize: vertical;
+      min-height: 40px;
+    }
+    .btn-enviar-mensagem {
+      background-color: var(--verde-intelbras);
+      color: #ffffff;
+      border: none;
+      padding: 0 16px;
+      font-size: 12px;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .btn-enviar-mensagem:hover { background-color: var(--verde-intelbras-escuro); }
+
     @media (max-width: 700px) {
       .cards-resumo { grid-template-columns: repeat(2, 1fr); }
     }
@@ -300,34 +465,110 @@
       return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
     }
 
-    // Monta o card de cada documento obrigatório: link para o PDF real, ou o motivo de não haver um.
+    // Escapa texto livre (mensagens de chat, justificativas) antes de inserir como HTML.
+    function escapeHtml(texto) {
+      const div = document.createElement('div');
+      div.textContent = texto == null ? '' : String(texto);
+      return div.innerHTML;
+    }
+
+    // Monta o card de cada documento obrigatório: link para o PDF real, situação
+    // (Não exigido/Pendente) e a ação de marcar pendência / aviso de pendência ativa.
     function montarGradeDocumentos(ficha) {
       return DOCUMENTOS.map((doc) => {
         const documento = (ficha.documentos && ficha.documentos[doc.tipo]) || {};
+        const pendenciaAtiva = documento.pendencia && documento.pendencia.ativa;
 
+        let linhaPrincipal;
         if (documento.arquivo) {
-          return `
-            <div class="item-documento">
-              <span class="item-documento-titulo">${doc.titulo}</span>
-              <a class="btn-pdf" href="/${documento.arquivo}" target="_blank" rel="noopener noreferrer">Visualizar/Baixar PDF</a>
-            </div>
+          linhaPrincipal = `
+            <span class="item-documento-titulo">${doc.titulo}</span>
+            <a class="btn-pdf" href="/${documento.arquivo}" target="_blank" rel="noopener noreferrer">Visualizar/Baixar PDF</a>
+          `;
+        } else {
+          let situacao = 'Pendente';
+          if (doc.tipo === 'reservista' && ficha.genero !== 'Masculino') {
+            situacao = 'Não exigido';
+          } else if (doc.tipo === 'cpf' && ficha.cpfInclusoNaIdentidade) {
+            situacao = 'Não exigido (incluso na Identidade)';
+          }
+          linhaPrincipal = `
+            <span class="item-documento-titulo">${doc.titulo}</span>
+            <span class="item-documento-situacao">${situacao}</span>
           `;
         }
 
-        let situacao = 'Pendente';
-        if (doc.tipo === 'reservista' && ficha.genero !== 'Masculino') {
-          situacao = 'Não exigido';
-        } else if (doc.tipo === 'cpf' && ficha.cpfInclusoNaIdentidade) {
-          situacao = 'Não exigido (incluso na Identidade)';
+        let areaPendencia = '';
+        if (documento.arquivo) {
+          if (pendenciaAtiva) {
+            areaPendencia = `
+              <div class="aviso-pendencia-ativa">
+                Pendência aberta: ${escapeHtml(documento.pendencia.justificativa)}
+                <br>Aguardando reenvio do candidato.
+              </div>
+            `;
+          } else {
+            areaPendencia = `
+              <button type="button" class="btn-marcar-pendencia" data-abrir-pendencia="${ficha.id}" data-tipo="${doc.tipo}">
+                Marcar pendência / Exigir reenvio
+              </button>
+              <form class="form-pendencia" data-form-pendencia="${ficha.id}:${doc.tipo}" hidden>
+                <textarea placeholder="Explique o que precisa ser corrigido/reenviado..." data-campo-justificativa required></textarea>
+                <div class="acoes-form">
+                  <button type="submit" class="btn-confirmar-pendencia">Confirmar pendência</button>
+                  <button type="button" class="btn-cancelar-pendencia" data-cancelar-pendencia="${ficha.id}:${doc.tipo}">Cancelar</button>
+                </div>
+              </form>
+            `;
+          }
         }
 
         return `
           <div class="item-documento">
-            <span class="item-documento-titulo">${doc.titulo}</span>
-            <span class="item-documento-situacao">${situacao}</span>
+            <div class="item-documento-linha-principal">${linhaPrincipal}</div>
+            ${areaPendencia}
           </div>
         `;
       }).join('');
+    }
+
+    // Monta a seção de decisão final (Aprovar/Reprovar) do candidato.
+    function montarSecaoDecisao(ficha) {
+      const decidido = ficha.decisaoFinal;
+      return `
+        <div class="secao-decisao">
+          <div class="secao-titulo">Decisão Final do Processo</div>
+          <button type="button" class="btn-decisao btn-aprovar-candidato" data-decisao="${ficha.id}:APROVADO"
+                  ${decidido === 'APROVADO' ? 'disabled' : ''}>Aprovar Candidato</button>
+          <button type="button" class="btn-decisao btn-reprovar-candidato" data-decisao="${ficha.id}:REPROVADO"
+                  ${decidido === 'REPROVADO' ? 'disabled' : ''}>Reprovar Candidato</button>
+          ${decidido ? `<span class="badge-decisao badge-decisao-${decidido.toLowerCase()}">${decidido} em ${formatarData(ficha.decisaoFinalEm)}</span>` : ''}
+        </div>
+      `;
+    }
+
+    // Monta a seção de chat (histórico de mensagens + formulário de envio).
+    function montarSecaoChat(ficha) {
+      const mensagens = Array.isArray(ficha.mensagens) ? ficha.mensagens : [];
+      const listaHtml = mensagens.length
+        ? mensagens.map((m) => `
+            <div class="mensagem mensagem-${m.autor === 'RH' ? 'rh' : 'candidato'}">
+              <div class="mensagem-cabecalho">${m.autor === 'RH' ? 'RH' : 'Candidato'} · ${formatarData(m.timestamp)}</div>
+              <div class="mensagem-texto">${escapeHtml(m.texto)}</div>
+            </div>
+          `).join('')
+        : '<div class="mensagem-vazia">Nenhuma mensagem ainda.</div>';
+
+      return `
+        <div class="secao-chat">
+          <div class="secao-titulo">Conversa com o Candidato</div>
+          <div class="lista-mensagens">${listaHtml}</div>
+          <form class="form-chat" data-form-chat="${ficha.id}">
+            <textarea placeholder="Escreva uma mensagem para o candidato..." data-campo-mensagem required></textarea>
+            <button type="submit" class="btn-enviar-mensagem">Enviar</button>
+          </form>
+        </div>
+      `;
     }
 
     // Atualiza os cards de resumo estatístico a partir da lista de fichas.
@@ -342,6 +583,9 @@
       document.getElementById('cardAnalise').textContent = emAnalise;
       document.getElementById('cardAprovados').textContent = aprovados;
     }
+
+    // Ids das fichas com o painel de detalhes aberto, para restaurar após cada recarga.
+    const detalhesExpandidos = new Set();
 
     // Busca a lista de fichas no backend e redesenha o painel (cards + tabela).
     async function carregarFichas() {
@@ -371,12 +615,17 @@
 
           const classeBadge = CLASSE_BADGE[f.status] || 'badge-vermelho';
           const rotulo = ROTULO_STATUS[f.status] || f.status;
+          const badgeDecisao = f.decisaoFinal
+            ? `<span class="badge-decisao badge-decisao-${f.decisaoFinal.toLowerCase()}">${f.decisaoFinal}</span>`
+            : '';
+
+          const expandidoAgora = detalhesExpandidos.has(f.id);
 
           tr.innerHTML = `
             <td>${f.nomeCompleto || '-'}</td>
             <td>${f.cpf || '-'}</td>
             <td>${formatarData(f.criadoEm)}</td>
-            <td><span class="badge ${classeBadge}">${rotulo}</span></td>
+            <td><span class="badge ${classeBadge}">${rotulo}</span>${badgeDecisao}</td>
             <td>
               <div class="acoes" role="group" aria-label="Alterar status de ${f.nomeCompleto || 'candidato'}">
                 <button class="btn-acao btn-pendente" data-id="${f.id}" data-status="VERMELHO"
@@ -386,7 +635,7 @@
                 <button class="btn-acao btn-aprovar" data-id="${f.id}" data-status="VERDE"
                         ${f.status === 'VERDE' ? 'disabled' : ''}>Aprovado</button>
                 <button class="btn-acao btn-documentos" data-expandir="${f.id}" type="button"
-                        aria-expanded="false">Documentos</button>
+                        aria-expanded="${expandidoAgora}">Documentos</button>
               </div>
             </td>
           `;
@@ -395,10 +644,12 @@
           const trDetalhes = document.createElement('tr');
           trDetalhes.className = 'linha-detalhes';
           trDetalhes.dataset.detalhesDe = f.id;
-          trDetalhes.hidden = true;
+          trDetalhes.hidden = !expandidoAgora;
           trDetalhes.innerHTML = `
             <td colspan="5">
               <div class="grade-documentos">${montarGradeDocumentos(f)}</div>
+              ${montarSecaoDecisao(f)}
+              ${montarSecaoChat(f)}
             </td>
           `;
           corpo.appendChild(trDetalhes);
@@ -430,12 +681,83 @@
       }
     }
 
-    // Mostra/esconde a linha de documentos de uma ficha.
+    // Mostra/esconde a linha de documentos de uma ficha (e lembra o estado entre recargas).
     function alternarDetalhes(id, botao) {
       const trDetalhes = document.querySelector(`tr[data-detalhes-de="${id}"]`);
       if (!trDetalhes) return;
       trDetalhes.hidden = !trDetalhes.hidden;
       botao.setAttribute('aria-expanded', String(!trDetalhes.hidden));
+      if (trDetalhes.hidden) {
+        detalhesExpandidos.delete(id);
+      } else {
+        detalhesExpandidos.add(id);
+      }
+    }
+
+    // RH marca um documento já enviado como pendente, com justificativa obrigatória.
+    async function marcarPendencia(id, tipo, justificativa) {
+      try {
+        const resposta = await fetch(`/api/rh/fichas/${id}/documento/${tipo}/pendencia`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ justificativa })
+        });
+        const resultado = await resposta.json();
+
+        if (!resposta.ok) {
+          alert('Erro: ' + (resultado.erro || 'não foi possível registrar a pendência.'));
+          return;
+        }
+
+        await carregarFichas();
+      } catch (erro) {
+        alert('Falha ao comunicar com o servidor.');
+      }
+    }
+
+    // RH aprova ou reprova definitivamente o candidato.
+    async function decidirCandidato(id, decisao) {
+      const rotulo = decisao === 'APROVADO' ? 'aprovar' : 'reprovar';
+      if (!confirm(`Confirma a decisão de ${rotulo} este candidato? A ficha ficará travada para edição.`)) return;
+
+      try {
+        const resposta = await fetch(`/api/rh/fichas/${id}/decisao`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ decisao })
+        });
+        const resultado = await resposta.json();
+
+        if (!resposta.ok) {
+          alert('Erro: ' + (resultado.erro || 'não foi possível registrar a decisão.'));
+          return;
+        }
+
+        await carregarFichas();
+      } catch (erro) {
+        alert('Falha ao comunicar com o servidor.');
+      }
+    }
+
+    // Envia uma mensagem do RH para o candidato.
+    async function enviarMensagemRH(id, texto) {
+      try {
+        const resposta = await fetch(`/api/candidato/${id}/mensagens`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ autor: 'RH', texto })
+        });
+        const resultado = await resposta.json();
+
+        if (!resposta.ok) {
+          alert('Erro: ' + (resultado.erro || 'não foi possível enviar a mensagem.'));
+          return;
+        }
+
+        await carregarFichas();
+      } catch (erro) {
+        alert('Falha ao comunicar com o servidor.');
+      }
     }
 
     // Delegação de eventos: captura os cliques nos botões de ação da tabela.
@@ -446,9 +768,58 @@
         return;
       }
 
+      const btnAbrirPendencia = e.target.closest('[data-abrir-pendencia]');
+      if (btnAbrirPendencia) {
+        const form = document.querySelector(
+          `[data-form-pendencia="${btnAbrirPendencia.dataset.abrirPendencia}:${btnAbrirPendencia.dataset.tipo}"]`
+        );
+        if (form) { form.hidden = false; btnAbrirPendencia.hidden = true; }
+        return;
+      }
+
+      const btnCancelarPendencia = e.target.closest('[data-cancelar-pendencia]');
+      if (btnCancelarPendencia) {
+        const [idFicha, tipo] = btnCancelarPendencia.dataset.cancelarPendencia.split(':');
+        const form = document.querySelector(`[data-form-pendencia="${idFicha}:${tipo}"]`);
+        const btnAbrir = document.querySelector(`[data-abrir-pendencia="${idFicha}"][data-tipo="${tipo}"]`);
+        if (form) form.hidden = true;
+        if (btnAbrir) btnAbrir.hidden = false;
+        return;
+      }
+
+      const btnDecisao = e.target.closest('[data-decisao]');
+      if (btnDecisao) {
+        const [idFicha, decisao] = btnDecisao.dataset.decisao.split(':');
+        decidirCandidato(idFicha, decisao);
+        return;
+      }
+
       const botao = e.target.closest('.btn-acao[data-status]');
       if (!botao) return;
       alterarStatus(botao.dataset.id, botao.dataset.status);
+    });
+
+    // Delegação de eventos: captura o envio dos formulários (pendência e chat) da tabela.
+    document.getElementById('corpoTabela').addEventListener('submit', (e) => {
+      const formPendencia = e.target.closest('[data-form-pendencia]');
+      if (formPendencia) {
+        e.preventDefault();
+        const [idFicha, tipo] = formPendencia.dataset.formPendencia.split(':');
+        const justificativa = formPendencia.querySelector('[data-campo-justificativa]').value.trim();
+        if (!justificativa) return;
+        marcarPendencia(idFicha, tipo, justificativa);
+        return;
+      }
+
+      const formChat = e.target.closest('[data-form-chat]');
+      if (formChat) {
+        e.preventDefault();
+        const idFicha = formChat.dataset.formChat;
+        const campo = formChat.querySelector('[data-campo-mensagem]');
+        const texto = campo.value.trim();
+        if (!texto) return;
+        enviarMensagemRH(idFicha, texto);
+      }
     });
 
     document.getElementById('btnAtualizar').addEventListener('click', carregarFichas);

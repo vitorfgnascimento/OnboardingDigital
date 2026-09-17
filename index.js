@@ -161,7 +161,7 @@ function criarDocumentosIniciais(genero) {
   const documentos = {};
 
   TIPOS_DOCUMENTO.forEach((tipo) => {
-    documentos[tipo] = { arquivo: null, status: 'VERMELHO', atualizadoEm: null };
+    documentos[tipo] = { arquivo: null, status: 'VERMELHO', atualizadoEm: null, pendencia: null };
   });
 
   // Regra do Certificado de Reservista: obrigatório apenas para gênero Masculino.
@@ -277,6 +277,9 @@ app.post('/api/candidato', (req, res) => {
     status: 'VERMELHO',
     cpfInclusoNaIdentidade: false,
     documentos: criarDocumentosIniciais(genero),
+    decisaoFinal: null,
+    decisaoFinalEm: null,
+    mensagens: [],
     criadoEm: new Date().toISOString()
   };
 
@@ -373,6 +376,25 @@ app.post('/api/candidato/:id/documento', (req, res) => {
       return res.status(404).json({ erro: 'Candidato não encontrado.' });
     }
 
+    // Ficha com decisão final (Aprovado/Reprovado) não aceita mais nenhum envio
+    if (candidato.decisaoFinal) {
+      descartarArquivo();
+      return res.status(400).json({
+        erro: 'Esta ficha já foi decidida e está bloqueada para novos envios.'
+      });
+    }
+
+    const documentoAtual = candidato.documentos[tipo];
+    const pendenciaAtiva = documentoAtual && documentoAtual.pendencia && documentoAtual.pendencia.ativa;
+
+    // Documento já enviado só pode ser reenviado se o RH abriu uma pendência para ele
+    if (documentoAtual && documentoAtual.arquivo && !pendenciaAtiva) {
+      descartarArquivo();
+      return res.status(400).json({
+        erro: 'Este documento já foi enviado e a ficha está bloqueada para edição. Aguarde o RH sinalizar uma pendência para reenviar.'
+      });
+    }
+
     // Regra: reservista dispensado para gênero diferente de Masculino
     if (tipo === 'reservista' && candidato.genero !== 'Masculino') {
       descartarArquivo();
@@ -389,11 +411,23 @@ app.post('/api/candidato/:id/documento', (req, res) => {
       });
     }
 
-    // Registra o arquivo enviado e move o documento para "Em Análise" (AMARELO)
+    // Se havia um PDF anterior (reenvio após pendência), remove o arquivo físico antigo
+    if (documentoAtual && documentoAtual.arquivo) {
+      const caminhoAntigo = path.join(__dirname, documentoAtual.arquivo);
+      fs.unlink(caminhoAntigo, (erro) => {
+        if (erro && erro.code !== 'ENOENT') {
+          console.error('Falha ao excluir PDF antigo:', caminhoAntigo, erro.message);
+        }
+      });
+    }
+
+    // Registra o arquivo enviado, move o documento para "Em Análise" (AMARELO) e
+    // encerra qualquer pendência aberta (o reenvio pedido pelo RH foi atendido)
     candidato.documentos[tipo] = {
       arquivo: 'uploads/' + req.file.filename,
       status: 'AMARELO',
-      atualizadoEm: new Date().toISOString()
+      atualizadoEm: new Date().toISOString(),
+      pendencia: null
     };
 
     // Na aba Identidade o candidato pode declarar que o CPF está incluso no RG
@@ -554,6 +588,168 @@ app.patch('/api/rh/fichas/:id/status', (req, res) => {
     mensagem: 'Status da ficha atualizado com sucesso!',
     candidato,
     evento
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ROTA: busca de uma única ficha por id (usada pelo candidato para retornar
+// à própria ficha - via link com ?id= - e ver pendências, mensagens e decisão)
+// ---------------------------------------------------------------------------
+app.get('/api/candidato/:id', (req, res) => {
+  const candidatos = lerCandidatos();
+  const candidato = candidatos.find((c) => c.id === req.params.id);
+
+  if (!candidato) {
+    return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  }
+
+  return res.status(200).json(candidato);
+});
+
+// Quem pode enviar uma mensagem no chat da ficha.
+const AUTORES_VALIDOS = ['RH', 'Candidato'];
+
+// ---------------------------------------------------------------------------
+// ROTA: envio de mensagem no chat da ficha (RH <-> Candidato), com histórico
+// ordenado por data/hora persistido junto da ficha em candidatos.json
+// ---------------------------------------------------------------------------
+app.post('/api/candidato/:id/mensagens', (req, res) => {
+  const { id } = req.params;
+  const { autor, texto } = req.body;
+
+  if (!AUTORES_VALIDOS.includes(autor)) {
+    return res.status(400).json({ erro: "Autor inválido. Use 'RH' ou 'Candidato'." });
+  }
+
+  const textoAparado = String(texto || '').trim();
+  if (!textoAparado) {
+    return res.status(400).json({ erro: 'Mensagem vazia.' });
+  }
+
+  const candidatos = lerCandidatos();
+  const candidato = candidatos.find((c) => c.id === id);
+
+  if (!candidato) {
+    return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  }
+
+  if (!Array.isArray(candidato.mensagens)) {
+    candidato.mensagens = [];
+  }
+
+  const novaMensagem = {
+    id: gerarId(),
+    autor,
+    texto: textoAparado,
+    timestamp: new Date().toISOString()
+  };
+  candidato.mensagens.push(novaMensagem);
+  candidato.atualizadoEm = novaMensagem.timestamp;
+  salvarCandidatos(candidatos);
+
+  return res.status(201).json({ mensagem: 'Mensagem enviada.', candidato });
+});
+
+// ---------------------------------------------------------------------------
+// ROTA: RH marca um documento já enviado como "Com Pendência / Exige Reenvio",
+// com justificativa obrigatória. Libera especificamente aquele documento para
+// o candidato reenviar, e registra o evento na trilha de auditoria (LGPD).
+// ---------------------------------------------------------------------------
+app.patch('/api/rh/fichas/:id/documento/:tipo/pendencia', (req, res) => {
+  const { id, tipo } = req.params;
+  const { justificativa } = req.body;
+
+  if (!TIPOS_DOCUMENTO.includes(tipo)) {
+    return res.status(400).json({ erro: 'Tipo de documento inválido.' });
+  }
+
+  const justificativaAparada = String(justificativa || '').trim();
+  if (!justificativaAparada) {
+    return res.status(400).json({ erro: 'Informe a justificativa da pendência.' });
+  }
+
+  const candidatos = lerCandidatos();
+  const candidato = candidatos.find((c) => c.id === id);
+
+  if (!candidato) {
+    return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  }
+
+  const documento = candidato.documentos[tipo];
+  if (!documento || !documento.arquivo) {
+    return res.status(400).json({ erro: 'Só é possível marcar pendência em um documento já enviado.' });
+  }
+
+  const agora = new Date().toISOString();
+  documento.pendencia = { ativa: true, justificativa: justificativaAparada, criadoEm: agora };
+  documento.status = 'VERMELHO';
+  documento.atualizadoEm = agora;
+  candidato.atualizadoEm = agora;
+  salvarCandidatos(candidatos);
+
+  registrarEventoAuditoria({
+    id: gerarId(),
+    tipoEvento: 'pendencia_documento',
+    candidatoId: id,
+    documentoTipo: tipo,
+    justificativa: justificativaAparada,
+    timestamp: agora,
+    ip: req.ip
+  });
+
+  console.log(`--- [Auditoria] Pendência aberta --- ID: ${id} | Documento: ${tipo} | IP: ${req.ip}`);
+
+  return res.status(200).json({
+    mensagem: 'Pendência registrada. O candidato poderá reenviar este documento.',
+    candidato
+  });
+});
+
+// Decisões finais válidas para o processo admissional.
+const DECISOES_VALIDAS = ['APROVADO', 'REPROVADO'];
+
+// ---------------------------------------------------------------------------
+// ROTA: decisão final do processo (Aprovar/Reprovar), com registro na trilha
+// de auditoria. A ficha do candidato passa a ficar travada para edição.
+// ---------------------------------------------------------------------------
+app.patch('/api/rh/fichas/:id/decisao', (req, res) => {
+  const { id } = req.params;
+  const { decisao } = req.body;
+
+  if (!DECISOES_VALIDAS.includes(decisao)) {
+    return res.status(400).json({ erro: "Decisão inválida. Use 'APROVADO' ou 'REPROVADO'." });
+  }
+
+  const candidatos = lerCandidatos();
+  const candidato = candidatos.find((c) => c.id === id);
+
+  if (!candidato) {
+    return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  }
+
+  const agora = new Date().toISOString();
+  const decisaoAnterior = candidato.decisaoFinal;
+
+  candidato.decisaoFinal = decisao;
+  candidato.decisaoFinalEm = agora;
+  candidato.atualizadoEm = agora;
+  salvarCandidatos(candidatos);
+
+  registrarEventoAuditoria({
+    id: gerarId(),
+    tipoEvento: 'decisao_final',
+    candidatoId: id,
+    decisaoAnterior,
+    decisaoNova: decisao,
+    timestamp: agora,
+    ip: req.ip
+  });
+
+  console.log(`--- [Auditoria] Decisão final --- ID: ${id} | Decisão: ${decisao} | IP: ${req.ip}`);
+
+  return res.status(200).json({
+    mensagem: 'Decisão registrada com sucesso!',
+    candidato
   });
 });
 

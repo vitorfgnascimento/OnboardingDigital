@@ -291,6 +291,112 @@
       color: #7a5c00;
     }
     .aviso-bloqueio.visivel { display: block; }
+
+    /* --- AVISO DE PENDÊNCIA (reabertura pontual de um documento) --- */
+    .aviso-pendencia {
+      background: rgba(220, 53, 69, 0.08);
+      border-left: 4px solid var(--vermelho);
+      padding: 12px 14px;
+      border-radius: 4px;
+      font-size: 13px;
+      margin-bottom: 15px;
+      color: #7a1220;
+    }
+    .aviso-pendencia[hidden] { display: none; }
+
+    /* --- BANNER DE DECISÃO FINAL (Aprovado/Reprovado) --- */
+    .banner-decisao {
+      display: none;
+      margin-bottom: 20px;
+      padding: 18px 20px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      line-height: 1.5;
+    }
+    .banner-decisao.visivel { display: block; }
+    .banner-aprovado {
+      background: rgba(40, 167, 69, 0.12);
+      border: 1px solid var(--verde);
+      color: #14532d;
+    }
+    .banner-reprovado {
+      background: rgba(108, 117, 125, 0.12);
+      border: 1px solid #6c757d;
+      color: #3a3f44;
+    }
+
+    /* --- CHAT COM O RH --- */
+    .secao-chat {
+      display: none;
+      margin-top: 30px;
+      padding-top: 25px;
+      border-top: 2px solid #e6e9ee;
+    }
+    .secao-chat.visivel { display: block; }
+    .lista-mensagens {
+      max-height: 240px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin: 15px 0;
+      padding-right: 4px;
+    }
+    .mensagem {
+      max-width: 80%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+    .mensagem-rh {
+      align-self: flex-start;
+      background: #eef0f2;
+    }
+    .mensagem-candidato {
+      align-self: flex-end;
+      background: rgba(0, 163, 53, 0.12);
+    }
+    .mensagem-cabecalho {
+      font-size: 11px;
+      font-weight: 700;
+      color: #6c757d;
+      margin-bottom: 3px;
+    }
+    .mensagem-vazia { font-size: 13px; color: #6c757d; }
+    .form-chat { display: flex; gap: 10px; }
+    .form-chat textarea {
+      flex: 1;
+      font-size: 13px;
+      font-family: inherit;
+      padding: 10px 12px;
+      border: 1px solid var(--cinza-borda);
+      border-radius: 5px;
+      resize: vertical;
+      min-height: 44px;
+    }
+    .btn-enviar-mensagem {
+      background-color: var(--verde-intelbras);
+      color: #ffffff;
+      border: none;
+      padding: 0 18px;
+      font-size: 13px;
+      font-weight: bold;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .btn-enviar-mensagem:hover { background-color: var(--verde-intelbras-escuro); }
+    .btn-atualizar-ficha {
+      background: none;
+      border: 1px solid var(--cinza-borda);
+      color: #6c757d;
+      padding: 6px 12px;
+      font-size: 12px;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-bottom: 12px;
+    }
+    .btn-atualizar-ficha:hover { background: #f4f6f9; }
   </style>
 </head>
 <body>
@@ -299,6 +405,10 @@
     <div class="barra-navegacao">
       <a class="link-navegacao" href="/rh.html">Painel do RH &rarr;</a>
     </div>
+
+    <!-- BANNER DE DECISÃO FINAL (Aprovado/Reprovado) -->
+    <div class="banner-decisao" id="bannerDecisao"></div>
+
     <div class="status-badge" id="badgeStatus">STATUS: PENDENTE (VERMELHO)</div>
     <h2>Ficha Única de Admissão</h2>
 
@@ -389,6 +499,17 @@
     <!-- AVISO DE FICHA BLOQUEADA -->
     <div class="aviso-bloqueio" id="avisoBloqueio">
       Sua ficha foi enviada com sucesso e está em análise pelo RH. Os campos foram bloqueados para alteração.
+    </div>
+
+    <!-- CHAT COM O RH (visível apenas quando a ficha já foi enviada) -->
+    <div class="secao-chat" id="secaoChat">
+      <h3>Fale com o RH</h3>
+      <button type="button" class="btn-atualizar-ficha" id="btnAtualizarFicha">Atualizar</button>
+      <div class="lista-mensagens" id="listaMensagens"></div>
+      <form class="form-chat" id="formChat">
+        <textarea id="campoMensagem" placeholder="Escreva sua mensagem..." required></textarea>
+        <button type="submit" class="btn-enviar-mensagem">Enviar</button>
+      </form>
     </div>
 
   </div>
@@ -521,9 +642,18 @@
       return chk ? chk.checked : false;
     }
 
-    // Uma barra é bloqueada quando: ficha travada, regra do reservista ou CPF incluso.
+    // Verdadeiro quando o RH marcou este documento como "com pendência / exige reenvio"
+    // (e o processo ainda não teve decisão final - decisão trava tudo, sem exceção).
+    function documentoTemPendenciaAtiva(tipo) {
+      return !!(candidato && candidato.documentos && candidato.documentos[tipo]
+        && candidato.documentos[tipo].pendencia && candidato.documentos[tipo].pendencia.ativa
+        && !candidato.decisaoFinal);
+    }
+
+    // Uma barra é bloqueada quando: ficha travada (exceto documento com pendência aberta),
+    // regra do reservista ou CPF incluso.
     function barraDesabilitada(tipo) {
-      if (fichaBloqueada) return true;
+      if (fichaBloqueada && !documentoTemPendenciaAtiva(tipo)) return true;
       if (tipo === 'reservista' && generoAtual() !== 'Masculino') return true;
       if (tipo === 'cpf' && cpfInclusoAtual()) return true;
       return false;
@@ -583,6 +713,12 @@
         aviso.hidden = true;
         aviso.dataset.aviso = '';
         painel.appendChild(aviso);
+
+        const avisoPendencia = document.createElement('div');
+        avisoPendencia.className = 'aviso-pendencia';
+        avisoPendencia.hidden = true;
+        avisoPendencia.dataset.avisoPendencia = '';
+        painel.appendChild(avisoPendencia);
 
         if (doc.tipo === 'identidade') {
           const linha = document.createElement('div');
@@ -665,7 +801,19 @@
           aviso.hidden = true;
         }
 
+        // Aviso de pendência: o RH pediu o reenvio deste documento específico
+        const temPendenciaAtiva = documentoTemPendenciaAtiva(tipo);
+        const avisoPendencia = barra.querySelector('[data-aviso-pendencia]');
+        if (temPendenciaAtiva) {
+          avisoPendencia.hidden = false;
+          avisoPendencia.textContent = 'Pendência do RH: ' +
+            candidato.documentos[tipo].pendencia.justificativa + ' Reenvie o PDF abaixo.';
+        } else {
+          avisoPendencia.hidden = true;
+        }
+
         if (desabilitada) barra.classList.remove('ativa');
+        if (temPendenciaAtiva) barra.classList.add('ativa');
 
         // Dropzone e arquivo anexado
         const dropzone = barra.querySelector('[data-dropzone]');
@@ -674,10 +822,10 @@
         const nome = barra.querySelector('[data-nome]');
         const btnRemover = barra.querySelector('[data-remover]');
 
-        const bloquearUpload = desabilitada || fichaBloqueada;
-        input.disabled = bloquearUpload;
-        dropzone.classList.toggle('dropzone-travada', bloquearUpload);
-        btnRemover.disabled = fichaBloqueada;
+        // "desabilitada" já considera fichaBloqueada (com a exceção de pendência ativa)
+        input.disabled = desabilitada;
+        dropzone.classList.toggle('dropzone-travada', desabilitada);
+        btnRemover.disabled = fichaBloqueada && !temPendenciaAtiva;
 
         const nomeArquivo = arquivosPendentes[tipo]
           ? arquivosPendentes[tipo].name
@@ -745,8 +893,8 @@
 
     const uploadsEmProcessamento = new Set();
 
-    function anexarArquivo(tipo, arquivo, input) {
-      if (fichaBloqueada) return;
+    async function anexarArquivo(tipo, arquivo, input) {
+      if (fichaBloqueada && !documentoTemPendenciaAtiva(tipo)) return;
       // Evita disparos duplicados (ex.: duplo clique) processando o mesmo tipo em paralelo
       if (uploadsEmProcessamento.has(tipo)) return;
       uploadsEmProcessamento.add(tipo);
@@ -774,6 +922,20 @@
           return;
         }
 
+        // Ficha já enviada e este documento tem pendência aberta: reenvia na hora,
+        // sem esperar o botão "Concluir" (que só existe no preenchimento inicial).
+        if (fichaBloqueada && documentoTemPendenciaAtiva(tipo)) {
+          try {
+            await uploadArquivo(tipo, arquivo);
+            if (input) input.value = '';
+          } catch (erro) {
+            erroUpload.textContent = erro.message;
+            erroUpload.style.display = 'block';
+          }
+          atualizarBarras();
+          return;
+        }
+
         arquivosPendentes[tipo] = arquivo;
         atualizarBarras();
       } finally {
@@ -785,7 +947,7 @@
     // REMOÇÃO DO PDF (botão "x")
     // =========================================================================
     async function removerDocumento(tipo) {
-      if (fichaBloqueada) return;
+      if (fichaBloqueada && !documentoTemPendenciaAtiva(tipo)) return;
 
       delete arquivosPendentes[tipo];
 
@@ -996,8 +1158,10 @@
         const resStatus = await respStatus.json();
         if (respStatus.ok) candidato = resStatus.candidato;
 
-        // 7) bloqueia a ficha
+        // 7) bloqueia a ficha e habilita o chat com o RH
         bloquearFicha();
+        window.history.replaceState(null, '', '?id=' + candidatoId);
+        exibirPainelChat();
         mensagem.style.color = '#00812a';
         mensagem.textContent = 'Admissão enviada com sucesso!';
       } catch (erro) {
@@ -1010,13 +1174,20 @@
     // =========================================================================
     // BLOQUEIO DA FICHA (MODO SOMENTE LEITURA)
     // =========================================================================
-    function bloquearFicha() {
-      // Trava a ficha em modo somente leitura após o envio bem-sucedido.
-      // A reabertura para edição só deve ocorrer se, num carregamento futuro,
-      // a API devolver o candidato com status de edição (não implementado neste MVP).
+    // Desabilita campos, seletores, checkbox e uploads (documentos com pendência
+    // ativa continuam liberados - ver barraDesabilitada/atualizarBarras).
+    function travarCamposFormulario() {
       fichaBloqueada = true;
+      document.querySelectorAll('#formCandidato input, #formCandidato select').forEach((el) => { el.disabled = true; });
+      const chk = document.getElementById('checkCpfIncluso');
+      if (chk) chk.disabled = true;
+      document.getElementById('btnConcluir').disabled = true;
+      document.getElementById('avisoBloqueio').classList.add('visivel');
+      atualizarBarras();
+    }
 
-      // a) badge principal e documentos obrigatórios -> EM ANÁLISE (AMARELO)
+    function bloquearFicha() {
+      // Chamada logo após o envio bem-sucedido da ficha nesta mesma sessão.
       candidato.status = 'AMARELO';
       DOCUMENTOS.forEach((doc) => {
         const atual = candidato.documentos[doc.tipo];
@@ -1024,18 +1195,7 @@
         atual.status = 'AMARELO';
       });
       atualizarBadgeGeral();
-
-      // b) desabilita todos os campos, seletores, checkboxes e uploads
-      document.querySelectorAll('#formCandidato input, #formCandidato select').forEach((el) => { el.disabled = true; });
-      const chk = document.getElementById('checkCpfIncluso');
-      if (chk) chk.disabled = true;
-      document.querySelectorAll('.barra [data-input]').forEach((el) => { el.disabled = true; });
-      document.getElementById('btnConcluir').disabled = true;
-
-      // c) aviso visual
-      document.getElementById('avisoBloqueio').classList.add('visivel');
-
-      atualizarBarras();
+      travarCamposFormulario();
     }
 
     // =========================================================================
@@ -1048,8 +1208,135 @@
       badge.className = 'status-badge ' + CLASSE_BADGE[st];
     }
 
-    // Render inicial
-    construirBarras();
+    // =========================================================================
+    // BANNER DE DECISÃO FINAL (Aprovado/Reprovado)
+    // =========================================================================
+    function exibirBannerDecisao() {
+      const banner = document.getElementById('bannerDecisao');
+      if (!candidato || !candidato.decisaoFinal) {
+        banner.classList.remove('visivel', 'banner-aprovado', 'banner-reprovado');
+        return;
+      }
+
+      if (candidato.decisaoFinal === 'APROVADO') {
+        banner.className = 'banner-decisao visivel banner-aprovado';
+        banner.textContent = 'Parabéns, você seguiu para a etapa final, verifique seu e-mail/WhatsApp para as próximas instruções!';
+      } else {
+        banner.className = 'banner-decisao visivel banner-reprovado';
+        banner.textContent = 'Agradecemos por sua participação, mas decidimos seguir com outro talento. Não desanime! Suas informações ficaram salvas no nosso banco de dados e contataremos caso haja alguma oportunidade alinhada ao seu perfil.';
+      }
+    }
+
+    // =========================================================================
+    // PREENCHIMENTO DO FORMULÁRIO A PARTIR DE UMA FICHA JÁ EXISTENTE
+    // =========================================================================
+    function preencherFormularioComCandidato(c) {
+      const campos = ['nomeCompleto', 'dataNascimento', 'cpf', 'cep', 'logradouro', 'bairro', 'numero', 'complemento', 'email', 'whatsapp'];
+      campos.forEach((id) => { document.getElementById(id).value = c[id] || ''; });
+      document.getElementById('genero').value = c.genero || '';
+    }
+
+    // =========================================================================
+    // CHAT COM O RH
+    // =========================================================================
+    function escapeHtml(texto) {
+      const div = document.createElement('div');
+      div.textContent = texto == null ? '' : String(texto);
+      return div.innerHTML;
+    }
+
+    function formatarDataHora(iso) {
+      if (!iso) return '-';
+      return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+    }
+
+    function renderizarMensagens(mensagens) {
+      const container = document.getElementById('listaMensagens');
+      if (!mensagens || !mensagens.length) {
+        container.innerHTML = '<div class="mensagem-vazia">Nenhuma mensagem ainda.</div>';
+        return;
+      }
+      container.innerHTML = mensagens.map((m) => `
+        <div class="mensagem ${m.autor === 'RH' ? 'mensagem-rh' : 'mensagem-candidato'}">
+          <div class="mensagem-cabecalho">${m.autor === 'RH' ? 'RH' : 'Você'} · ${formatarDataHora(m.timestamp)}</div>
+          <div class="mensagem-texto">${escapeHtml(m.texto)}</div>
+        </div>
+      `).join('');
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function exibirPainelChat() {
+      document.getElementById('secaoChat').classList.add('visivel');
+      renderizarMensagens(candidato.mensagens || []);
+    }
+
+    document.getElementById('formChat').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!candidatoId) return;
+
+      const campo = document.getElementById('campoMensagem');
+      const texto = campo.value.trim();
+      if (!texto) return;
+
+      try {
+        const resposta = await fetch('/api/candidato/' + candidatoId + '/mensagens', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ autor: 'Candidato', texto })
+        });
+        const resultado = await resposta.json();
+        if (!resposta.ok) {
+          alert('Erro: ' + (resultado.erro || 'não foi possível enviar a mensagem.'));
+          return;
+        }
+        candidato = resultado.candidato;
+        renderizarMensagens(candidato.mensagens || []);
+        campo.value = '';
+      } catch (erro) {
+        alert('Falha ao enviar mensagem.');
+      }
+    });
+
+    // =========================================================================
+    // CARREGAMENTO DE UMA FICHA JÁ ENVIADA (retorno via link ?id=<candidatoId>)
+    // =========================================================================
+    async function carregarFichaExistente(id) {
+      try {
+        const resposta = await fetch('/api/candidato/' + id);
+        if (!resposta.ok) return false;
+
+        candidato = await resposta.json();
+        candidatoId = candidato.id;
+
+        preencherFormularioComCandidato(candidato);
+        atualizarBadgeGeral();
+        travarCamposFormulario();
+        exibirBannerDecisao();
+        exibirPainelChat();
+
+        return true;
+      } catch (erro) {
+        return false;
+      }
+    }
+
+    document.getElementById('btnAtualizarFicha').addEventListener('click', () => {
+      if (candidatoId) carregarFichaExistente(candidatoId);
+    });
+
+    // =========================================================================
+    // INICIALIZAÇÃO
+    // =========================================================================
+    async function inicializar() {
+      construirBarras();
+
+      const idNaUrl = new URLSearchParams(window.location.search).get('id');
+      if (idNaUrl) {
+        await carregarFichaExistente(idNaUrl);
+      }
+    }
+
+    inicializar();
   </script>
 </body>
 </html>
