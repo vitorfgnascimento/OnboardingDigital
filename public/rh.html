@@ -5,15 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Onboarding Digital - Painel do RH</title>
   <style>
+    :root {
+      /* Identidade visual: Verde Intelbras como cor principal da jornada */
+      --verde-intelbras: #00A335;
+      --verde-intelbras-escuro: #00812a;
+      --vermelho: #dc3545;
+      --amarelo: #ffc107;
+      --verde: #28a745;
+      --cinza-borda: #cccccc;
+      --cinza-barra: #f8f9fa;
+      --texto: #2c3e50;
+    }
+    * { box-sizing: border-box; }
     body {
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       background-color: #f4f6f9;
       margin: 0;
       padding: 30px 15px;
-      color: #2c3e50;
+      color: var(--texto);
     }
     .container {
-      max-width: 1100px;
+      max-width: 1200px;
       margin: 0 auto;
       background: #ffffff;
       padding: 30px;
@@ -22,7 +34,7 @@
     }
     h2 {
       color: #1a252f;
-      border-bottom: 2px solid #007bff;
+      border-bottom: 2px solid var(--verde-intelbras);
       padding-bottom: 10px;
       margin-top: 0;
     }
@@ -34,7 +46,7 @@
       gap: 10px;
     }
     .btn-atualizar {
-      background-color: #007bff;
+      background-color: var(--verde-intelbras);
       color: #ffffff;
       border: none;
       padding: 10px 16px;
@@ -42,14 +54,45 @@
       font-weight: bold;
       border-radius: 5px;
       cursor: pointer;
+      transition: background-color 0.2s;
     }
-    .btn-atualizar:hover {
-      background-color: #0069d9;
+    .btn-atualizar:hover { background-color: var(--verde-intelbras-escuro); }
+
+    /* --- CARDS DE RESUMO ESTATÍSTICO --- */
+    .cards-resumo {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 15px;
+      margin: 25px 0;
     }
+    .card {
+      border: 1px solid var(--cinza-borda);
+      border-left: 5px solid var(--verde-intelbras);
+      border-radius: 8px;
+      padding: 16px 18px;
+      background: var(--cinza-barra);
+    }
+    .card-total { border-left-color: #1a252f; }
+    .card-pendente { border-left-color: var(--vermelho); }
+    .card-analise { border-left-color: var(--amarelo); }
+    .card-aprovado { border-left-color: var(--verde); }
+    .card-rotulo {
+      font-size: 13px;
+      color: #6c757d;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .card-valor {
+      font-size: 28px;
+      font-weight: bold;
+      color: var(--texto);
+    }
+
+    /* --- TABELA DE GESTÃO --- */
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 20px;
+      margin-top: 10px;
       font-size: 13px;
     }
     thead th {
@@ -76,9 +119,9 @@
       color: #ffffff;
       white-space: nowrap;
     }
-    .badge-vermelho { background-color: #dc3545; }
-    .badge-amarelo  { background-color: #ffc107; color: #212529; }
-    .badge-verde    { background-color: #28a745; }
+    .badge-vermelho { background-color: var(--vermelho); }
+    .badge-amarelo  { background-color: var(--amarelo); color: #212529; }
+    .badge-verde    { background-color: var(--verde); }
 
     .acoes {
       display: flex;
@@ -94,9 +137,11 @@
       cursor: pointer;
       color: #ffffff;
     }
-    .btn-analise  { background-color: #ffc107; color: #212529; }
+    .btn-pendente { background-color: var(--vermelho); }
+    .btn-pendente:hover { background-color: #b02a37; }
+    .btn-analise  { background-color: var(--amarelo); color: #212529; }
     .btn-analise:hover  { background-color: #e0a800; }
-    .btn-aprovar  { background-color: #28a745; }
+    .btn-aprovar  { background-color: var(--verde); }
     .btn-aprovar:hover  { background-color: #218838; }
     .btn-acao:disabled {
       opacity: 0.45;
@@ -106,6 +151,10 @@
       text-align: center;
       padding: 30px;
       color: #6c757d;
+    }
+
+    @media (max-width: 700px) {
+      .cards-resumo { grid-template-columns: repeat(2, 1fr); }
     }
   </style>
 </head>
@@ -117,27 +166,48 @@
       <button class="btn-atualizar" id="btnAtualizar" type="button">Atualizar lista</button>
     </div>
 
+    <!-- CARDS DE RESUMO ESTATÍSTICO -->
+    <div class="cards-resumo" role="group" aria-label="Resumo estatístico das fichas">
+      <div class="card card-total">
+        <div class="card-rotulo">Total de Fichas</div>
+        <div class="card-valor" id="cardTotal">0</div>
+      </div>
+      <div class="card card-pendente">
+        <div class="card-rotulo">Pendentes</div>
+        <div class="card-valor" id="cardPendentes">0</div>
+      </div>
+      <div class="card card-analise">
+        <div class="card-rotulo">Em Análise</div>
+        <div class="card-valor" id="cardAnalise">0</div>
+      </div>
+      <div class="card card-aprovado">
+        <div class="card-rotulo">Aprovados</div>
+        <div class="card-valor" id="cardAprovados">0</div>
+      </div>
+    </div>
+
+    <!-- TABELA DE GESTÃO DAS FICHAS -->
     <table>
+      <caption class="visually-hidden" style="text-align:left; padding-bottom:8px; font-weight:600;">
+        Fichas de candidatos recebidas
+      </caption>
       <thead>
         <tr>
-          <th>Nome Completo</th>
-          <th>CPF</th>
-          <th>E-mail</th>
-          <th>WhatsApp</th>
-          <th>Endereço</th>
-          <th>Criado em</th>
-          <th>Status</th>
-          <th>Ações do RH</th>
+          <th scope="col">Nome do Candidato</th>
+          <th scope="col">CPF</th>
+          <th scope="col">Data de Envio</th>
+          <th scope="col">Status Atual</th>
+          <th scope="col">Ações</th>
         </tr>
       </thead>
       <tbody id="corpoTabela">
-        <tr><td colspan="8" class="vazio">Carregando candidatos...</td></tr>
+        <tr><td colspan="5" class="vazio">Carregando fichas...</td></tr>
       </tbody>
     </table>
   </div>
 
   <script>
-    // Mapa de status para a classe visual do badge correspondente.
+    // Mapa de status para a classe visual do badge/botão correspondente.
     const CLASSE_BADGE = {
       VERMELHO: 'badge-vermelho',
       AMARELO: 'badge-amarelo',
@@ -157,48 +227,61 @@
       return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
     }
 
-    // Monta o endereço completo em uma única string legível.
-    function montarEndereco(c) {
-      const partes = [c.endereco, c.numero, c.complemento].filter((p) => p && p.trim());
-      return partes.join(', ') || '-';
+    // Atualiza os cards de resumo estatístico a partir da lista de fichas.
+    function atualizarCardsResumo(fichas) {
+      const total = fichas.length;
+      const pendentes = fichas.filter((f) => f.status === 'VERMELHO').length;
+      const emAnalise = fichas.filter((f) => f.status === 'AMARELO').length;
+      const aprovados = fichas.filter((f) => f.status === 'VERDE').length;
+
+      document.getElementById('cardTotal').textContent = total;
+      document.getElementById('cardPendentes').textContent = pendentes;
+      document.getElementById('cardAnalise').textContent = emAnalise;
+      document.getElementById('cardAprovados').textContent = aprovados;
     }
 
-    // Busca a lista de candidatos no backend e redesenha a tabela.
-    async function carregarCandidatos() {
+    // Busca a lista de fichas no backend e redesenha o painel (cards + tabela).
+    async function carregarFichas() {
       const corpo = document.getElementById('corpoTabela');
-      corpo.innerHTML = '<tr><td colspan="8" class="vazio">Carregando candidatos...</td></tr>';
+      corpo.innerHTML = '<tr><td colspan="5" class="vazio">Carregando fichas...</td></tr>';
 
       try {
-        const resposta = await fetch('/api/candidatos');
-        const candidatos = await resposta.json();
+        const resposta = await fetch('/api/rh/fichas');
+        const fichas = await resposta.json();
 
-        if (!Array.isArray(candidatos) || candidatos.length === 0) {
-          corpo.innerHTML = '<tr><td colspan="8" class="vazio">Nenhum candidato cadastrado ainda.</td></tr>';
+        if (!Array.isArray(fichas)) {
+          corpo.innerHTML = '<tr><td colspan="5" class="vazio">Falha ao carregar fichas.</td></tr>';
+          return;
+        }
+
+        atualizarCardsResumo(fichas);
+
+        if (fichas.length === 0) {
+          corpo.innerHTML = '<tr><td colspan="5" class="vazio">Nenhuma ficha recebida ainda.</td></tr>';
           return;
         }
 
         corpo.innerHTML = '';
 
-        candidatos.forEach((c) => {
+        fichas.forEach((f) => {
           const tr = document.createElement('tr');
 
-          const classeBadge = CLASSE_BADGE[c.status] || 'badge-vermelho';
-          const rotulo = ROTULO_STATUS[c.status] || c.status;
+          const classeBadge = CLASSE_BADGE[f.status] || 'badge-vermelho';
+          const rotulo = ROTULO_STATUS[f.status] || f.status;
 
           tr.innerHTML = `
-            <td>${c.nomeCompleto || '-'}</td>
-            <td>${c.cpf || '-'}</td>
-            <td>${c.email || '-'}</td>
-            <td>${c.whatsapp || '-'}</td>
-            <td>${montarEndereco(c)}</td>
-            <td>${formatarData(c.criadoEm)}</td>
+            <td>${f.nomeCompleto || '-'}</td>
+            <td>${f.cpf || '-'}</td>
+            <td>${formatarData(f.criadoEm)}</td>
             <td><span class="badge ${classeBadge}">${rotulo}</span></td>
             <td>
-              <div class="acoes">
-                <button class="btn-acao btn-analise" data-id="${c.id}" data-status="AMARELO"
-                        ${c.status === 'AMARELO' ? 'disabled' : ''}>Em Análise</button>
-                <button class="btn-acao btn-aprovar" data-id="${c.id}" data-status="VERDE"
-                        ${c.status === 'VERDE' ? 'disabled' : ''}>Aprovado</button>
+              <div class="acoes" role="group" aria-label="Alterar status de ${f.nomeCompleto || 'candidato'}">
+                <button class="btn-acao btn-pendente" data-id="${f.id}" data-status="VERMELHO"
+                        ${f.status === 'VERMELHO' ? 'disabled' : ''}>Pendente</button>
+                <button class="btn-acao btn-analise" data-id="${f.id}" data-status="AMARELO"
+                        ${f.status === 'AMARELO' ? 'disabled' : ''}>Em Análise</button>
+                <button class="btn-acao btn-aprovar" data-id="${f.id}" data-status="VERDE"
+                        ${f.status === 'VERDE' ? 'disabled' : ''}>Aprovado</button>
               </div>
             </td>
           `;
@@ -206,14 +289,14 @@
           corpo.appendChild(tr);
         });
       } catch (erro) {
-        corpo.innerHTML = '<tr><td colspan="8" class="vazio">Falha ao carregar candidatos.</td></tr>';
+        corpo.innerHTML = '<tr><td colspan="5" class="vazio">Falha ao carregar fichas.</td></tr>';
       }
     }
 
-    // Envia a alteração de status para o backend e recarrega a tabela.
+    // Envia a alteração de status para o backend (com trilha de auditoria) e recarrega o painel.
     async function alterarStatus(id, status) {
       try {
-        const resposta = await fetch(`/api/candidato/${id}/status`, {
+        const resposta = await fetch(`/api/rh/fichas/${id}/status`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ status })
@@ -226,7 +309,7 @@
           return;
         }
 
-        await carregarCandidatos();
+        await carregarFichas();
       } catch (erro) {
         alert('Falha ao comunicar com o servidor.');
       }
@@ -239,10 +322,10 @@
       alterarStatus(botao.dataset.id, botao.dataset.status);
     });
 
-    document.getElementById('btnAtualizar').addEventListener('click', carregarCandidatos);
+    document.getElementById('btnAtualizar').addEventListener('click', carregarFichas);
 
-    // Carrega a lista assim que a página abre.
-    carregarCandidatos();
+    // Carrega o painel assim que a página abre.
+    carregarFichas();
   </script>
 </body>
 </html>
