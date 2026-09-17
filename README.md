@@ -43,28 +43,39 @@ O repositório já contém um `public/rh.html` e rotas de listagem/alteração d
 ## Como Executar o Projeto Localmente
 
 ### Pré-requisitos
-- Node.js instalado na máquina
 - Git instalado na máquina
+- Opção 1: Docker e Docker Compose instalados
+- Opção 2: Node.js instalado na máquina
 
-### Passo a Passo
+### Clonar o repositório
 
-1. Clonar o repositório:
 ```bash
 git clone https://github.com/vitorfgnascimento/OnboardingDigital.git
 cd OnboardingDigital
 ```
 
-2. Instalar as dependências do projeto:
+### Opção 1 (Recomendada - Docker)
+
+1. Subir a aplicação em um contêiner:
+```bash
+docker compose up --build
+```
+
+2. Acessar a aplicação no navegador: `http://localhost:3001`
+
+### Opção 2 (Tradicional - Node.js)
+
+1. Instalar as dependências do projeto:
 ```bash
 npm install
 ```
 
-3. Iniciar o servidor local:
+2. Iniciar o servidor local:
 ```bash
 node index.js
 ```
 
-4. Acessar a aplicação no navegador: Abra o navegador e acesse a URL `http://localhost:3001`
+3. Acessar a aplicação no navegador: `http://localhost:3001`
 
 ## Tecnologias
 

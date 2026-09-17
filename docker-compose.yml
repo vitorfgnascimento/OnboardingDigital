@@ -1,0 +1,9 @@
+services:
+  onboarding:
+    build: .
+    ports:
+      - "${PORTA:-3001}:3001"
+    environment:
+      - PORTA=3001
+    volumes:
+      - ./uploads:/app/uploads
