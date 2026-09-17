@@ -452,6 +452,112 @@
           const r = await patchJson('/rh/fichas/id-que-nao-existe/status', { status: 'VERDE' });
           return { ok: r.status === 404, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
+      },
+
+      { grupo: 'Pendências, Chat e Decisão Final (Etapa 2 - continuação)' },
+
+      {
+        nome: 'GET /api/candidato/:id retorna a ficha completa',
+        run: async () => {
+          const r = await fetch(API + '/candidato/' + window.__idMasculino);
+          const ok = r.status === 200 && (await r.clone().json()).id === window.__idMasculino;
+          return { ok, detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'GET /api/candidato/:id inexistente (404)',
+        run: async () => {
+          const r = await fetch(API + '/candidato/id-que-nao-existe');
+          return { ok: r.status === 404, detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'Candidato envia mensagem no chat (201)',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idMasculino + '/mensagens', { autor: 'Candidato', texto: 'Olá, tenho uma dúvida.' });
+          return { ok: r.status === 201 && r.corpo.candidato?.mensagens?.length === 1, detalhe: `status ${r.status}, total mensagens ${r.corpo.candidato?.mensagens?.length}` };
+        }
+      },
+      {
+        nome: 'RH responde no chat (201) e histórico fica ordenado',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idMasculino + '/mensagens', { autor: 'RH', texto: 'Já te respondo.' });
+          const msgs = r.corpo.candidato?.mensagens || [];
+          const ok = r.status === 201 && msgs.length === 2 && msgs[0].autor === 'Candidato' && msgs[1].autor === 'RH';
+          return { ok, detalhe: `status ${r.status}, ordem: ${msgs.map((m) => m.autor).join(' -> ')}` };
+        }
+      },
+      {
+        nome: 'Recusa mensagem com autor inválido (400)',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idMasculino + '/mensagens', { autor: 'Hacker', texto: 'oi' });
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Recusa mensagem vazia (400)',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idMasculino + '/mensagens', { autor: 'RH', texto: '   ' });
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Reenvio de documento sem pendência aberta é recusado (400)',
+        run: async () => {
+          const r = await enviarDocumento(window.__idMasculino, 'identidade', pdfDeTeste('rg2.pdf'));
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'RH marca pendência em documento já enviado (200)',
+        run: async () => {
+          const r = await patchJson('/rh/fichas/' + window.__idMasculino + '/documento/identidade/pendencia', { justificativa: 'Foto ilegível' });
+          const doc = r.corpo.candidato?.documentos?.identidade;
+          return { ok: r.status === 200 && doc?.pendencia?.ativa === true && doc?.status === 'VERMELHO', detalhe: `status ${r.status}, doc.status ${doc?.status}, pendencia ${JSON.stringify(doc?.pendencia)}` };
+        }
+      },
+      {
+        nome: 'Pendência exige justificativa (400)',
+        run: async () => {
+          const r = await patchJson('/rh/fichas/' + window.__idMasculino + '/documento/cpf/pendencia', { justificativa: '' });
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Pendência em documento nunca enviado é recusada (400)',
+        run: async () => {
+          const r = await patchJson('/rh/fichas/' + window.__idMasculino + '/documento/reservista/pendencia', { justificativa: 'teste' });
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Com pendência ativa, reenvio é aceito e a pendência é encerrada (201)',
+        run: async () => {
+          const r = await enviarDocumento(window.__idMasculino, 'identidade', pdfDeTeste('rg3.pdf'));
+          const doc = r.corpo.candidato?.documentos?.identidade;
+          return { ok: r.status === 201 && doc?.pendencia === null && doc?.status === 'AMARELO', detalhe: `status ${r.status}, doc.status ${doc?.status}, pendencia ${JSON.stringify(doc?.pendencia)}` };
+        }
+      },
+      {
+        nome: 'Decisão inválida é recusada (400)',
+        run: async () => {
+          const r = await patchJson('/rh/fichas/' + window.__idMasculino + '/decisao', { decisao: 'TALVEZ' });
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'RH aprova o candidato (200)',
+        run: async () => {
+          const r = await patchJson('/rh/fichas/' + window.__idMasculino + '/decisao', { decisao: 'APROVADO' });
+          return { ok: r.status === 200 && r.corpo.candidato?.decisaoFinal === 'APROVADO', detalhe: `status ${r.status}, decisaoFinal ${r.corpo.candidato?.decisaoFinal}` };
+        }
+      },
+      {
+        nome: 'Após decisão final, nenhum novo envio de documento é aceito (400)',
+        run: async () => {
+          const r = await enviarDocumento(window.__idMasculino, 'carteiraTrabalho', pdfDeTeste('ctps2.pdf'));
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
       }
     ];
 
