@@ -1,6 +1,6 @@
 # OnboardingDigital
 
-**Status do Projeto:** MVP em Desenvolvimento Ativo. Etapa 1 (Jornada e Ficha do Candidato) Concluída.
+**Status do Projeto:** MVP em Desenvolvimento Ativo. Etapa 1 (Jornada e Ficha do Candidato) Concluída. Etapa 2 (Módulo do RH) em andamento.
 
 Sistema de admissão digital para coleta de aceite de documentos trabalhistas, com trilha de auditoria e conformidade com a LGPD.
 
@@ -26,19 +26,26 @@ A interface do candidato está funcional, cobrindo:
 - "CPF incluso na Identidade": ao marcar, a barra do CPF é desabilitada e herda o status da Identidade.
 - Certificado de Reservista: exigido apenas para o gênero Masculino; nos demais casos a barra é dispensada e marcada automaticamente como Aprovado (verde).
 
-### Nota sobre o painel do RH
+## Resumo técnico da Etapa 2 (em andamento)
 
-O repositório já contém um `public/rh.html` e rotas de listagem/alteração de status (`GET /api/candidatos`, `PATCH /api/candidato/:id/status`). Esse código é um **protótipo interno**, criado durante a construção do backend e ainda **não validado como entregável oficial** - a Etapa 1 concluída se refere exclusivamente à jornada e à ficha do candidato. O painel do RH será revisado, completado e homologado na Etapa 2.
+O Painel de Gestão do RH (`public/rh.html`) está em construção, cobrindo até aqui:
+
+- **Cards de resumo estatístico** - Total de Fichas, Pendentes, Em Análise e Aprovados, calculados em tempo real a partir das fichas recebidas.
+- **Tabela de gestão** - lista as fichas com Nome do Candidato, CPF, Data de Envio e Status Atual.
+- **Alteração de status pelo RH** - botões coloridos (vermelho/amarelo/verde) para mover a ficha entre Pendente, Em Análise e Aprovado.
+- **Trilha de auditoria (LGPD)** - toda alteração de status feita pelo RH é registrada em `auditoria.json` (não versionado) com `candidatoId`, status anterior, novo status, timestamp e IP de origem da requisição.
+
+Rotas do backend dedicadas ao painel: `GET /api/rh/fichas` e `PATCH /api/rh/fichas/:id/status`.
+
+Ainda **não implementados** nesta etapa: autenticação do RH (login manual/OAuth), chat entre RH e candidato com reabertura de pendências, e declaração de consentimento do candidato na trilha de auditoria - a auditoria hoje cobre apenas as alterações de status feitas pelo RH.
 
 ## Próximas fases do roteiro de desenvolvimento
 
-### Etapa 2: Módulo do RH, Painel de Gestão e Trilha de Auditoria LGPD
+### Continuação da Etapa 2
 
-- Módulo do RH e Painel de Gestão (`/rh.html`).
-- Funcionalidade de alteração e homologação de status pelo setor de RH.
-- Autenticação e Segurança (login manual e OAuth com Google).
+- Autenticação e Segurança (login manual e OAuth com Google) para acesso ao Painel do RH.
 - Sistema de chat para comunicação direta entre RH e candidato, com reabertura pontual de pendências.
-- Trilha de Auditoria e Conformidade LGPD (registro de IP e timestamp).
+- Registro na trilha de auditoria também dos aceites/consentimentos do candidato (hoje ela cobre apenas as ações do RH).
 
 ## Como Executar o Projeto Localmente
 
