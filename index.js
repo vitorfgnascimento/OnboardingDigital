@@ -151,7 +151,8 @@ app.post('/api/candidato', (req, res) => {
     nomeCompleto,
     dataNascimento,
     cpf,
-    endereco,
+    logradouro,
+    bairro,
     cep,
     numero,
     complemento,
@@ -175,7 +176,8 @@ app.post('/api/candidato', (req, res) => {
     nomeCompleto,
     dataNascimento,
     cpf,
-    endereco,
+    logradouro,
+    bairro,
     cep,
     numero,
     complemento,
@@ -247,6 +249,9 @@ app.patch('/api/candidato/:id/dados', (req, res) => {
 app.post('/api/candidato/:id/documento', (req, res) => {
   upload.single('arquivo')(req, res, (erroUpload) => {
     if (erroUpload) {
+      if (erroUpload.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ erro: 'Arquivo excedeu o tamanho limite de 10 MB' });
+      }
       return res.status(400).json({ erro: erroUpload.message });
     }
 

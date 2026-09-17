@@ -319,11 +319,17 @@
         <div class="campo span-1">
           <label for="cep">CEP *</label>
           <input type="text" id="cep" placeholder="00000-000" maxlength="9" required>
+          <span class="erro-texto" id="erroCep">CEP não encontrado. Preencha o endereço manualmente.</span>
         </div>
 
         <div class="campo span-2">
-          <label for="endereco">Endereço (Rua/Avenida/Bairro) *</label>
-          <input type="text" id="endereco" placeholder="Ex: Rua das Flores, Centro" required>
+          <label for="logradouro">Logradouro (Rua/Avenida) *</label>
+          <input type="text" id="logradouro" placeholder="Ex: Rua das Flores" required>
+        </div>
+
+        <div class="campo span-2">
+          <label for="bairro">Bairro *</label>
+          <input type="text" id="bairro" placeholder="Ex: Centro" required>
         </div>
 
         <div class="campo span-1">
@@ -423,8 +429,63 @@
     document.getElementById('cpf').addEventListener('input', (e) => aplicarMascaraComCursor(e.target, mascaraCPF));
     document.getElementById('cep').addEventListener('input', (e) => aplicarMascaraComCursor(e.target, mascaraCEP));
     document.getElementById('whatsapp').addEventListener('input', (e) => aplicarMascaraComCursor(e.target, mascaraTelefone));
-    document.getElementById('endereco').addEventListener('input', (e) => { e.target.value = e.target.value.replace(/[0-9]/g, ''); });
+    document.getElementById('logradouro').addEventListener('input', (e) => { e.target.value = e.target.value.replace(/[0-9]/g, ''); });
+    document.getElementById('bairro').addEventListener('input', (e) => { e.target.value = e.target.value.replace(/[0-9]/g, ''); });
     document.getElementById('numero').addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, ''); });
+
+    // =========================================================================
+    // AUTOPREENCHIMENTO DE ENDEREÇO VIA CEP (API ViaCEP)
+    // =========================================================================
+    let ultimoCepConsultado = null;
+    let consultaCepAtual = 0; // token da consulta mais recente, para ignorar respostas antigas fora de ordem
+
+    async function buscarEnderecoPorCep(cepDigitado) {
+      const cepLimpo = cepDigitado.replace(/\D/g, '');
+      if (cepLimpo.length !== 8 || cepLimpo === ultimoCepConsultado) return;
+      ultimoCepConsultado = cepLimpo;
+
+      const minhaConsulta = ++consultaCepAtual;
+      const campoLogradouro = document.getElementById('logradouro');
+      const campoBairro = document.getElementById('bairro');
+      const campoNumero = document.getElementById('numero');
+      const campoComplemento = document.getElementById('complemento');
+      const erroCep = document.getElementById('erroCep');
+      erroCep.style.display = 'none';
+
+      try {
+        const resposta = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
+        const dados = await resposta.json();
+
+        // Ignora a resposta se, enquanto ela estava em trânsito, outra consulta de CEP já foi iniciada
+        if (minhaConsulta !== consultaCepAtual) return;
+
+        if (!resposta.ok || dados.erro) {
+          campoLogradouro.value = '';
+          campoBairro.value = '';
+          erroCep.style.display = 'block';
+          alert('CEP não encontrado. Preencha o endereço manualmente.');
+          return;
+        }
+
+        campoLogradouro.value = dados.logradouro || '';
+        campoBairro.value = dados.bairro || '';
+
+        // Número e Complemento seguem em branco para digitação manual, com foco no Número
+        campoNumero.value = '';
+        campoComplemento.value = '';
+        campoNumero.focus();
+      } catch (erro) {
+        if (minhaConsulta !== consultaCepAtual) return;
+        erroCep.style.display = 'block';
+        alert('Não foi possível consultar o CEP agora. Preencha o endereço manualmente.');
+      }
+    }
+
+    document.getElementById('cep').addEventListener('input', (e) => {
+      const digitos = e.target.value.replace(/\D/g, '');
+      if (digitos.length < 8) ultimoCepConsultado = null;
+      if (digitos.length === 8) buscarEnderecoPorCep(digitos);
+    });
 
     // =========================================================================
     // LEITURA DE ESTADO (valores atuais do formulário / regras)
@@ -646,25 +707,46 @@
       dropzone.addEventListener('drop', (e) => {
         e.preventDefault();
         if (input.disabled) return;
-        if (e.dataTransfer.files.length) anexarArquivo(tipo, e.dataTransfer.files[0]);
+        if (e.dataTransfer.files.length) anexarArquivo(tipo, e.dataTransfer.files[0], null);
       });
       input.addEventListener('change', () => {
-        if (input.files.length) anexarArquivo(tipo, input.files[0]);
+        if (input.files.length) anexarArquivo(tipo, input.files[0], input);
       });
     }
 
-    function anexarArquivo(tipo, arquivo) {
+    // Limite máximo de PDF aceito pelo frontend (deve bater com o limite do Multer no backend)
+    const TAMANHO_MAXIMO_PDF = 10 * 1024 * 1024; // 10 MB
+
+    const uploadsEmProcessamento = new Set();
+
+    function anexarArquivo(tipo, arquivo, input) {
       if (fichaBloqueada) return;
+      // Evita disparos duplicados (ex.: duplo clique) processando o mesmo tipo em paralelo
+      if (uploadsEmProcessamento.has(tipo)) return;
+      uploadsEmProcessamento.add(tipo);
 
-      const ehPdf = /\.pdf$/i.test(arquivo.name) &&
-        (arquivo.type === '' || /pdf|octet-stream/i.test(arquivo.type));
-      if (!ehPdf) {
-        alert('Apenas arquivos PDF são aceitos.');
-        return;
+      try {
+        const ehPdf = /\.pdf$/i.test(arquivo.name) &&
+          (arquivo.type === '' || /pdf|octet-stream/i.test(arquivo.type));
+        if (!ehPdf) {
+          alert('Apenas arquivos PDF são aceitos.');
+          if (input) input.value = '';
+          return;
+        }
+
+        if (arquivo.size > TAMANHO_MAXIMO_PDF) {
+          alert('Arquivo excedeu o tamanho limite de 10 MB');
+          if (input) input.value = '';
+          delete arquivosPendentes[tipo];
+          atualizarBarras();
+          return;
+        }
+
+        arquivosPendentes[tipo] = arquivo;
+        atualizarBarras();
+      } finally {
+        uploadsEmProcessamento.delete(tipo);
       }
-
-      arquivosPendentes[tipo] = arquivo;
-      atualizarBarras();
     }
 
     // =========================================================================
@@ -739,7 +821,7 @@
       document.getElementById('erroEmail').style.display = regexEmail.test(email) ? 'none' : 'block';
       if (!regexEmail.test(email)) valido = false;
 
-      const obrigatorios = ['dataNascimento', 'cpf', 'cep', 'endereco', 'numero', 'whatsapp'];
+      const obrigatorios = ['dataNascimento', 'cpf', 'cep', 'logradouro', 'bairro', 'numero', 'whatsapp'];
       const faltamCampos = obrigatorios.some((id) => !document.getElementById(id).value.trim());
 
       if (!genero) { alert('Selecione o gênero para continuar.'); valido = false; }
@@ -791,7 +873,8 @@
           dataNascimento: document.getElementById('dataNascimento').value,
           cpf: document.getElementById('cpf').value,
           cep: document.getElementById('cep').value,
-          endereco: document.getElementById('endereco').value,
+          logradouro: document.getElementById('logradouro').value,
+          bairro: document.getElementById('bairro').value,
           numero: document.getElementById('numero').value,
           complemento: document.getElementById('complemento').value,
           email: document.getElementById('email').value.trim(),
