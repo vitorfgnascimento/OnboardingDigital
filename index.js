@@ -36,6 +36,66 @@ const TIPOS_DOCUMENTO = [
 const GENEROS_VALIDOS = ['Masculino', 'Feminino', 'Outro', 'Prefiro não informar'];
 
 // ---------------------------------------------------------------------------
+// VALIDAÇÃO DOS DADOS PESSOAIS (espelha as regras do frontend - defesa em
+// profundidade, já que a rota pode ser chamada diretamente, sem passar pela UI)
+// ---------------------------------------------------------------------------
+
+const somenteDigitos = (valor) => String(valor || '').replace(/\D/g, '');
+
+// Verifica se DD/MM/AAAA (já sem máscara) é uma data de calendário real.
+function dataNascimentoValida(digitosData) {
+  if (digitosData.length !== 8) return false;
+  const dia = Number(digitosData.slice(0, 2));
+  const mes = Number(digitosData.slice(2, 4));
+  const ano = Number(digitosData.slice(4, 8));
+
+  if (mes < 1 || mes > 12) return false;
+  const diasNoMes = new Date(ano, mes, 0).getDate();
+  if (dia < 1 || dia > diasNoMes) return false;
+  if (ano < 1900 || ano > new Date().getFullYear()) return false;
+
+  return true;
+}
+
+const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const REGEX_REPETICAO = /(.)\1{2,}/i;
+
+// Retorna a lista de erros de validação dos dados pessoais (vazia = tudo ok).
+function validarDadosPessoais(dados) {
+  const erros = [];
+  const nome = String(dados.nomeCompleto || '').trim();
+  const possuiSobrenome = nome.split(' ').filter((p) => p.length > 0).length >= 2;
+
+  if (!nome || !possuiSobrenome || REGEX_REPETICAO.test(nome)) {
+    erros.push('Nome completo inválido (informe nome e sobrenome, sem sequências repetidas).');
+  }
+  if (!dados.email || !REGEX_EMAIL.test(String(dados.email).trim())) {
+    erros.push('E-mail inválido.');
+  }
+  if (!dados.genero || !GENEROS_VALIDOS.includes(dados.genero)) {
+    erros.push('Gênero inválido.');
+  }
+  if (somenteDigitos(dados.cpf).length !== 11) {
+    erros.push('CPF incompleto ou inválido.');
+  }
+  if (somenteDigitos(dados.cep).length !== 8) {
+    erros.push('CEP incompleto ou inválido.');
+  }
+  if (!dataNascimentoValida(somenteDigitos(dados.dataNascimento))) {
+    erros.push('Data de nascimento incompleta ou inválida.');
+  }
+  const digitosWhatsapp = somenteDigitos(dados.whatsapp);
+  if (digitosWhatsapp.length !== 10 && digitosWhatsapp.length !== 11) {
+    erros.push('WhatsApp/Telefone incompleto.');
+  }
+  if (!String(dados.logradouro || '').trim()) erros.push('Logradouro não informado.');
+  if (!String(dados.bairro || '').trim()) erros.push('Bairro não informado.');
+  if (!String(dados.numero || '').trim()) erros.push('Número não informado.');
+
+  return erros;
+}
+
+// ---------------------------------------------------------------------------
 // PERSISTÊNCIA
 // ---------------------------------------------------------------------------
 
@@ -189,14 +249,12 @@ app.post('/api/candidato', (req, res) => {
     genero
   } = req.body;
 
-  if (!nomeCompleto || !cpf || !email) {
-    return res.status(400).json({
-      erro: 'Campos obrigatórios (Nome, CPF, E-mail) não foram preenchidos.'
-    });
-  }
+  const errosValidacao = validarDadosPessoais({
+    nomeCompleto, dataNascimento, cpf, logradouro, bairro, cep, numero, email, whatsapp, genero
+  });
 
-  if (genero && !GENEROS_VALIDOS.includes(genero)) {
-    return res.status(400).json({ erro: 'Gênero inválido.' });
+  if (errosValidacao.length) {
+    return res.status(400).json({ erro: errosValidacao.join(' ') });
   }
 
   const novoCandidato = {

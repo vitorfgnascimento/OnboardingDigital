@@ -215,6 +215,41 @@
         }
       },
       {
+        nome: 'Recusa CPF incompleto (400)',
+        run: async () => {
+          const r = await postJson('/candidato', fichaValida({ cpf: '1' }));
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Recusa CEP incompleto (400)',
+        run: async () => {
+          const r = await postJson('/candidato', fichaValida({ cep: '1' }));
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Recusa WhatsApp incompleto (400)',
+        run: async () => {
+          const r = await postJson('/candidato', fichaValida({ whatsapp: '1' }));
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Recusa data de nascimento incompleta (400)',
+        run: async () => {
+          const r = await postJson('/candidato', fichaValida({ dataNascimento: '1' }));
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Recusa data de nascimento inexistente no calendário (31/02, 400)',
+        run: async () => {
+          const r = await postJson('/candidato', fichaValida({ dataNascimento: '31/02/2000' }));
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
         nome: 'Cria candidato Masculino (201, status VERMELHO, 6 documentos)',
         run: async () => {
           const r = await postJson('/candidato', fichaValida());

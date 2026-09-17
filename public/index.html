@@ -298,11 +298,13 @@
         <div class="campo span-1">
           <label for="dataNascimento">Data de Nascimento *</label>
           <input type="text" id="dataNascimento" placeholder="DD/MM/AAAA" maxlength="10" required>
+          <span class="erro-texto" id="erroDataNascimento">Informe a data completa e válida (DD/MM/AAAA).</span>
         </div>
 
         <div class="campo span-1">
           <label for="cpf">CPF *</label>
           <input type="text" id="cpf" placeholder="000.000.000-00" maxlength="14" required>
+          <span class="erro-texto" id="erroCpf">Informe o CPF completo (11 dígitos).</span>
         </div>
 
         <div class="campo span-1">
@@ -351,6 +353,7 @@
         <div class="campo span-1">
           <label for="whatsapp">WhatsApp / Telefone *</label>
           <input type="tel" id="whatsapp" placeholder="(00) 00000-0000" maxlength="15" required>
+          <span class="erro-texto" id="erroWhatsapp">Informe o telefone completo, com DDD.</span>
         </div>
 
       </div>
@@ -816,6 +819,21 @@
     // =========================================================================
     // CONCLUSÃO: VALIDA, ENVIA A FICHA E OS PDFs EM FLUXO CONTÍNUO
     // =========================================================================
+    // Verifica se DD/MM/AAAA é uma data de calendário real (rejeita 31/02, 00/13/2020 etc.)
+    function dataNascimentoValida(digitosData) {
+      if (digitosData.length !== 8) return false;
+      const dia = Number(digitosData.slice(0, 2));
+      const mes = Number(digitosData.slice(2, 4));
+      const ano = Number(digitosData.slice(4, 8));
+
+      if (mes < 1 || mes > 12) return false;
+      const diasNoMes = new Date(ano, mes, 0).getDate();
+      if (dia < 1 || dia > diasNoMes) return false;
+      if (ano < 1900 || ano > new Date().getFullYear()) return false;
+
+      return true;
+    }
+
     function validarDadosPessoais() {
       const nome = document.getElementById('nomeCompleto').value.trim();
       const email = document.getElementById('email').value.trim();
@@ -833,11 +851,39 @@
       document.getElementById('erroEmail').style.display = regexEmail.test(email) ? 'none' : 'block';
       if (!regexEmail.test(email)) valido = false;
 
-      const obrigatorios = ['dataNascimento', 'cpf', 'cep', 'logradouro', 'bairro', 'numero', 'whatsapp'];
-      const faltamCampos = obrigatorios.some((id) => !document.getElementById(id).value.trim());
+      // Campos de texto livre: precisam apenas estar preenchidos
+      const obrigatoriosSimples = ['logradouro', 'bairro', 'numero'];
+      const faltamCamposSimples = obrigatoriosSimples.some((id) => !document.getElementById(id).value.trim());
+      if (faltamCamposSimples) { alert('Preencha todos os campos obrigatórios dos Dados Pessoais.'); valido = false; }
+
+      // Campos com máscara: precisam estar completos, não só preenchidos
+      const digitosData = document.getElementById('dataNascimento').value.replace(/\D/g, '');
+      const dataOk = dataNascimentoValida(digitosData);
+      document.getElementById('erroDataNascimento').style.display = dataOk ? 'none' : 'block';
+      if (!dataOk) valido = false;
+
+      const digitosCpf = document.getElementById('cpf').value.replace(/\D/g, '');
+      const cpfOk = digitosCpf.length === 11;
+      document.getElementById('erroCpf').style.display = cpfOk ? 'none' : 'block';
+      if (!cpfOk) valido = false;
+
+      const digitosCep = document.getElementById('cep').value.replace(/\D/g, '');
+      const cepOk = digitosCep.length === 8;
+      const erroCep = document.getElementById('erroCep');
+      if (!cepOk) {
+        erroCep.textContent = 'Informe o CEP completo (8 dígitos).';
+        erroCep.style.display = 'block';
+        valido = false;
+      } else {
+        erroCep.style.display = 'none';
+      }
+
+      const digitosWhatsapp = document.getElementById('whatsapp').value.replace(/\D/g, '');
+      const whatsappOk = digitosWhatsapp.length === 10 || digitosWhatsapp.length === 11;
+      document.getElementById('erroWhatsapp').style.display = whatsappOk ? 'none' : 'block';
+      if (!whatsappOk) valido = false;
 
       if (!genero) { alert('Selecione o gênero para continuar.'); valido = false; }
-      if (faltamCampos) { alert('Preencha todos os campos obrigatórios dos Dados Pessoais.'); valido = false; }
 
       return valido;
     }
