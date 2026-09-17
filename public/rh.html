@@ -318,6 +318,15 @@
     .btn-reprovar-candidato { background-color: var(--vermelho); }
     .btn-reprovar-candidato:hover { background-color: #b02a37; }
     .btn-decisao:disabled { opacity: 0.45; cursor: not-allowed; }
+    .confirmar-decisao {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .confirmar-decisao[hidden] { display: none; }
 
     /* --- CHAT RH <-> CANDIDATO --- */
     .secao-chat {
@@ -533,15 +542,22 @@
     }
 
     // Monta a seção de decisão final (Aprovar/Reprovar) do candidato.
+    // Confirmação é feita inline (não usa confirm() nativo do navegador, que
+    // pode ser cancelado automaticamente em painéis de preview/automação).
     function montarSecaoDecisao(ficha) {
       const decidido = ficha.decisaoFinal;
       return `
         <div class="secao-decisao">
           <div class="secao-titulo">Decisão Final do Processo</div>
-          <button type="button" class="btn-decisao btn-aprovar-candidato" data-decisao="${ficha.id}:APROVADO"
-                  ${decidido === 'APROVADO' ? 'disabled' : ''}>Aprovar Candidato</button>
-          <button type="button" class="btn-decisao btn-reprovar-candidato" data-decisao="${ficha.id}:REPROVADO"
-                  ${decidido === 'REPROVADO' ? 'disabled' : ''}>Reprovar Candidato</button>
+          <div data-botoes-decisao="${ficha.id}" ${decidido ? 'hidden' : ''}>
+            <button type="button" class="btn-decisao btn-aprovar-candidato" data-abrir-decisao="${ficha.id}:APROVADO">Aprovar Candidato</button>
+            <button type="button" class="btn-decisao btn-reprovar-candidato" data-abrir-decisao="${ficha.id}:REPROVADO">Reprovar Candidato</button>
+          </div>
+          <div class="confirmar-decisao" data-confirmar-decisao="${ficha.id}" hidden>
+            <span data-texto-confirmar-decisao></span>
+            <button type="button" class="btn-decisao" data-confirmar-decisao-sim="${ficha.id}">Confirmar</button>
+            <button type="button" class="btn-cancelar-pendencia" data-cancelar-decisao="${ficha.id}">Cancelar</button>
+          </div>
           ${decidido ? `<span class="badge-decisao badge-decisao-${decidido.toLowerCase()}">${decidido} em ${formatarData(ficha.decisaoFinalEm)}</span>` : ''}
         </div>
       `;
@@ -715,11 +731,8 @@
       }
     }
 
-    // RH aprova ou reprova definitivamente o candidato.
+    // RH aprova ou reprova definitivamente o candidato (após confirmação inline).
     async function decidirCandidato(id, decisao) {
-      const rotulo = decisao === 'APROVADO' ? 'aprovar' : 'reprovar';
-      if (!confirm(`Confirma a decisão de ${rotulo} este candidato? A ficha ficará travada para edição.`)) return;
-
       try {
         const resposta = await fetch(`/api/rh/fichas/${id}/decisao`, {
           method: 'PATCH',
@@ -787,10 +800,38 @@
         return;
       }
 
-      const btnDecisao = e.target.closest('[data-decisao]');
-      if (btnDecisao) {
-        const [idFicha, decisao] = btnDecisao.dataset.decisao.split(':');
-        decidirCandidato(idFicha, decisao);
+      const btnAbrirDecisao = e.target.closest('[data-abrir-decisao]');
+      if (btnAbrirDecisao) {
+        const [idFicha, decisao] = btnAbrirDecisao.dataset.abrirDecisao.split(':');
+        const botoes = document.querySelector(`[data-botoes-decisao="${idFicha}"]`);
+        const confirmacao = document.querySelector(`[data-confirmar-decisao="${idFicha}"]`);
+        if (botoes) botoes.hidden = true;
+        if (confirmacao) {
+          confirmacao.hidden = false;
+          confirmacao.dataset.decisaoEscolhida = decisao;
+          const rotulo = decisao === 'APROVADO' ? 'aprovar' : 'reprovar';
+          confirmacao.querySelector('[data-texto-confirmar-decisao]').textContent =
+            `Confirma a decisão de ${rotulo} este candidato? A ficha ficará travada para edição.`;
+        }
+        return;
+      }
+
+      const btnCancelarDecisao = e.target.closest('[data-cancelar-decisao]');
+      if (btnCancelarDecisao) {
+        const idFicha = btnCancelarDecisao.dataset.cancelarDecisao;
+        const botoes = document.querySelector(`[data-botoes-decisao="${idFicha}"]`);
+        const confirmacao = document.querySelector(`[data-confirmar-decisao="${idFicha}"]`);
+        if (confirmacao) confirmacao.hidden = true;
+        if (botoes) botoes.hidden = false;
+        return;
+      }
+
+      const btnConfirmarDecisao = e.target.closest('[data-confirmar-decisao-sim]');
+      if (btnConfirmarDecisao) {
+        const idFicha = btnConfirmarDecisao.dataset.confirmarDecisaoSim;
+        const confirmacao = document.querySelector(`[data-confirmar-decisao="${idFicha}"]`);
+        const decisao = confirmacao ? confirmacao.dataset.decisaoEscolhida : null;
+        if (decisao) decidirCandidato(idFicha, decisao);
         return;
       }
 
