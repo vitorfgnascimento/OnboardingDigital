@@ -38,8 +38,11 @@ O Painel de Gestão do RH (`public/rh.html`) está em construção, cobrindo at�
 - **Reabertura pontual de pendências** - o RH marca um documento já enviado como "Com Pendência", com justificativa obrigatória; só aquele documento é liberado para reenvio na Ficha do Candidato (o resto continua travado), e a pendência se encerra automaticamente quando o candidato reenvia o PDF.
 - **Chat RH ↔ Candidato** - conversa simples, com histórico persistido junto da ficha (ordenado por data/hora), disponível tanto no Painel do RH quanto na Ficha do Candidato (a partir do primeiro envio).
 - **Decisão final do processo** - botões "Aprovar Candidato"/"Reprovar Candidato" no Painel do RH; a Ficha do Candidato exibe um banner de sucesso ou de agradecimento e trava totalmente para edição, sem exceção (nem pendências residuais reabrem campos).
+- **Filtros e ordenação** - filtra a lista por decisão (Todos/Aprovados/Reprovados/Pendentes); candidatos ainda não avaliados ficam sempre no topo, com separação visual entre "Novos/Não avaliados" e "Já avaliados".
+- **Exportação de relatório em CSV** - botão no cabeçalho da tabela baixa um `.csv` (compatível com Excel, com BOM UTF-8) das fichas, respeitando o filtro de decisão ativo.
+- **Impressão/PDF da ficha individual** - cada candidato tem um botão que monta uma versão formatada para impressão (dados pessoais, documentos e declaração de consentimento LGPD com o timestamp real de submissão), usando o "Salvar como PDF" do navegador.
 
-Rotas do backend dedicadas ao painel: `GET /api/rh/fichas`, `PATCH /api/rh/fichas/:id/status`, `PATCH /api/rh/fichas/:id/documento/:tipo/pendencia`, `PATCH /api/rh/fichas/:id/decisao`. Rotas compartilhadas com o candidato: `GET /api/candidato/:id` (retorno via link `?id=`) e `POST /api/candidato/:id/mensagens` (chat).
+Rotas do backend dedicadas ao painel: `GET /api/rh/fichas`, `PATCH /api/rh/fichas/:id/status`, `PATCH /api/rh/fichas/:id/documento/:tipo/pendencia`, `PATCH /api/rh/fichas/:id/decisao`, `GET /api/rh/exportar-csv` (aceita `?filtro=APROVADO|REPROVADO|PENDENTE`). Rotas compartilhadas com o candidato: `GET /api/candidato/:id` (retorno via link `?id=`) e `POST /api/candidato/:id/mensagens` (chat).
 
 Ainda **não implementados** nesta etapa: autenticação do RH (login manual/OAuth) e declaração de consentimento do candidato na trilha de auditoria - a auditoria hoje cobre apenas as ações do RH (status, pendência, decisão).
 

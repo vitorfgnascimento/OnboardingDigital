@@ -57,6 +57,19 @@
       transition: background-color 0.2s;
     }
     .btn-atualizar:hover { background-color: var(--verde-intelbras-escuro); }
+    .acoes-topo { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn-exportar {
+      background-color: #ffffff;
+      color: var(--verde-intelbras-escuro);
+      border: 1px solid var(--verde-intelbras);
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: bold;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .btn-exportar:hover { background-color: rgba(0, 163, 53, 0.08); }
 
     /* --- CARDS DE RESUMO ESTATÍSTICO --- */
     .cards-resumo {
@@ -437,6 +450,80 @@
     @media (max-width: 700px) {
       .cards-resumo { grid-template-columns: repeat(2, 1fr); }
     }
+
+    /* --- IMPRESSÃO / PDF DA FICHA INDIVIDUAL --- */
+    .secao-impressao {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--cinza-borda);
+    }
+    .btn-imprimir {
+      background-color: #1a252f;
+      color: #ffffff;
+      border: none;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .btn-imprimir:hover { background-color: #0f151b; }
+
+    /* Área de impressão fica sempre oculta na tela; só é exibida durante a impressão */
+    #areaImpressao { display: none; }
+
+    @media print {
+      body * { visibility: hidden; }
+      #areaImpressao, #areaImpressao * { visibility: visible; }
+      #areaImpressao {
+        display: block;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        padding: 0;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        color: #000000;
+      }
+      .ficha-impressa { padding: 20px; }
+      .ficha-impressa h1 {
+        font-size: 20px;
+        border-bottom: 2px solid #00A335;
+        padding-bottom: 8px;
+        margin: 0 0 16px;
+      }
+      .ficha-impressa h2 {
+        font-size: 14px;
+        margin: 18px 0 8px;
+        border-bottom: 1px solid #cccccc;
+        padding-bottom: 4px;
+      }
+      .ficha-impressa .grade-impressao {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 20px;
+        font-size: 12px;
+      }
+      .ficha-impressa .campo-impressao strong { display: block; font-size: 10px; color: #555555; }
+      .ficha-impressa table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+      .ficha-impressa th, .ficha-impressa td {
+        text-align: left;
+        padding: 6px 8px;
+        border: 1px solid #cccccc;
+      }
+      .ficha-impressa .declaracao-lgpd {
+        margin-top: 20px;
+        padding: 12px 14px;
+        border: 1px solid #999999;
+        font-size: 11px;
+        line-height: 1.5;
+      }
+      .ficha-impressa .rodape-impressao {
+        margin-top: 20px;
+        font-size: 10px;
+        color: #666666;
+      }
+    }
   </style>
 </head>
 <body>
@@ -447,7 +534,10 @@
     </div>
     <div class="barra-topo">
       <h2>Painel do RH - Processos Admissionais</h2>
-      <button class="btn-atualizar" id="btnAtualizar" type="button">Atualizar lista</button>
+      <div class="acoes-topo">
+        <button class="btn-exportar" id="btnExportarCsv" type="button">Exportar Relatório (CSV)</button>
+        <button class="btn-atualizar" id="btnAtualizar" type="button">Atualizar lista</button>
+      </div>
     </div>
 
     <!-- CARDS DE RESUMO ESTATÍSTICO -->
@@ -497,6 +587,9 @@
       </tbody>
     </table>
   </div>
+
+  <!-- ÁREA DE IMPRESSÃO: fica oculta na tela; só aparece via CSS @media print -->
+  <div id="areaImpressao"></div>
 
   <script>
     // Mapa de status para a classe visual do badge/botão correspondente.
@@ -648,6 +741,88 @@
       `;
     }
 
+    // Monta o HTML da ficha formatada para impressão/PDF (usado apenas dentro de
+    // #areaImpressao, que só fica visível durante a impressão - ver @media print).
+    function montarConteudoImpressao(ficha) {
+      const endereco = [ficha.logradouro, ficha.numero, ficha.complemento, ficha.bairro, ficha.cep]
+        .filter(Boolean).join(', ');
+      const statusTexto = ROTULO_STATUS[ficha.status] || ficha.status || '-';
+      const decisaoTexto = ficha.decisaoFinal
+        ? `${ficha.decisaoFinal} em ${formatarData(ficha.decisaoFinalEm)}`
+        : 'Ainda não decidida';
+
+      const campo = (rotulo, valor) => `
+        <div class="campo-impressao"><strong>${rotulo}</strong>${escapeHtml(valor || '-')}</div>
+      `;
+
+      const linhasDocumentos = DOCUMENTOS.map((doc) => {
+        const documento = (ficha.documentos && ficha.documentos[doc.tipo]) || {};
+        let situacao;
+        if (documento.arquivo) {
+          situacao = 'Enviado';
+        } else if (doc.tipo === 'reservista' && ficha.genero !== 'Masculino') {
+          situacao = 'Não exigido';
+        } else if (doc.tipo === 'cpf' && ficha.cpfInclusoNaIdentidade) {
+          situacao = 'Não exigido (incluso na Identidade)';
+        } else {
+          situacao = 'Pendente';
+        }
+        return `<tr><td>${doc.titulo}</td><td>${situacao}</td></tr>`;
+      }).join('');
+
+      return `
+        <div class="ficha-impressa">
+          <h1>Ficha de Admissão - ${escapeHtml(ficha.nomeCompleto)}</h1>
+
+          <h2>Dados Pessoais</h2>
+          <div class="grade-impressao">
+            ${campo('Nome Completo', ficha.nomeCompleto)}
+            ${campo('CPF', ficha.cpf)}
+            ${campo('Data de Nascimento', ficha.dataNascimento)}
+            ${campo('Gênero', ficha.genero)}
+            ${campo('E-mail', ficha.email)}
+            ${campo('WhatsApp/Telefone', ficha.whatsapp)}
+            ${campo('Endereço', endereco)}
+            ${campo('Status Atual', statusTexto)}
+            ${campo('Decisão Final', decisaoTexto)}
+            ${campo('Data de Submissão', formatarData(ficha.criadoEm))}
+          </div>
+
+          <h2>Documentos</h2>
+          <table>
+            <thead><tr><th>Documento</th><th>Situação</th></tr></thead>
+            <tbody>${linhasDocumentos}</tbody>
+          </table>
+
+          <div class="declaracao-lgpd">
+            <strong>Declaração de Consentimento (LGPD):</strong> Ao submeter esta ficha em
+            ${formatarData(ficha.criadoEm)}, o(a) candidato(a) ${escapeHtml(ficha.nomeCompleto)} declarou estar
+            ciente e de acordo com a coleta, o armazenamento e o tratamento dos seus dados pessoais e
+            documentos para fins exclusivos deste processo seletivo, nos termos da Lei Geral de Proteção
+            de Dados Pessoais (Lei nº 13.709/2018 - LGPD).
+          </div>
+
+          <div class="rodape-impressao">Documento gerado pelo Painel do RH em ${formatarData(new Date().toISOString())}.</div>
+        </div>
+      `;
+    }
+
+    // Busca a ficha atualizada, monta o conteúdo formatado e aciona a impressão do navegador.
+    async function imprimirFicha(id) {
+      try {
+        const resposta = await fetch('/api/candidato/' + id);
+        if (!resposta.ok) {
+          alert('Não foi possível carregar os dados desta ficha para impressão.');
+          return;
+        }
+        const ficha = await resposta.json();
+        document.getElementById('areaImpressao').innerHTML = montarConteudoImpressao(ficha);
+        window.print();
+      } catch (erro) {
+        alert('Falha ao preparar a impressão da ficha.');
+      }
+    }
+
     // Atualiza os cards de resumo estatístico a partir da lista de fichas.
     function atualizarCardsResumo(fichas) {
       const total = fichas.length;
@@ -758,6 +933,9 @@
           trDetalhes.innerHTML = `
             <td colspan="5">
               <div class="grade-documentos">${montarGradeDocumentos(f)}</div>
+              <div class="secao-impressao">
+                <button type="button" class="btn-imprimir" data-imprimir="${f.id}">Imprimir/Gerar PDF da Ficha</button>
+              </div>
               ${montarSecaoDecisao(f)}
               ${montarSecaoChat(f)}
             </td>
@@ -894,6 +1072,12 @@
         return;
       }
 
+      const btnImprimir = e.target.closest('[data-imprimir]');
+      if (btnImprimir) {
+        imprimirFicha(btnImprimir.dataset.imprimir);
+        return;
+      }
+
       const btnAbrirPendencia = e.target.closest('[data-abrir-pendencia]');
       if (btnAbrirPendencia) {
         const form = document.querySelector(
@@ -997,6 +1181,12 @@
     });
 
     document.getElementById('btnAtualizar').addEventListener('click', carregarFichas);
+
+    // Exporta o relatório em CSV, respeitando o filtro por decisão ativo no momento.
+    document.getElementById('btnExportarCsv').addEventListener('click', () => {
+      const params = filtroAtual !== 'TODOS' ? `?filtro=${encodeURIComponent(filtroAtual)}` : '';
+      window.location.href = '/api/rh/exportar-csv' + params;
+    });
 
     // Carrega o painel assim que a página abre.
     carregarFichas();
