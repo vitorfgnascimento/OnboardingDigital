@@ -318,6 +318,8 @@
     .btn-reprovar-candidato { background-color: var(--vermelho); }
     .btn-reprovar-candidato:hover { background-color: #b02a37; }
     .btn-decisao:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-confirmar-decisao { background-color: var(--verde-intelbras); }
+    .btn-confirmar-decisao:hover { background-color: var(--verde-intelbras-escuro); }
     .confirmar-decisao {
       display: flex;
       align-items: center;
@@ -387,6 +389,51 @@
     }
     .btn-enviar-mensagem:hover { background-color: var(--verde-intelbras-escuro); }
 
+    /* --- FILTROS POR DECISÃO --- */
+    .barra-filtros {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 20px 0 10px;
+    }
+    .btn-filtro {
+      background: #ffffff;
+      border: 1px solid var(--cinza-borda);
+      color: var(--texto);
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+    }
+    .btn-filtro:hover { border-color: var(--verde-intelbras); }
+    .btn-filtro.ativo {
+      background-color: var(--verde-intelbras);
+      border-color: var(--verde-intelbras);
+      color: #ffffff;
+    }
+
+    /* --- SEPARADOR DE GRUPO (novos/não avaliados x já avaliados) --- */
+    .linha-grupo td {
+      padding: 14px 10px 6px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: #6c757d;
+      border-bottom: 2px solid var(--cinza-borda);
+    }
+    .linha-grupo-novos td { color: var(--verde-intelbras-escuro); }
+
+    /* --- SETA INDICADORA DE EXPANSÃO --- */
+    .seta-expandir {
+      display: inline-block;
+      margin-left: 6px;
+      transition: transform 0.2s ease;
+    }
+    .btn-documentos[aria-expanded="true"] .seta-expandir { transform: rotate(180deg); }
+
     @media (max-width: 700px) {
       .cards-resumo { grid-template-columns: repeat(2, 1fr); }
     }
@@ -421,6 +468,14 @@
         <div class="card-rotulo">Aprovados</div>
         <div class="card-valor" id="cardAprovados">0</div>
       </div>
+    </div>
+
+    <!-- FILTROS POR DECISÃO -->
+    <div class="barra-filtros" role="group" aria-label="Filtrar fichas por decisão">
+      <button type="button" class="btn-filtro ativo" data-filtro="TODOS">Todos</button>
+      <button type="button" class="btn-filtro" data-filtro="APROVADO">Aprovados</button>
+      <button type="button" class="btn-filtro" data-filtro="REPROVADO">Reprovados</button>
+      <button type="button" class="btn-filtro" data-filtro="PENDENTE">Pendentes (não avaliados)</button>
     </div>
 
     <!-- TABELA DE GESTÃO DAS FICHAS -->
@@ -555,7 +610,7 @@
           </div>
           <div class="confirmar-decisao" data-confirmar-decisao="${ficha.id}" hidden>
             <span data-texto-confirmar-decisao></span>
-            <button type="button" class="btn-decisao" data-confirmar-decisao-sim="${ficha.id}">Confirmar</button>
+            <button type="button" class="btn-decisao btn-confirmar-decisao" data-confirmar-decisao-sim="${ficha.id}">Confirmar</button>
             <button type="button" class="btn-cancelar-pendencia" data-cancelar-decisao="${ficha.id}">Cancelar</button>
           </div>
           ${decidido ? `<span class="badge-decisao badge-decisao-${decidido.toLowerCase()}">${decidido} em ${formatarData(ficha.decisaoFinalEm)}</span>` : ''}
@@ -603,6 +658,27 @@
     // Ids das fichas com o painel de detalhes aberto, para restaurar após cada recarga.
     const detalhesExpandidos = new Set();
 
+    // Filtro ativo por decisão: 'TODOS' | 'APROVADO' | 'REPROVADO' | 'PENDENTE' (não avaliados).
+    let filtroAtual = 'TODOS';
+
+    function aplicarFiltro(fichas) {
+      if (filtroAtual === 'TODOS') return fichas;
+      if (filtroAtual === 'PENDENTE') return fichas.filter((f) => !f.decisaoFinal);
+      return fichas.filter((f) => f.decisaoFinal === filtroAtual);
+    }
+
+    // Novos/não avaliados sempre no topo; dentro de cada grupo, mais recentes primeiro.
+    function ordenarFichas(fichas) {
+      const dataOrdenacao = (f) => new Date(f.atualizadoEm || f.criadoEm).getTime();
+
+      return [...fichas].sort((a, b) => {
+        const aAvaliado = a.decisaoFinal ? 1 : 0;
+        const bAvaliado = b.decisaoFinal ? 1 : 0;
+        if (aAvaliado !== bAvaliado) return aAvaliado - bAvaliado; // não avaliados (0) primeiro
+        return dataOrdenacao(b) - dataOrdenacao(a); // mais recente primeiro
+      });
+    }
+
     // Busca a lista de fichas no backend e redesenha o painel (cards + tabela).
     async function carregarFichas() {
       const corpo = document.getElementById('corpoTabela');
@@ -610,23 +686,35 @@
 
       try {
         const resposta = await fetch('/api/rh/fichas');
-        const fichas = await resposta.json();
+        const todasAsFichas = await resposta.json();
 
-        if (!Array.isArray(fichas)) {
+        if (!Array.isArray(todasAsFichas)) {
           corpo.innerHTML = '<tr><td colspan="5" class="vazio">Falha ao carregar fichas.</td></tr>';
           return;
         }
 
-        atualizarCardsResumo(fichas);
+        atualizarCardsResumo(todasAsFichas);
+
+        const fichas = ordenarFichas(aplicarFiltro(todasAsFichas));
 
         if (fichas.length === 0) {
-          corpo.innerHTML = '<tr><td colspan="5" class="vazio">Nenhuma ficha recebida ainda.</td></tr>';
+          corpo.innerHTML = '<tr><td colspan="5" class="vazio">Nenhuma ficha encontrada para este filtro.</td></tr>';
           return;
         }
 
         corpo.innerHTML = '';
+        let grupoAtualRenderizado = null; // null | 'novos' | 'avaliados'
 
         fichas.forEach((f) => {
+          const grupoDaFicha = f.decisaoFinal ? 'avaliados' : 'novos';
+          if (grupoDaFicha !== grupoAtualRenderizado) {
+            grupoAtualRenderizado = grupoDaFicha;
+            const trGrupo = document.createElement('tr');
+            trGrupo.className = grupoDaFicha === 'novos' ? 'linha-grupo linha-grupo-novos' : 'linha-grupo';
+            trGrupo.innerHTML = `<td colspan="5">${grupoDaFicha === 'novos' ? 'Novos / Não avaliados' : 'Já avaliados'}</td>`;
+            corpo.appendChild(trGrupo);
+          }
+
           const tr = document.createElement('tr');
 
           const classeBadge = CLASSE_BADGE[f.status] || 'badge-vermelho';
@@ -651,7 +739,7 @@
                 <button class="btn-acao btn-aprovar" data-id="${f.id}" data-status="VERDE"
                         ${f.status === 'VERDE' ? 'disabled' : ''}>Aprovado</button>
                 <button class="btn-acao btn-documentos" data-expandir="${f.id}" type="button"
-                        aria-expanded="${expandidoAgora}">Documentos</button>
+                        aria-expanded="${expandidoAgora}">Documentos <span class="seta-expandir">&#9660;</span></button>
               </div>
             </td>
           `;
@@ -861,6 +949,26 @@
         if (!texto) return;
         enviarMensagemRH(idFicha, texto);
       }
+    });
+
+    // Enter envia a mensagem do chat; Shift+Enter continua quebrando linha (delegado,
+    // já que cada ficha tem seu próprio textarea, criado dinamicamente).
+    document.getElementById('corpoTabela').addEventListener('keydown', (e) => {
+      const campo = e.target.closest('[data-campo-mensagem]');
+      if (!campo) return;
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        campo.closest('[data-form-chat]').requestSubmit();
+      }
+    });
+
+    // Filtro por decisão: alterna o botão ativo e recarrega a tabela filtrada.
+    document.querySelector('.barra-filtros').addEventListener('click', (e) => {
+      const botao = e.target.closest('[data-filtro]');
+      if (!botao) return;
+      filtroAtual = botao.dataset.filtro;
+      document.querySelectorAll('.btn-filtro').forEach((b) => b.classList.toggle('ativo', b === botao));
+      carregarFichas();
     });
 
     document.getElementById('btnAtualizar').addEventListener('click', carregarFichas);
