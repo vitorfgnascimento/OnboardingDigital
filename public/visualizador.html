@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Visualizar Documento</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #525659;
+    }
+    iframe {
+      border: none;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .aviso {
+      color: #ffffff;
+      padding: 30px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <iframe id="frame" title="Documento PDF"></iframe>
+
+  <script>
+    // Abre o PDF dentro de um <iframe> em vez de navegar direto para o arquivo.
+    // Isso garante que o navegador mostre o visualizador de PDF embutido
+    // primeiro (com botões próprios de zoom/baixar/imprimir), em vez de
+    // disparar o download automaticamente - o que acontece em alguns
+    // navegadores/configurações quando se navega direto para um arquivo PDF.
+    const params = new URLSearchParams(window.location.search);
+    const arquivo = params.get('arquivo') || '';
+
+    // Só aceita caminhos dentro de uploads/, com nome de arquivo seguro (sem
+    // navegação de diretório nem URLs externas/absolutas).
+    const caminhoValido = /^uploads\/[\w.-]+\.pdf$/i.test(arquivo);
+
+    if (caminhoValido) {
+      document.getElementById('frame').src = '/' + arquivo;
+      document.title = arquivo.split('/').pop() + ' - Visualizar Documento';
+    } else {
+      document.body.innerHTML = '<p class="aviso">Não foi possível carregar este documento.</p>';
+    }
+  </script>
+</body>
+</html>
