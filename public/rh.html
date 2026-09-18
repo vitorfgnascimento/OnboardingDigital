@@ -618,22 +618,28 @@
       `;
     }
 
+    // Monta o HTML da lista de mensagens (reutilizado na montagem inicial e na
+    // atualização inline após o envio, sem precisar reconstruir a tabela toda).
+    function montarListaMensagensHtml(mensagens) {
+      if (!mensagens || !mensagens.length) {
+        return '<div class="mensagem-vazia">Nenhuma mensagem ainda.</div>';
+      }
+      return mensagens.map((m) => `
+        <div class="mensagem mensagem-${m.autor === 'RH' ? 'rh' : 'candidato'}">
+          <div class="mensagem-cabecalho">${m.autor === 'RH' ? 'RH' : 'Candidato'} · ${formatarData(m.timestamp)}</div>
+          <div class="mensagem-texto">${escapeHtml(m.texto)}</div>
+        </div>
+      `).join('');
+    }
+
     // Monta a seção de chat (histórico de mensagens + formulário de envio).
     function montarSecaoChat(ficha) {
       const mensagens = Array.isArray(ficha.mensagens) ? ficha.mensagens : [];
-      const listaHtml = mensagens.length
-        ? mensagens.map((m) => `
-            <div class="mensagem mensagem-${m.autor === 'RH' ? 'rh' : 'candidato'}">
-              <div class="mensagem-cabecalho">${m.autor === 'RH' ? 'RH' : 'Candidato'} · ${formatarData(m.timestamp)}</div>
-              <div class="mensagem-texto">${escapeHtml(m.texto)}</div>
-            </div>
-          `).join('')
-        : '<div class="mensagem-vazia">Nenhuma mensagem ainda.</div>';
 
       return `
         <div class="secao-chat">
           <div class="secao-titulo">Conversa com o Candidato</div>
-          <div class="lista-mensagens">${listaHtml}</div>
+          <div class="lista-mensagens">${montarListaMensagensHtml(mensagens)}</div>
           <form class="form-chat" data-form-chat="${ficha.id}">
             <textarea placeholder="Escreva uma mensagem para o candidato..." data-campo-mensagem required></textarea>
             <button type="submit" class="btn-enviar-mensagem">Enviar</button>
@@ -840,6 +846,25 @@
       }
     }
 
+    // Atualiza só a lista de mensagens de uma ficha já expandida, sem recarregar
+    // a tabela inteira (evita o "salto" de rolagem ao enviar uma mensagem).
+    function atualizarChatInline(id, mensagens) {
+      const trDetalhes = document.querySelector(`tr[data-detalhes-de="${id}"]`);
+      if (!trDetalhes) return;
+
+      const lista = trDetalhes.querySelector('.lista-mensagens');
+      if (lista) {
+        lista.innerHTML = montarListaMensagensHtml(mensagens);
+        lista.scrollTop = lista.scrollHeight;
+      }
+
+      const campo = trDetalhes.querySelector('[data-campo-mensagem]');
+      if (campo) {
+        campo.value = '';
+        campo.focus();
+      }
+    }
+
     // Envia uma mensagem do RH para o candidato.
     async function enviarMensagemRH(id, texto) {
       try {
@@ -855,7 +880,7 @@
           return;
         }
 
-        await carregarFichas();
+        atualizarChatInline(id, resultado.candidato.mensagens || []);
       } catch (erro) {
         alert('Falha ao comunicar com o servidor.');
       }
