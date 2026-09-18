@@ -21,6 +21,7 @@
   "homepage": "https://github.com/vitorfgnascimento/OnboardingDigital#readme",
   "dependencies": {
     "express": "^5.2.1",
+    "google-auth-library": "^11.1.0",
     "multer": "^2.3.0"
   }
 }

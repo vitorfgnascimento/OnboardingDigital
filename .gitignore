@@ -148,6 +148,12 @@ candidatos.json
 # Trilha de auditoria (contem IP e dados pessoais - LGPD, nao versionar)
 auditoria.json
 
+# Contas de usuario (senha com hash/salt, dados pessoais - LGPD, nao versionar)
+usuarios.json
+
+# Tokens de sessao ativos (nao versionar)
+sessoes.json
+
 # Documentos PDF enviados pelos candidatos (dados pessoais - LGPD)
 uploads/*
 !uploads/.gitkeep
