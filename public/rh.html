@@ -184,6 +184,19 @@
     .btn-documentos { background-color: #1a252f; }
     .btn-documentos:hover { background-color: #0f151b; }
 
+    /* --- BOTÃO "COPIAR LINK" --- */
+    .btn-copiar-link {
+      background: none;
+      border: 1px solid var(--cinza-borda);
+      color: var(--texto);
+    }
+    .btn-copiar-link:hover { background-color: #f4f6f9; }
+    .btn-copiar-link.copiado {
+      background-color: var(--verde-intelbras);
+      border-color: var(--verde-intelbras);
+      color: #ffffff;
+    }
+
     .linha-detalhes td {
       background: var(--cinza-barra);
       padding: 16px 18px;
@@ -832,6 +845,56 @@
       }
     }
 
+    // Copia o texto para a área de transferência usando o método antigo
+    // (document.execCommand), usado como fallback quando a Clipboard API
+    // moderna não existe ou tem a permissão negada pelo navegador.
+    function copiarViaExecCommand(texto) {
+      const campoTemporario = document.createElement('textarea');
+      campoTemporario.value = texto;
+      campoTemporario.style.position = 'fixed';
+      campoTemporario.style.opacity = '0';
+      document.body.appendChild(campoTemporario);
+      campoTemporario.select();
+      const sucesso = document.execCommand('copy');
+      document.body.removeChild(campoTemporario);
+      return sucesso;
+    }
+
+    // Copia o link direto da Ficha do Candidato (?id=) para a área de transferência.
+    async function copiarLinkCandidato(id, botao) {
+      const link = `${window.location.origin}/index.html?id=${id}`;
+      let copiado = false;
+
+      if (navigator.clipboard && window.isSecureContext) {
+        try {
+          await navigator.clipboard.writeText(link);
+          copiado = true;
+        } catch (erro) {
+          // Permissão negada ou API indisponível neste contexto - tenta o fallback abaixo.
+        }
+      }
+
+      if (!copiado) {
+        try {
+          copiado = copiarViaExecCommand(link);
+        } catch (erro) {
+          copiado = false;
+        }
+      }
+
+      if (copiado) {
+        const textoOriginal = botao.textContent;
+        botao.textContent = 'Copiado!';
+        botao.classList.add('copiado');
+        setTimeout(() => {
+          botao.textContent = textoOriginal;
+          botao.classList.remove('copiado');
+        }, 2000);
+      } else {
+        alert('Não foi possível copiar o link automaticamente. Link: ' + link);
+      }
+    }
+
     // Atualiza os cards de resumo estatístico a partir da lista de fichas.
     function atualizarCardsResumo(fichas) {
       const total = fichas.length;
@@ -930,6 +993,7 @@
                         ${f.status === 'VERDE' ? 'disabled' : ''}>Aprovado</button>
                 <button class="btn-acao btn-documentos" data-expandir="${f.id}" type="button"
                         aria-expanded="${expandidoAgora}">Documentos <span class="seta-expandir">&#9660;</span></button>
+                <button class="btn-acao btn-copiar-link" data-copiar-link="${f.id}" type="button">Copiar link</button>
               </div>
             </td>
           `;
@@ -1084,6 +1148,12 @@
       const btnImprimir = e.target.closest('[data-imprimir]');
       if (btnImprimir) {
         imprimirFicha(btnImprimir.dataset.imprimir);
+        return;
+      }
+
+      const btnCopiarLink = e.target.closest('[data-copiar-link]');
+      if (btnCopiarLink) {
+        copiarLinkCandidato(btnCopiarLink.dataset.copiarLink, btnCopiarLink);
         return;
       }
 
