@@ -199,6 +199,18 @@ function aplicarRegraCpfIncluso(candidato) {
   }
 }
 
+// Move a ficha de "Não avaliado" (VERMELHO) para "Em Análise" (AMARELO) na
+// primeira interação do RH (visualizar PDF, aceitar/marcar pendência num
+// documento, ou responder no chat). Não faz nada se a ficha já saiu do
+// estado inicial - é uma transição de mão única, automática.
+function marcarPrimeiraInteracaoRh(candidato) {
+  if (candidato.status === 'VERMELHO') {
+    candidato.status = 'AMARELO';
+    return true;
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // UPLOAD DE PDF (multer)
 // ---------------------------------------------------------------------------
@@ -655,6 +667,8 @@ app.post('/api/candidato/:id/mensagens', (req, res) => {
     ip: req.ip
   };
   candidato.mensagens.push(novaMensagem);
+  // Mensagem do RH conta como primeira interação; do candidato, não.
+  if (autor === 'RH') marcarPrimeiraInteracaoRh(candidato);
   candidato.atualizadoEm = novaMensagem.timestamp;
   salvarCandidatos(candidatos);
 
@@ -705,6 +719,7 @@ app.patch('/api/rh/fichas/:id/documento/:tipo/pendencia', (req, res) => {
   documento.pendencia = { ativa: true, justificativa: justificativaAparada, criadoEm: agora };
   documento.status = 'VERMELHO';
   documento.atualizadoEm = agora;
+  marcarPrimeiraInteracaoRh(candidato);
   candidato.atualizadoEm = agora;
   salvarCandidatos(candidatos);
 
@@ -724,6 +739,90 @@ app.patch('/api/rh/fichas/:id/documento/:tipo/pendencia', (req, res) => {
     mensagem: 'Pendência registrada. O candidato poderá reenviar este documento.',
     candidato
   });
+});
+
+// ---------------------------------------------------------------------------
+// ROTA: RH aceita um documento já enviado (marca como Aprovado/Ok a nível de
+// documento). Encerra uma eventual pendência aberta e conta como primeira
+// interação do RH com a ficha.
+// ---------------------------------------------------------------------------
+app.patch('/api/rh/fichas/:id/documento/:tipo/aceitar', (req, res) => {
+  const { id, tipo } = req.params;
+
+  if (!TIPOS_DOCUMENTO.includes(tipo)) {
+    return res.status(400).json({ erro: 'Tipo de documento inválido.' });
+  }
+
+  const candidatos = lerCandidatos();
+  const candidato = candidatos.find((c) => c.id === id);
+
+  if (!candidato) {
+    return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  }
+
+  const documento = candidato.documentos[tipo];
+  if (!documento || !documento.arquivo) {
+    return res.status(400).json({ erro: 'Só é possível aceitar um documento já enviado.' });
+  }
+
+  const agora = new Date().toISOString();
+  documento.status = 'VERDE';
+  documento.pendencia = null;
+  documento.atualizadoEm = agora;
+  marcarPrimeiraInteracaoRh(candidato);
+  candidato.atualizadoEm = agora;
+  salvarCandidatos(candidatos);
+
+  registrarEventoAuditoria({
+    id: gerarId(),
+    tipoEvento: 'documento_aceito',
+    candidatoId: id,
+    documentoTipo: tipo,
+    timestamp: agora,
+    ip: req.ip
+  });
+
+  console.log(`--- [Auditoria] Documento aceito --- ID: ${id} | Documento: ${tipo} | IP: ${req.ip}`);
+
+  return res.status(200).json({ mensagem: 'Documento aceito com sucesso!', candidato });
+});
+
+// ---------------------------------------------------------------------------
+// ROTA: RH abriu/visualizou um documento (clique em "Visualizar/Baixar PDF").
+// Conta como primeira interação, mas não altera nada no documento em si.
+// ---------------------------------------------------------------------------
+app.patch('/api/rh/fichas/:id/documento/:tipo/visualizado', (req, res) => {
+  const { id, tipo } = req.params;
+
+  if (!TIPOS_DOCUMENTO.includes(tipo)) {
+    return res.status(400).json({ erro: 'Tipo de documento inválido.' });
+  }
+
+  const candidatos = lerCandidatos();
+  const candidato = candidatos.find((c) => c.id === id);
+
+  if (!candidato) {
+    return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  }
+
+  const mudou = marcarPrimeiraInteracaoRh(candidato);
+
+  if (mudou) {
+    const agora = new Date().toISOString();
+    candidato.atualizadoEm = agora;
+    salvarCandidatos(candidatos);
+
+    registrarEventoAuditoria({
+      id: gerarId(),
+      tipoEvento: 'documento_visualizado',
+      candidatoId: id,
+      documentoTipo: tipo,
+      timestamp: agora,
+      ip: req.ip
+    });
+  }
+
+  return res.status(200).json({ mensagem: 'ok', candidato });
 });
 
 // Decisões finais válidas para o processo admissional.
@@ -775,7 +874,7 @@ app.patch('/api/rh/fichas/:id/decisao', (req, res) => {
 });
 
 // Rótulos do status (documento/ficha em análise) usados no relatório exportado.
-const ROTULO_STATUS_CSV = { VERMELHO: 'PENDENTE', AMARELO: 'EM ANÁLISE', VERDE: 'APROVADO' };
+const ROTULO_STATUS_CSV = { VERMELHO: 'NÃO AVALIADO', AMARELO: 'EM ANÁLISE', VERDE: 'APROVADO' };
 
 // Escapa um valor para uma célula de CSV (aspas duplas + delimitador ';').
 function paraCelulaCsv(valor) {
@@ -790,7 +889,9 @@ app.get('/api/rh/exportar-csv', (req, res) => {
   let candidatos = lerCandidatos();
 
   if (filtro === 'PENDENTE') {
-    candidatos = candidatos.filter((c) => !c.decisaoFinal);
+    candidatos = candidatos.filter((c) => c.status === 'VERMELHO');
+  } else if (filtro === 'EM_ANALISE') {
+    candidatos = candidatos.filter((c) => c.status === 'AMARELO');
   } else if (filtro === 'APROVADO' || filtro === 'REPROVADO') {
     candidatos = candidatos.filter((c) => c.decisaoFinal === filtro);
   }
@@ -822,6 +923,95 @@ app.get('/api/rh/exportar-csv', (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="candidatos_${dataArquivo}.csv"`);
   return res.status(200).send(conteudo);
 });
+
+// ---------------------------------------------------------------------------
+// CANDIDATO DE TESTES FIXO ("Teste Teste") - MVP/Dev
+// ---------------------------------------------------------------------------
+// Garante, a cada início do servidor, que existe um candidato de testes com
+// os 6 documentos já anexados (PDFs de exemplo reais, gerados em uploads/),
+// para permitir validar o Painel do RH sem precisar preencher a Ficha do
+// Candidato manualmente a cada ciclo de testes. Só CRIA se ainda não existir
+// (checagem por CPF) - nunca sobrescreve um registro já presente, então
+// qualquer alteração feita nele durante os testes (status, pendências,
+// decisão, chat) sobrevive a reinícios do servidor.
+const CPF_CANDIDATO_TESTE = '123.123.154-25';
+const ID_CANDIDATO_TESTE = 'teste-fixo-0001';
+
+// Gera um PDF minimalista, porém válido, com um rótulo identificando o
+// documento - o suficiente para abrir corretamente no visualizador de PDF
+// do navegador durante os testes do Painel do RH.
+function gerarPdfExemplo(rotulo) {
+  const texto = `Documento de exemplo - ${rotulo}`.replace(/[()\\]/g, '');
+  return `%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 150] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 70 >>
+stream
+BT /F1 14 Tf 20 80 Td (${texto}) Tj ET
+endstream
+endobj
+trailer
+<< /Size 6 /Root 1 0 R >>
+%%EOF`;
+}
+
+function garantirCandidatoTeste() {
+  const candidatos = lerCandidatos();
+  const jaExiste = candidatos.some((c) => somenteDigitos(c.cpf) === somenteDigitos(CPF_CANDIDATO_TESTE));
+  if (jaExiste) return;
+
+  const agora = new Date().toISOString();
+  const documentos = {};
+
+  TIPOS_DOCUMENTO.forEach((tipo) => {
+    const nomeArquivo = `${ID_CANDIDATO_TESTE}-${tipo}-exemplo.pdf`;
+    const caminhoFisico = path.join(PASTA_UPLOADS, nomeArquivo);
+    if (!fs.existsSync(caminhoFisico)) {
+      fs.writeFileSync(caminhoFisico, gerarPdfExemplo(tipo));
+    }
+    documentos[tipo] = { arquivo: 'uploads/' + nomeArquivo, status: 'AMARELO', atualizadoEm: agora, pendencia: null };
+  });
+
+  const candidatoTeste = {
+    id: ID_CANDIDATO_TESTE,
+    nomeCompleto: 'Teste Teste',
+    dataNascimento: '01/01/1995',
+    cpf: CPF_CANDIDATO_TESTE,
+    logradouro: 'Rua de Exemplo',
+    bairro: 'Bairro Exemplo',
+    cep: '01310-930',
+    numero: '100',
+    complemento: '',
+    email: 'teste.teste@exemplo.com',
+    whatsapp: '(11) 90000-0000',
+    genero: 'Masculino',
+    status: 'VERMELHO', // Não avaliado: nenhuma interação do RH ainda
+    cpfInclusoNaIdentidade: false,
+    documentos,
+    decisaoFinal: null,
+    decisaoFinalEm: null,
+    mensagens: [],
+    criadoEm: agora,
+    atualizadoEm: agora
+  };
+
+  candidatos.push(candidatoTeste);
+  salvarCandidatos(candidatos);
+  console.log('--- Candidato de testes "Teste Teste" criado (MVP/Dev) ---');
+}
+
+garantirCandidatoTeste();
 
 // Porta configurável via variável de ambiente PORT (padrão do Node/Express e
 // das plataformas de deploy em nuvem, como Render e Railway, que injetam essa

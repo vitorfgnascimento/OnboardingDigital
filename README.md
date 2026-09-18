@@ -55,20 +55,23 @@ A interface do candidato está funcional, cobrindo:
 
 O Painel de Gestão do RH (`public/rh.html`) está em construção, cobrindo até aqui:
 
-- **Cards de resumo estatístico** - Total de Fichas, Pendentes, Em Análise e Aprovados, calculados em tempo real a partir das fichas recebidas.
+- **Cards de resumo estatístico** - Total de Fichas, Não avaliados, Em Análise e Aprovados, calculados em tempo real a partir das fichas recebidas.
 - **Tabela de gestão** - lista as fichas com Nome do Candidato, CPF, Data de Envio e Status Atual.
-- **Alteração de status pelo RH** - botões coloridos (vermelho/amarelo/verde) para mover a ficha entre Pendente, Em Análise e Aprovado.
-- **Visualização/download de PDFs** - cada documento enviado pode ser aberto/baixado em nova aba; documentos dispensados por regra ou ainda não enviados mostram "Não exigido"/"Pendente".
+- **Automação do status geral da ficha** - toda ficha nasce como "Não avaliado" (vermelho); o status muda sozinho para "Em Análise" (amarelo) na primeira interação do RH com ela - abrir um PDF, aceitar ou marcar pendência num documento, ou responder no chat (mensagem do próprio candidato não conta). Não existe mais botão manual de troca de status na tabela.
+- **Ações individuais por documento** - em cada documento já enviado, dois botões: "Aceitar Documento" (verde, marca aquele documento como Aprovado) e "Marcar pendência / Exigir reenvio" (vermelho, com justificativa obrigatória - ver abaixo). Documento aceito mostra um selo "✓ Documento aceito".
+- **Visualização/download de PDFs** - cada documento enviado abre num visualizador embutido em nova aba; documentos dispensados por regra ou ainda não enviados mostram "Não exigido"/"Pendente".
 - **Reabertura pontual de pendências** - o RH marca um documento já enviado como "Com Pendência", com justificativa obrigatória; só aquele documento é liberado para reenvio na Ficha do Candidato (o resto continua travado), e a pendência se encerra automaticamente quando o candidato reenvia o PDF.
 - **Chat RH ↔ Candidato** - conversa simples, com histórico persistido junto da ficha (ordenado por data/hora), disponível tanto no Painel do RH quanto na Ficha do Candidato (a partir do primeiro envio); Enter envia a mensagem, Shift+Enter quebra linha.
 - **Decisão final do processo** - botões "Aprovar Candidato"/"Reprovar Candidato" no Painel do RH; a Ficha do Candidato exibe um banner de sucesso ou de agradecimento e trava totalmente para edição, sem exceção (nem pendências residuais reabrem campos).
-- **Filtros e ordenação** - filtra a lista por decisão (Todos/Aprovados/Reprovados/Pendentes); candidatos ainda não avaliados ficam sempre no topo, com separação visual entre "Novos/Não avaliados" e "Já avaliados".
-- **Busca por nome ou CPF** - campo de busca no topo do painel, com filtragem em tempo real (a cada tecla digitada) e combinável com o filtro por decisão ativo.
-- **Exportação de relatório em CSV** - botão no cabeçalho da tabela baixa um `.csv` (compatível com Excel, com BOM UTF-8) contendo Nome, CPF, E-mail, Telefone, CEP, Endereço, Data de Submissão e Status Atual, respeitando o filtro de decisão ativo.
+- **Filtros e ordenação** - filtra a lista por Todos/Não avaliados/Em Análise/Aprovados/Reprovados; candidatos "Não avaliados" ficam sempre no topo. **Migração visual controlada:** aceitar um documento, marcar pendência ou abrir um PDF mudam o status real na hora, mas a tela só reflete a migração de aba/grupo quando a lista é recarregada de verdade (botão "Atualizar lista", troca de aba de filtro, ou ao expandir o painel de uma ficha) - evita a lista "pular" sozinha enquanto o RH está no meio de uma ação.
+- **Busca por nome ou CPF** - campo de busca no topo do painel, com filtragem em tempo real (a cada tecla digitada) e combinável com o filtro ativo.
+- **Exportação de relatório em CSV** - botão no cabeçalho da tabela baixa um `.csv` (compatível com Excel, com BOM UTF-8) contendo Nome, CPF, E-mail, Telefone, CEP, Endereço, Data de Submissão e Status Atual, respeitando o filtro ativo.
 - **Relatório individual / impressão em PDF** - cada candidato tem um botão que monta uma versão formatada para impressão (dados pessoais, documentos e declaração de consentimento LGPD com o timestamp real de submissão), usando o "Salvar como PDF" do navegador.
 - **Copiar link do candidato** *(recurso MVP/Dev - ver nota na Arquitetura do Projeto)* - botão que copia o link direto da ficha de um candidato para a área de transferência.
 
-Rotas do backend dedicadas ao painel: `GET /api/rh/fichas`, `PATCH /api/rh/fichas/:id/status`, `PATCH /api/rh/fichas/:id/documento/:tipo/pendencia`, `PATCH /api/rh/fichas/:id/decisao`, `GET /api/rh/exportar-csv` (aceita `?filtro=APROVADO|REPROVADO|PENDENTE`). Rotas compartilhadas com o candidato: `GET /api/candidato/:id` (retorno via link `?id=`) e `POST /api/candidato/:id/mensagens` (chat).
+Rotas do backend dedicadas ao painel: `GET /api/rh/fichas`, `PATCH /api/rh/fichas/:id/status`, `PATCH /api/rh/fichas/:id/documento/:tipo/pendencia`, `PATCH /api/rh/fichas/:id/documento/:tipo/aceitar`, `PATCH /api/rh/fichas/:id/documento/:tipo/visualizado`, `PATCH /api/rh/fichas/:id/decisao`, `GET /api/rh/exportar-csv` (aceita `?filtro=APROVADO|REPROVADO|PENDENTE|EM_ANALISE`). Rotas compartilhadas com o candidato: `GET /api/candidato/:id` (retorno via link `?id=`) e `POST /api/candidato/:id/mensagens` (chat).
+
+> **Candidato de testes fixo:** a cada início do servidor, o backend garante a existência de um candidato "Teste Teste" (CPF `123.123.154-25`) com os 6 documentos de exemplo já anexados, para permitir validar o Painel do RH sem preencher a Ficha do Candidato manualmente a cada ciclo. Ele só é **criado** se ainda não existir (checagem por CPF); alterações feitas nele durante os testes (status, pendências, decisão, chat) sobrevivem a reinícios do servidor.
 
 Ainda **não implementado** nesta etapa: autenticação do RH (login manual/OAuth) para acesso ao painel.
 

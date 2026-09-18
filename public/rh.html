@@ -265,6 +265,30 @@
     .badge-decisao-aprovado { background-color: var(--verde); }
     .badge-decisao-reprovado { background-color: var(--vermelho); }
 
+    /* --- AÇÕES INDIVIDUAIS DO DOCUMENTO (Aceitar / Marcar pendência) --- */
+    .acoes-documento {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .btn-aceitar-documento {
+      background-color: var(--verde);
+      color: #ffffff;
+      border: none;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .btn-aceitar-documento:hover { background-color: #218838; }
+    .badge-documento-aceito {
+      color: var(--verde);
+      font-size: 11px;
+      font-weight: bold;
+    }
+
     /* --- PENDÊNCIA DE DOCUMENTO --- */
     .btn-marcar-pendencia {
       background: none;
@@ -577,7 +601,7 @@
         <div class="card-valor" id="cardTotal">0</div>
       </div>
       <div class="card card-pendente">
-        <div class="card-rotulo">Pendentes</div>
+        <div class="card-rotulo">Não avaliados</div>
         <div class="card-valor" id="cardPendentes">0</div>
       </div>
       <div class="card card-analise">
@@ -596,11 +620,12 @@
     </div>
 
     <!-- FILTROS POR DECISÃO -->
-    <div class="barra-filtros" role="group" aria-label="Filtrar fichas por decisão">
+    <div class="barra-filtros" role="group" aria-label="Filtrar fichas por status/decisão">
       <button type="button" class="btn-filtro ativo" data-filtro="TODOS">Todos</button>
+      <button type="button" class="btn-filtro" data-filtro="PENDENTE">Não avaliados</button>
+      <button type="button" class="btn-filtro" data-filtro="EM_ANALISE">Em Análise</button>
       <button type="button" class="btn-filtro" data-filtro="APROVADO">Aprovados</button>
       <button type="button" class="btn-filtro" data-filtro="REPROVADO">Reprovados</button>
-      <button type="button" class="btn-filtro" data-filtro="PENDENTE">Pendentes (não avaliados)</button>
     </div>
 
     <!-- TABELA DE GESTÃO DAS FICHAS -->
@@ -635,7 +660,7 @@
     };
 
     const ROTULO_STATUS = {
-      VERMELHO: 'PENDENTE',
+      VERMELHO: 'NÃO AVALIADO',
       AMARELO: 'EM ANÁLISE',
       VERDE: 'APROVADO'
     };
@@ -675,7 +700,9 @@
         if (documento.arquivo) {
           linhaPrincipal = `
             <span class="item-documento-titulo">${doc.titulo}</span>
-            <a class="btn-pdf" href="/visualizador.html?arquivo=${encodeURIComponent(documento.arquivo)}" target="_blank" rel="noopener noreferrer">Visualizar/Baixar PDF</a>
+            <a class="btn-pdf" href="/visualizador.html?arquivo=${encodeURIComponent(documento.arquivo)}"
+               target="_blank" rel="noopener noreferrer"
+               data-marcar-visualizado="${ficha.id}:${doc.tipo}">Visualizar/Baixar PDF</a>
           `;
         } else {
           let situacao = 'Pendente';
@@ -700,10 +727,17 @@
               </div>
             `;
           } else {
+            const aceito = documento.status === 'VERDE';
             areaPendencia = `
-              <button type="button" class="btn-marcar-pendencia" data-abrir-pendencia="${ficha.id}" data-tipo="${doc.tipo}">
-                Marcar pendência / Exigir reenvio
-              </button>
+              <div class="acoes-documento">
+                ${aceito
+                  ? '<span class="badge-documento-aceito">&#10003; Documento aceito</span>'
+                  : `<button type="button" class="btn-aceitar-documento" data-aceitar-documento="${ficha.id}:${doc.tipo}">Aceitar Documento</button>`
+                }
+                <button type="button" class="btn-marcar-pendencia" data-abrir-pendencia="${ficha.id}" data-tipo="${doc.tipo}">
+                  Marcar pendência / Exigir reenvio
+                </button>
+              </div>
               <form class="form-pendencia" data-form-pendencia="${ficha.id}:${doc.tipo}" hidden>
                 <textarea placeholder="Explique o que precisa ser corrigido/reenviado..." data-campo-justificativa required></textarea>
                 <div class="acoes-form">
@@ -922,7 +956,7 @@
       const total = fichas.length;
       const pendentes = fichas.filter((f) => f.status === 'VERMELHO').length;
       const emAnalise = fichas.filter((f) => f.status === 'AMARELO').length;
-      const aprovados = fichas.filter((f) => f.status === 'VERDE').length;
+      const aprovados = fichas.filter((f) => f.decisaoFinal === 'APROVADO').length;
 
       document.getElementById('cardTotal').textContent = total;
       document.getElementById('cardPendentes').textContent = pendentes;
@@ -933,12 +967,13 @@
     // Ids das fichas com o painel de detalhes aberto, para restaurar após cada recarga.
     const detalhesExpandidos = new Set();
 
-    // Filtro ativo por decisão: 'TODOS' | 'APROVADO' | 'REPROVADO' | 'PENDENTE' (não avaliados).
+    // Filtro ativo: 'TODOS' | 'PENDENTE' (não avaliado) | 'EM_ANALISE' | 'APROVADO' | 'REPROVADO'.
     let filtroAtual = 'TODOS';
 
     function aplicarFiltro(fichas) {
       if (filtroAtual === 'TODOS') return fichas;
-      if (filtroAtual === 'PENDENTE') return fichas.filter((f) => !f.decisaoFinal);
+      if (filtroAtual === 'PENDENTE') return fichas.filter((f) => f.status === 'VERMELHO');
+      if (filtroAtual === 'EM_ANALISE') return fichas.filter((f) => f.status === 'AMARELO');
       return fichas.filter((f) => f.decisaoFinal === filtroAtual);
     }
 
@@ -961,13 +996,14 @@
       });
     }
 
-    // Novos/não avaliados sempre no topo; dentro de cada grupo, mais recentes primeiro.
+    // Não avaliados (status VERMELHO - nenhuma interação do RH) sempre no
+    // topo; dentro de cada grupo, mais recentes primeiro.
     function ordenarFichas(fichas) {
       const dataOrdenacao = (f) => new Date(f.atualizadoEm || f.criadoEm).getTime();
 
       return [...fichas].sort((a, b) => {
-        const aAvaliado = a.decisaoFinal ? 1 : 0;
-        const bAvaliado = b.decisaoFinal ? 1 : 0;
+        const aAvaliado = a.status === 'VERMELHO' ? 0 : 1;
+        const bAvaliado = b.status === 'VERMELHO' ? 0 : 1;
         if (aAvaliado !== bAvaliado) return aAvaliado - bAvaliado; // não avaliados (0) primeiro
         return dataOrdenacao(b) - dataOrdenacao(a); // mais recente primeiro
       });
@@ -1014,15 +1050,15 @@
       }
 
       corpo.innerHTML = '';
-      let grupoAtualRenderizado = null; // null | 'novos' | 'avaliados'
+      let grupoAtualRenderizado = null; // null | 'naoAvaliados' | 'emAndamento'
 
       fichas.forEach((f) => {
-          const grupoDaFicha = f.decisaoFinal ? 'avaliados' : 'novos';
+          const grupoDaFicha = f.status === 'VERMELHO' ? 'naoAvaliados' : 'emAndamento';
           if (grupoDaFicha !== grupoAtualRenderizado) {
             grupoAtualRenderizado = grupoDaFicha;
             const trGrupo = document.createElement('tr');
-            trGrupo.className = grupoDaFicha === 'novos' ? 'linha-grupo linha-grupo-novos' : 'linha-grupo';
-            trGrupo.innerHTML = `<td colspan="5">${grupoDaFicha === 'novos' ? 'Novos / Não avaliados' : 'Já avaliados'}</td>`;
+            trGrupo.className = grupoDaFicha === 'naoAvaliados' ? 'linha-grupo linha-grupo-novos' : 'linha-grupo';
+            trGrupo.innerHTML = `<td colspan="5">${grupoDaFicha === 'naoAvaliados' ? 'Não avaliados' : 'Em andamento / Avaliadas'}</td>`;
             corpo.appendChild(trGrupo);
           }
 
@@ -1042,13 +1078,7 @@
             <td>${formatarData(f.criadoEm)}</td>
             <td><span class="badge ${classeBadge}">${rotulo}</span>${badgeDecisao}</td>
             <td>
-              <div class="acoes" role="group" aria-label="Alterar status de ${f.nomeCompleto || 'candidato'}">
-                <button class="btn-acao btn-pendente" data-id="${f.id}" data-status="VERMELHO"
-                        ${f.status === 'VERMELHO' ? 'disabled' : ''}>Pendente</button>
-                <button class="btn-acao btn-analise" data-id="${f.id}" data-status="AMARELO"
-                        ${f.status === 'AMARELO' ? 'disabled' : ''}>Em Análise</button>
-                <button class="btn-acao btn-aprovar" data-id="${f.id}" data-status="VERDE"
-                        ${f.status === 'VERDE' ? 'disabled' : ''}>Aprovado</button>
+              <div class="acoes" role="group" aria-label="Ações de ${f.nomeCompleto || 'candidato'}">
                 <button class="btn-acao btn-documentos" data-expandir="${f.id}" type="button"
                         aria-expanded="${expandidoAgora}">Documentos <span class="seta-expandir">&#9660;</span></button>
                 <button class="btn-acao btn-copiar-link" data-copiar-link="${f.id}" type="button">Copiar link</button>
@@ -1075,32 +1105,15 @@
         });
     }
 
-    // Envia a alteração de status para o backend (com trilha de auditoria) e recarrega o painel.
-    async function alterarStatus(id, status) {
-      try {
-        const resposta = await fetch(`/api/rh/fichas/${id}/status`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status })
-        });
-
-        const resultado = await resposta.json();
-
-        if (!resposta.ok) {
-          alert('Erro: ' + (resultado.erro || 'não foi possível atualizar.'));
-          return;
-        }
-
-        await carregarFichas();
-      } catch (erro) {
-        alert('Falha ao comunicar com o servidor.');
-      }
-    }
-
     // Mostra/esconde a linha de documentos de uma ficha (e lembra o estado entre recargas).
+    // Abrir uma ficha é um dos momentos em que a migração visual entre "Não
+    // avaliados" e "Em Análise" deve aparecer, então recarrega a lista do
+    // backend ao expandir (não ao recolher).
     function alternarDetalhes(id, botao) {
       const trDetalhes = document.querySelector(`tr[data-detalhes-de="${id}"]`);
       if (!trDetalhes) return;
+      const estavaEscondido = trDetalhes.hidden;
+
       trDetalhes.hidden = !trDetalhes.hidden;
       botao.setAttribute('aria-expanded', String(!trDetalhes.hidden));
       if (trDetalhes.hidden) {
@@ -1108,6 +1121,31 @@
       } else {
         detalhesExpandidos.add(id);
       }
+
+      if (estavaEscondido) carregarFichas();
+    }
+
+    // Atualiza a entrada de uma ficha no cache local (não redesenha nada sozinha).
+    function atualizarFichaEmCache(fichaAtualizada) {
+      const indice = ultimasFichasCarregadas.findIndex((f) => f.id === fichaAtualizada.id);
+      if (indice !== -1) ultimasFichasCarregadas[indice] = fichaAtualizada;
+    }
+
+    // Redesenha só o conteúdo interno do painel de detalhes já aberto de uma
+    // ficha (grade de documentos + decisão final), sem tocar na linha
+    // principal da tabela (badge de status, grupo Não avaliados/Em Análise).
+    // Isso é proposital: a migração visual entre "Não avaliados" e "Em
+    // Análise" só deve aparecer quando a lista for atualizada de verdade
+    // (Atualizar lista, trocar de aba de filtro, ou abrir outra ficha).
+    function atualizarPainelDetalhesInline(fichaAtualizada) {
+      const trDetalhes = document.querySelector(`tr[data-detalhes-de="${fichaAtualizada.id}"]`);
+      if (!trDetalhes) return;
+
+      const grade = trDetalhes.querySelector('.grade-documentos');
+      if (grade) grade.innerHTML = montarGradeDocumentos(fichaAtualizada);
+
+      const secaoDecisao = trDetalhes.querySelector('.secao-decisao');
+      if (secaoDecisao) secaoDecisao.outerHTML = montarSecaoDecisao(fichaAtualizada);
     }
 
     // RH marca um documento já enviado como pendente, com justificativa obrigatória.
@@ -1125,9 +1163,43 @@
           return;
         }
 
-        await carregarFichas();
+        atualizarFichaEmCache(resultado.candidato);
+        atualizarPainelDetalhesInline(resultado.candidato);
       } catch (erro) {
         alert('Falha ao comunicar com o servidor.');
+      }
+    }
+
+    // RH aceita um documento já enviado (marca como Aprovado/Ok a nível de documento).
+    async function aceitarDocumento(id, tipo) {
+      try {
+        const resposta = await fetch(`/api/rh/fichas/${id}/documento/${tipo}/aceitar`, { method: 'PATCH' });
+        const resultado = await resposta.json();
+
+        if (!resposta.ok) {
+          alert('Erro: ' + (resultado.erro || 'não foi possível aceitar o documento.'));
+          return;
+        }
+
+        atualizarFichaEmCache(resultado.candidato);
+        atualizarPainelDetalhesInline(resultado.candidato);
+      } catch (erro) {
+        alert('Falha ao comunicar com o servidor.');
+      }
+    }
+
+    // Avisa o backend que o RH abriu um documento para visualização - conta
+    // como primeira interação, mas não gera nenhuma atualização visual aqui
+    // (o link continua abrindo normalmente em nova aba, sem esperar isso).
+    async function marcarDocumentoVisualizado(id, tipo) {
+      try {
+        const resposta = await fetch(`/api/rh/fichas/${id}/documento/${tipo}/visualizado`, { method: 'PATCH' });
+        if (resposta.ok) {
+          const resultado = await resposta.json();
+          atualizarFichaEmCache(resultado.candidato);
+        }
+      } catch (erro) {
+        // Silencioso: não deve atrapalhar a abertura do PDF.
       }
     }
 
@@ -1212,6 +1284,20 @@
         return;
       }
 
+      const btnAceitarDocumento = e.target.closest('[data-aceitar-documento]');
+      if (btnAceitarDocumento) {
+        const [idFicha, tipo] = btnAceitarDocumento.dataset.aceitarDocumento.split(':');
+        aceitarDocumento(idFicha, tipo);
+        return;
+      }
+
+      // Não usa closest() com return antecipado: o link precisa continuar
+      // abrindo normalmente em nova aba (não chamamos preventDefault aqui).
+      const linkVisualizar = e.target.closest('[data-marcar-visualizado]');
+      if (linkVisualizar) {
+        marcarDocumentoVisualizado(...linkVisualizar.dataset.marcarVisualizado.split(':'));
+      }
+
       const btnAbrirPendencia = e.target.closest('[data-abrir-pendencia]');
       if (btnAbrirPendencia) {
         const form = document.querySelector(
@@ -1263,12 +1349,7 @@
         const confirmacao = document.querySelector(`[data-confirmar-decisao="${idFicha}"]`);
         const decisao = confirmacao ? confirmacao.dataset.decisaoEscolhida : null;
         if (decisao) decidirCandidato(idFicha, decisao);
-        return;
       }
-
-      const botao = e.target.closest('.btn-acao[data-status]');
-      if (!botao) return;
-      alterarStatus(botao.dataset.id, botao.dataset.status);
     });
 
     // Delegação de eventos: captura o envio dos formulários (pendência e chat) da tabela.
@@ -1305,13 +1386,15 @@
       }
     });
 
-    // Filtro por decisão: alterna o botão ativo e redesenha a tabela (sem recarregar do servidor).
+    // Filtro por status/decisão: alterna o botão ativo e recarrega a lista do
+    // backend - trocar de aba é um dos momentos em que a migração visual
+    // entre "Não avaliados" e "Em Análise" deve aparecer.
     document.querySelector('.barra-filtros').addEventListener('click', (e) => {
       const botao = e.target.closest('[data-filtro]');
       if (!botao) return;
       filtroAtual = botao.dataset.filtro;
       document.querySelectorAll('.btn-filtro').forEach((b) => b.classList.toggle('ativo', b === botao));
-      renderizarTabela();
+      carregarFichas();
     });
 
     // Busca por nome ou CPF: filtragem local em tempo real, a cada tecla digitada.
