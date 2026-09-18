@@ -111,6 +111,24 @@
       text-decoration: none;
     }
     .link-navegacao:hover { text-decoration: underline; }
+    .area-sessao {
+      flex: 1;
+      font-size: 13px;
+      color: #6c757d;
+    }
+    .area-sessao a { color: var(--verde-intelbras-escuro); font-weight: 600; text-decoration: none; }
+    .area-sessao a:hover { text-decoration: underline; }
+    .area-sessao button {
+      background: none;
+      border: none;
+      color: var(--vermelho);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+      margin-left: 6px;
+      text-decoration: underline;
+    }
 
     .erro-texto {
       color: var(--vermelho);
@@ -418,12 +436,60 @@
       margin-bottom: 12px;
     }
     .btn-atualizar-ficha:hover { background: #f4f6f9; }
+
+    /* --- ETAPA FINAL: ACEITE VIRTUAL DO CONTRATO DE TRABALHO --- */
+    .secao-contrato {
+      display: none;
+      margin-top: 30px;
+      padding: 20px;
+      border: 2px solid var(--verde-intelbras);
+      border-radius: 8px;
+      background: rgba(0, 163, 53, 0.05);
+    }
+    .secao-contrato.visivel { display: block; }
+    .secao-contrato h3 { margin-top: 0; }
+    .secao-contrato .acoes-contrato {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 14px 0;
+    }
+    .secao-contrato .btn-contrato {
+      background-color: var(--verde-intelbras);
+      color: #ffffff;
+      border: none;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: bold;
+      border-radius: 5px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .secao-contrato .btn-contrato:hover { background-color: var(--verde-intelbras-escuro); }
+    .secao-contrato .btn-contrato.secundario {
+      background: #ffffff;
+      color: var(--verde-intelbras-escuro);
+      border: 1px solid var(--verde-intelbras);
+    }
+    .secao-contrato .btn-contrato:disabled { opacity: 0.5; cursor: not-allowed; }
+    .secao-contrato .btn-contrato[hidden] { display: none; }
+    .status-contrato {
+      font-size: 13px;
+      padding: 10px 12px;
+      border-radius: 5px;
+      margin: 10px 0;
+    }
+    .status-contrato.info { background: rgba(0, 163, 53, 0.1); color: #00812a; }
+    .status-contrato.aviso { background: rgba(255, 193, 7, 0.15); color: #7a5c00; }
+    .status-contrato.sucesso { background: rgba(40, 167, 69, 0.15); color: #14532d; font-weight: 700; }
   </style>
 </head>
 <body>
 
   <div class="container">
     <div class="barra-navegacao">
+      <span class="area-sessao" id="areaSessao"></span>
       <a class="link-navegacao" href="/rh.html">Painel do RH &rarr;</a>
     </div>
 
@@ -533,9 +599,35 @@
       </form>
     </div>
 
+    <!-- ETAPA FINAL: ACEITE VIRTUAL DO CONTRATO DE TRABALHO (só para fichas Aprovadas) -->
+    <div class="secao-contrato" id="secaoContrato">
+      <h3>Etapa Final: Aceite do Contrato de Trabalho</h3>
+
+      <div id="statusContrato"></div>
+
+      <div class="acoes-contrato">
+        <a class="btn-contrato secundario" href="/api/contrato/minuta" target="_blank" rel="noopener noreferrer">
+          Baixar Minuta do Contrato
+        </a>
+        <button type="button" class="btn-contrato" id="btnAceitarContrato">
+          Confirmo que li e aceito os termos do contrato
+        </button>
+      </div>
+
+      <div id="areaAssinaturaContrato" hidden>
+        <label for="inputContratoAssinado" style="font-weight:600; display:block; margin-bottom:8px;">
+          Envie o contrato assinado (PDF, até 10 MB):
+        </label>
+        <input type="file" id="inputContratoAssinado" accept="application/pdf">
+        <span class="erro-texto" id="erroContratoAssinado"></span>
+      </div>
+    </div>
+
   </div>
 
   <script>
+    const API = '/api';
+
     // =========================================================================
     // CONFIGURAÇÃO DOS DOCUMENTOS OBRIGATÓRIOS
     // =========================================================================
@@ -556,14 +648,16 @@
       AMARELO: 'EM ANÁLISE (AMARELO)',
       VERDE: 'APROVADO (VERDE)',
       APROVADO: 'APROVADO',
-      REPROVADO: 'REPROVADO'
+      REPROVADO: 'REPROVADO',
+      CONTRATACAO_CONCLUIDA: 'CONTRATAÇÃO CONCLUÍDA'
     };
     const CLASSE_BADGE = {
       VERMELHO: '',
       AMARELO: 'status-amarelo',
       VERDE: 'status-verde',
       APROVADO: 'status-verde',
-      REPROVADO: ''
+      REPROVADO: '',
+      CONTRATACAO_CONCLUIDA: 'status-verde'
     };
 
     // Estado da aplicação
@@ -1196,7 +1290,7 @@
 
         const respFicha = await fetch('/api/candidato', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: cabecalhosAutenticados({ 'Content-Type': 'application/json' }),
           body: JSON.stringify(dadosCandidato)
         });
         const resFicha = await respFicha.json();
@@ -1303,6 +1397,65 @@
     }
 
     // =========================================================================
+    // SESSÃO (LOGIN) E AUTOPREENCHIMENTO DE NOME/E-MAIL
+    // =========================================================================
+    let sessaoUsuario = null; // { id, nome, email, tipo } quando autenticado
+
+    function tokenSessao() {
+      return localStorage.getItem('onboarding_token');
+    }
+
+    // Cabeçalho Authorization a incluir nas chamadas que aceitam sessão
+    // opcional (cadastro da ficha, listagem de "minhas fichas").
+    function cabecalhosAutenticados(extra) {
+      const token = tokenSessao();
+      return Object.assign(token ? { Authorization: 'Bearer ' + token } : {}, extra || {});
+    }
+
+    function renderizarAreaSessao() {
+      const area = document.getElementById('areaSessao');
+      if (!sessaoUsuario) {
+        area.innerHTML = '<a href="/login.html">Entrar / Criar Conta</a>';
+        return;
+      }
+      area.innerHTML = `Olá, ${escapeHtml(sessaoUsuario.nome)} <button type="button" id="btnSair">Sair</button>`;
+      document.getElementById('btnSair').addEventListener('click', () => {
+        fetch(API + '/auth/logout', { method: 'POST', headers: cabecalhosAutenticados() }).catch(() => {});
+        localStorage.removeItem('onboarding_token');
+        localStorage.removeItem('onboarding_usuario');
+        window.location.reload();
+      });
+    }
+
+    // Busca a sessão ativa (se houver token salvo) e, para uma ficha NOVA
+    // (ainda não enviada), preenche automaticamente Nome/E-mail a partir do
+    // perfil autenticado - os campos continuam editáveis pelo candidato.
+    async function carregarSessaoEAutopreencher() {
+      const token = tokenSessao();
+      if (!token) { renderizarAreaSessao(); return; }
+
+      try {
+        const r = await fetch(API + '/auth/sessao', { headers: cabecalhosAutenticados() });
+        if (!r.ok) {
+          localStorage.removeItem('onboarding_token');
+          localStorage.removeItem('onboarding_usuario');
+          renderizarAreaSessao();
+          return;
+        }
+        const corpo = await r.json();
+        sessaoUsuario = corpo.usuario;
+        renderizarAreaSessao();
+
+        if (!candidatoId) {
+          document.getElementById('nomeCompleto').value = sessaoUsuario.nome || '';
+          document.getElementById('email').value = sessaoUsuario.email || '';
+        }
+      } catch (erro) {
+        renderizarAreaSessao();
+      }
+    }
+
+    // =========================================================================
     // PREENCHIMENTO DO FORMULÁRIO A PARTIR DE UMA FICHA JÁ EXISTENTE
     // =========================================================================
     function preencherFormularioComCandidato(c) {
@@ -1382,6 +1535,107 @@
     });
 
     // =========================================================================
+    // ETAPA FINAL: ACEITE VIRTUAL DO CONTRATO DE TRABALHO
+    // Só é exibida quando o status geral da ficha é APROVADO (ou já concluída).
+    // =========================================================================
+    function renderizarSecaoContrato() {
+      const secao = document.getElementById('secaoContrato');
+      if (!candidato || (candidato.status !== 'APROVADO' && candidato.status !== 'CONTRATACAO_CONCLUIDA')) {
+        secao.classList.remove('visivel');
+        return;
+      }
+      secao.classList.add('visivel');
+
+      const contrato = candidato.contrato || {};
+      const statusEl = document.getElementById('statusContrato');
+      const btnAceitar = document.getElementById('btnAceitarContrato');
+      const areaAssinatura = document.getElementById('areaAssinaturaContrato');
+
+      if (candidato.status === 'CONTRATACAO_CONCLUIDA') {
+        statusEl.innerHTML = '<div class="status-contrato sucesso">Contratação concluída! Seja bem-vindo(a) à equipe.</div>';
+        btnAceitar.hidden = true;
+        areaAssinatura.hidden = true;
+        return;
+      }
+
+      if (!contrato.aceite) {
+        statusEl.innerHTML = '<div class="status-contrato info">Baixe a minuta, leia com atenção e confirme o aceite dos termos para liberar o envio do contrato assinado.</div>';
+        btnAceitar.hidden = false;
+        areaAssinatura.hidden = true;
+        return;
+      }
+
+      btnAceitar.hidden = true;
+
+      if (!contrato.arquivoAssinado) {
+        statusEl.innerHTML = `<div class="status-contrato info">Aceite virtual confirmado em ${formatarDataHora(contrato.aceite.timestamp)}. Envie o contrato assinado abaixo.</div>`;
+        areaAssinatura.hidden = false;
+        return;
+      }
+
+      areaAssinatura.hidden = true;
+      const validado = contrato.validacaoRh;
+      statusEl.innerHTML = validado
+        ? '<div class="status-contrato sucesso">Contrato assinado validado pelo RH.</div>'
+        : '<div class="status-contrato aviso">Contrato assinado enviado - aguardando validação final do RH.</div>';
+    }
+
+    document.getElementById('btnAceitarContrato').addEventListener('click', async () => {
+      if (!candidatoId) return;
+      try {
+        const resposta = await fetch('/api/candidato/' + candidatoId + '/contrato/aceite', { method: 'POST' });
+        const resultado = await resposta.json();
+        if (!resposta.ok) { alert('Erro: ' + (resultado.erro || 'não foi possível registrar o aceite.')); return; }
+        candidato = resultado.candidato;
+        renderizarSecaoContrato();
+      } catch (erro) {
+        alert('Falha ao comunicar com o servidor.');
+      }
+    });
+
+    document.getElementById('inputContratoAssinado').addEventListener('change', async (e) => {
+      const arquivo = e.target.files[0];
+      if (!arquivo || !candidatoId) return;
+
+      const erroEl = document.getElementById('erroContratoAssinado');
+      erroEl.style.display = 'none';
+
+      const ehPdf = /\.pdf$/i.test(arquivo.name) && (arquivo.type === '' || /pdf|octet-stream/i.test(arquivo.type));
+      if (!ehPdf) {
+        erroEl.textContent = 'Apenas arquivos PDF são aceitos.';
+        erroEl.style.display = 'block';
+        e.target.value = '';
+        return;
+      }
+      if (arquivo.size > TAMANHO_MAXIMO_PDF) {
+        erroEl.textContent = 'Arquivo excedeu o tamanho limite de 10 MB';
+        erroEl.style.display = 'block';
+        e.target.value = '';
+        return;
+      }
+
+      const dados = new FormData();
+      dados.append('tipoDocumento', 'contrato-assinado');
+      dados.append('arquivo', arquivo);
+
+      try {
+        const resposta = await fetch('/api/candidato/' + candidatoId + '/contrato/assinatura', { method: 'POST', body: dados });
+        const resultado = await resposta.json();
+        if (!resposta.ok) {
+          erroEl.textContent = resultado.erro || 'Falha no envio do contrato assinado.';
+          erroEl.style.display = 'block';
+          e.target.value = '';
+          return;
+        }
+        candidato = resultado.candidato;
+        renderizarSecaoContrato();
+      } catch (erro) {
+        erroEl.textContent = 'Falha ao comunicar com o servidor.';
+        erroEl.style.display = 'block';
+      }
+    });
+
+    // =========================================================================
     // CARREGAMENTO DE UMA FICHA JÁ ENVIADA (retorno via link ?id=<candidatoId>)
     // =========================================================================
     async function carregarFichaExistente(id) {
@@ -1397,6 +1651,7 @@
         travarCamposFormulario();
         exibirBannerDecisao();
         exibirPainelChat();
+        renderizarSecaoContrato();
 
         return true;
       } catch (erro) {
@@ -1418,6 +1673,10 @@
       if (idNaUrl) {
         await carregarFichaExistente(idNaUrl);
       }
+
+      // Autopreenchimento de Nome/E-mail a partir da sessão só faz sentido
+      // para uma ficha nova (candidatoId ainda não definido nesta chamada).
+      await carregarSessaoEAutopreencher();
     }
 
     inicializar();

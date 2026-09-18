@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Onboarding Digital - Entrar</title>
+  <style>
+    :root {
+      --verde-intelbras: #00A335;
+      --verde-intelbras-escuro: #00812a;
+      --vermelho: #dc3545;
+      --cinza-borda: #cccccc;
+      --texto: #2c3e50;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f4f6f9;
+      margin: 0;
+      padding: 40px 15px;
+      color: var(--texto);
+    }
+    .container {
+      max-width: 420px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    h2 {
+      color: #1a252f;
+      border-bottom: 2px solid var(--verde-intelbras);
+      padding-bottom: 10px;
+      margin-top: 0;
+      text-align: center;
+    }
+    .abas {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .btn-aba {
+      flex: 1;
+      background: #f4f6f9;
+      border: 1px solid var(--cinza-borda);
+      color: var(--texto);
+      padding: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .btn-aba.ativa {
+      background-color: var(--verde-intelbras);
+      border-color: var(--verde-intelbras);
+      color: #ffffff;
+    }
+    .campo { display: flex; flex-direction: column; margin-bottom: 14px; }
+    label { font-weight: 600; margin-bottom: 6px; font-size: 14px; }
+    input {
+      padding: 10px 12px;
+      border: 1px solid var(--cinza-borda);
+      border-radius: 5px;
+      font-size: 14px;
+      outline: none;
+    }
+    input:focus {
+      border-color: var(--verde-intelbras);
+      box-shadow: 0 0 0 3px rgba(0, 163, 53, 0.15);
+    }
+    .form[hidden] { display: none; }
+    .btn-primario {
+      width: 100%;
+      background-color: var(--verde-intelbras);
+      color: #ffffff;
+      border: none;
+      padding: 12px;
+      font-size: 15px;
+      font-weight: bold;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-top: 6px;
+    }
+    .btn-primario:hover { background-color: var(--verde-intelbras-escuro); }
+    .btn-primario:disabled { opacity: 0.6; cursor: not-allowed; }
+    .separador {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 18px 0;
+      color: #6c757d;
+      font-size: 12px;
+    }
+    .separador::before, .separador::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--cinza-borda);
+    }
+    #areaGoogle { display: flex; justify-content: center; min-height: 44px; }
+    .aviso-google {
+      font-size: 12px;
+      color: #6c757d;
+      text-align: center;
+      margin-top: 10px;
+      display: none;
+    }
+    .mensagem-erro {
+      color: var(--vermelho);
+      font-size: 13px;
+      margin-top: 10px;
+      text-align: center;
+      display: none;
+    }
+    .mensagem-sucesso {
+      color: var(--verde-intelbras-escuro);
+      font-size: 13px;
+      margin-top: 10px;
+      text-align: center;
+      display: none;
+    }
+    .link-voltar {
+      display: block;
+      text-align: center;
+      margin-top: 18px;
+      font-size: 13px;
+      color: var(--verde-intelbras-escuro);
+      text-decoration: none;
+    }
+    .link-voltar:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h2>Onboarding Digital</h2>
+
+    <div class="abas">
+      <button type="button" class="btn-aba ativa" id="btnAbaEntrar">Entrar</button>
+      <button type="button" class="btn-aba" id="btnAbaCriarConta">Criar Conta</button>
+    </div>
+
+    <!-- FORMULÁRIO: ENTRAR -->
+    <form class="form" id="formEntrar">
+      <div class="campo">
+        <label for="loginEmail">E-mail</label>
+        <input type="email" id="loginEmail" required>
+      </div>
+      <div class="campo">
+        <label for="loginSenha">Senha</label>
+        <input type="password" id="loginSenha" required minlength="6">
+      </div>
+      <button type="submit" class="btn-primario">Entrar</button>
+    </form>
+
+    <!-- FORMULÁRIO: CRIAR CONTA -->
+    <form class="form" id="formCriarConta" hidden>
+      <div class="campo">
+        <label for="registroNome">Nome Completo</label>
+        <input type="text" id="registroNome" required>
+      </div>
+      <div class="campo">
+        <label for="registroEmail">E-mail</label>
+        <input type="email" id="registroEmail" required>
+      </div>
+      <div class="campo">
+        <label for="registroSenha">Senha (mínimo 6 caracteres)</label>
+        <input type="password" id="registroSenha" required minlength="6">
+      </div>
+      <button type="submit" class="btn-primario">Criar Conta</button>
+    </form>
+
+    <div class="separador">ou</div>
+
+    <!-- ENTRAR COM O GOOGLE (Google Identity Services) -->
+    <div id="areaGoogle"></div>
+    <div class="aviso-google" id="avisoGoogle">
+      Login com Google requer a configuração de um Client ID OAuth
+      (variável de ambiente <code>GOOGLE_CLIENT_ID</code>) neste ambiente.
+    </div>
+
+    <div class="mensagem-erro" id="mensagemErro"></div>
+    <div class="mensagem-sucesso" id="mensagemSucesso"></div>
+
+    <a class="link-voltar" href="/index.html">&larr; Voltar para a Ficha do Candidato</a>
+  </div>
+
+  <script src="https://accounts.google.com/gsi/client" async defer onerror="document.getElementById('avisoGoogle').style.display='block'"></script>
+  <script>
+    const API = '/api';
+
+    function mostrarErro(texto) {
+      const el = document.getElementById('mensagemErro');
+      document.getElementById('mensagemSucesso').style.display = 'none';
+      el.textContent = texto;
+      el.style.display = 'block';
+    }
+
+    function mostrarSucesso(texto) {
+      const el = document.getElementById('mensagemSucesso');
+      document.getElementById('mensagemErro').style.display = 'none';
+      el.textContent = texto;
+      el.style.display = 'block';
+    }
+
+    // Após um login bem-sucedido (qualquer método), guarda a sessão e volta
+    // para a Ficha do Candidato, que faz o autopreenchimento de Nome/E-mail.
+    function concluirLogin(token, usuario) {
+      localStorage.setItem('onboarding_token', token);
+      localStorage.setItem('onboarding_usuario', JSON.stringify(usuario));
+      mostrarSucesso('Login realizado! Redirecionando...');
+      const destino = usuario.tipo === 'rh' ? '/rh.html' : '/index.html';
+      setTimeout(() => { window.location.href = destino; }, 600);
+    }
+
+    // Alternância entre as abas Entrar / Criar Conta
+    const btnAbaEntrar = document.getElementById('btnAbaEntrar');
+    const btnAbaCriarConta = document.getElementById('btnAbaCriarConta');
+    const formEntrar = document.getElementById('formEntrar');
+    const formCriarConta = document.getElementById('formCriarConta');
+
+    btnAbaEntrar.addEventListener('click', () => {
+      btnAbaEntrar.classList.add('ativa');
+      btnAbaCriarConta.classList.remove('ativa');
+      formEntrar.hidden = false;
+      formCriarConta.hidden = true;
+    });
+    btnAbaCriarConta.addEventListener('click', () => {
+      btnAbaCriarConta.classList.add('ativa');
+      btnAbaEntrar.classList.remove('ativa');
+      formCriarConta.hidden = false;
+      formEntrar.hidden = true;
+    });
+
+    formEntrar.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value.trim();
+      const senha = document.getElementById('loginSenha').value;
+
+      try {
+        const r = await fetch(API + '/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, senha })
+        });
+        const corpo = await r.json();
+        if (!r.ok) { mostrarErro(corpo.erro || 'Não foi possível entrar.'); return; }
+        concluirLogin(corpo.token, corpo.usuario);
+      } catch (erro) {
+        mostrarErro('Falha ao comunicar com o servidor.');
+      }
+    });
+
+    formCriarConta.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const nome = document.getElementById('registroNome').value.trim();
+      const email = document.getElementById('registroEmail').value.trim();
+      const senha = document.getElementById('registroSenha').value;
+
+      try {
+        const r = await fetch(API + '/auth/registrar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nome, email, senha })
+        });
+        const corpo = await r.json();
+        if (!r.ok) { mostrarErro(corpo.erro || 'Não foi possível criar a conta.'); return; }
+        concluirLogin(corpo.token, corpo.usuario);
+      } catch (erro) {
+        mostrarErro('Falha ao comunicar com o servidor.');
+      }
+    });
+
+    // =========================================================================
+    // ENTRAR COM O GOOGLE (Google Identity Services)
+    // Requer que o backend informe um Client ID configurado (GOOGLE_CLIENT_ID).
+    // Sem essa configuração, o botão não é renderizado e um aviso é exibido.
+    // =========================================================================
+    async function respostaCredencialGoogle(resposta) {
+      try {
+        const r = await fetch(API + '/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential: resposta.credential })
+        });
+        const corpo = await r.json();
+        if (!r.ok) { mostrarErro(corpo.erro || 'Não foi possível entrar com o Google.'); return; }
+        concluirLogin(corpo.token, corpo.usuario);
+      } catch (erro) {
+        mostrarErro('Falha ao comunicar com o servidor.');
+      }
+    }
+    window.respostaCredencialGoogle = respostaCredencialGoogle;
+
+    // O Client ID é público por natureza (fica embutido no HTML de qualquer
+    // app com Google Sign-In); aqui ele só é usado se o backend confirmar que
+    // está configurado (evita renderizar o botão do Google sem propósito).
+    async function inicializarGoogleSignIn() {
+      try {
+        const r = await fetch(API + '/auth/google-client-id');
+        const corpo = await r.json();
+        if (!corpo.clientId || !window.google) {
+          document.getElementById('avisoGoogle').style.display = 'block';
+          return;
+        }
+        window.google.accounts.id.initialize({
+          client_id: corpo.clientId,
+          callback: respostaCredencialGoogle
+        });
+        window.google.accounts.id.renderButton(document.getElementById('areaGoogle'), {
+          theme: 'outline', size: 'large', width: 320, text: 'continue_with'
+        });
+      } catch (erro) {
+        document.getElementById('avisoGoogle').style.display = 'block';
+      }
+    }
+
+    window.addEventListener('load', () => setTimeout(inicializarGoogleSignIn, 300));
+  </script>
+</body>
+</html>

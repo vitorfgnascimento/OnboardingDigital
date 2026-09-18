@@ -1,7 +1,9 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const multer = require('multer');
+const { OAuth2Client } = require('google-auth-library');
 
 const app = express();
 
@@ -13,6 +15,12 @@ const ARQUIVO_CANDIDATOS = path.join(__dirname, 'candidatos.json');
 
 // Caminho absoluto da trilha de auditoria (registro imutável de eventos do RH)
 const ARQUIVO_AUDITORIA = path.join(__dirname, 'auditoria.json');
+
+// Caminho absoluto da base de contas de usuário (login/registro/Google)
+const ARQUIVO_USUARIOS = path.join(__dirname, 'usuarios.json');
+
+// Caminho absoluto dos tokens de sessão ativos (login persiste entre reinícios)
+const ARQUIVO_SESSOES = path.join(__dirname, 'sessoes.json');
 
 // Pasta onde os documentos PDF dos candidatos são armazenados
 const PASTA_UPLOADS = path.join(__dirname, 'uploads');
@@ -114,7 +122,16 @@ function lerCandidatos() {
     return [];
   }
 
-  return JSON.parse(conteudo);
+  const candidatos = JSON.parse(conteudo);
+  // Migração leve: fichas criadas antes do módulo de contratação/autenticação
+  // não têm os campos "contrato"/"usuarioId" - preenche com o valor padrão
+  // para que as novas rotas funcionem sem precisar recriar a base de dados.
+  candidatos.forEach((c) => {
+    if (!c.contrato) c.contrato = criarContratoInicial();
+    if (c.usuarioId === undefined) c.usuarioId = null;
+  });
+
+  return candidatos;
 }
 
 // Grava a lista completa de candidatos no arquivo, formatada para leitura humana.
@@ -153,6 +170,103 @@ function registrarEventoAuditoria(evento) {
 }
 
 // ---------------------------------------------------------------------------
+// AUTENTICAÇÃO: PERSISTÊNCIA DE USUÁRIOS E SESSÕES
+// ---------------------------------------------------------------------------
+
+function lerUsuarios() {
+  if (!fs.existsSync(ARQUIVO_USUARIOS)) return [];
+  const conteudo = fs.readFileSync(ARQUIVO_USUARIOS, 'utf-8').trim();
+  return conteudo ? JSON.parse(conteudo) : [];
+}
+
+function salvarUsuarios(lista) {
+  fs.writeFileSync(ARQUIVO_USUARIOS, JSON.stringify(lista, null, 2), 'utf-8');
+}
+
+function lerSessoes() {
+  if (!fs.existsSync(ARQUIVO_SESSOES)) return [];
+  const conteudo = fs.readFileSync(ARQUIVO_SESSOES, 'utf-8').trim();
+  return conteudo ? JSON.parse(conteudo) : [];
+}
+
+function salvarSessoes(lista) {
+  fs.writeFileSync(ARQUIVO_SESSOES, JSON.stringify(lista, null, 2), 'utf-8');
+}
+
+// Tempo de validade de um token de sessão: 7 dias.
+const DURACAO_SESSAO_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Gera hash de senha com scrypt (nativo do Node, sem dependências externas).
+// Cada usuário tem um salt próprio; senha nunca é armazenada em texto puro.
+function gerarHashSenha(senha) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(senha, salt, 64).toString('hex');
+  return { salt, hash };
+}
+
+function senhaConfere(senha, salt, hashEsperado) {
+  const hash = crypto.scryptSync(senha, salt, 64).toString('hex');
+  // Comparação em tempo constante para evitar timing attacks.
+  const bufA = Buffer.from(hash, 'hex');
+  const bufB = Buffer.from(hashEsperado, 'hex');
+  return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
+}
+
+function dadosPublicosUsuario(usuario) {
+  return { id: usuario.id, nome: usuario.nome, email: usuario.email, tipo: usuario.tipo };
+}
+
+// Cria uma sessão para o usuário e persiste o token (login e registro reutilizam isso).
+function criarSessao(usuarioId) {
+  const sessoes = lerSessoes();
+  const token = crypto.randomBytes(32).toString('hex');
+  const agora = Date.now();
+  sessoes.push({ token, usuarioId, criadoEm: agora, expiraEm: agora + DURACAO_SESSAO_MS });
+  salvarSessoes(sessoes);
+  return token;
+}
+
+// Resolve o usuário autenticado a partir do header Authorization: Bearer <token>.
+// Retorna null se o token estiver ausente, inválido ou expirado.
+function resolverUsuarioPorToken(req) {
+  const cabecalho = req.headers.authorization || '';
+  const token = cabecalho.startsWith('Bearer ') ? cabecalho.slice(7) : null;
+  if (!token) return null;
+
+  const sessoes = lerSessoes();
+  const sessao = sessoes.find((s) => s.token === token && s.expiraEm > Date.now());
+  if (!sessao) return null;
+
+  const usuarios = lerUsuarios();
+  return usuarios.find((u) => u.id === sessao.usuarioId) || null;
+}
+
+// Middleware: exige sessão válida (qualquer papel) e anexa req.usuario.
+function autenticar(req, res, next) {
+  const usuario = resolverUsuarioPorToken(req);
+  if (!usuario) return res.status(401).json({ erro: 'Sessão inválida ou expirada. Faça login novamente.' });
+  req.usuario = usuario;
+  next();
+}
+
+// Middleware: anexa req.usuario se houver um token válido, mas não bloqueia a
+// requisição caso não haja sessão (usado no cadastro da ficha, que continua
+// funcionando de forma anônima por compatibilidade).
+function autenticarOpcional(req, res, next) {
+  req.usuario = resolverUsuarioPorToken(req);
+  next();
+}
+
+// Middleware: exige sessão válida do papel 'rh' - protege o Painel do RH.
+function exigirRh(req, res, next) {
+  const usuario = resolverUsuarioPorToken(req);
+  if (!usuario) return res.status(401).json({ erro: 'Sessão inválida ou expirada. Faça login novamente.' });
+  if (usuario.tipo !== 'rh') return res.status(403).json({ erro: 'Acesso restrito à equipe de RH.' });
+  req.usuario = usuario;
+  next();
+}
+
+// ---------------------------------------------------------------------------
 // REGRAS DE NEGÓCIO DOS DOCUMENTOS
 // ---------------------------------------------------------------------------
 
@@ -172,6 +286,12 @@ function criarDocumentosIniciais(genero) {
   }
 
   return documentos;
+}
+
+// Estrutura inicial do módulo de contratação (aceite virtual do contrato de
+// trabalho) - só é preenchida depois que a ficha é aprovada pelo RH.
+function criarContratoInicial() {
+  return { aceite: null, arquivoAssinado: null, atualizadoEm: null, validacaoRh: null };
 }
 
 // Reavalia a regra do reservista quando o gênero do candidato muda.
@@ -248,9 +368,147 @@ const upload = multer({
 });
 
 // ---------------------------------------------------------------------------
+// ROTAS DE AUTENTICAÇÃO (registro, login, Google Sign-In, sessão, logout)
+// ---------------------------------------------------------------------------
+
+const REGEX_EMAIL_AUTH = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+// Cliente do Google verificado com o Client ID configurado via variável de
+// ambiente. Sem essa variável, o botão "Entrar com o Google" continua visível
+// no frontend, mas a rota /api/auth/google responde 400 explicando a causa -
+// é uma limitação de credenciais (o Líder de Projeto precisa gerar as suas
+// próprias no Google Cloud Console), não uma falha de implementação.
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const clienteGoogle = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
+
+app.post('/api/auth/registrar', (req, res) => {
+  const { nome, email, senha } = req.body;
+  const nomeAparado = String(nome || '').trim();
+  const emailAparado = String(email || '').trim().toLowerCase();
+
+  if (!nomeAparado) return res.status(400).json({ erro: 'Informe seu nome.' });
+  if (!REGEX_EMAIL_AUTH.test(emailAparado)) return res.status(400).json({ erro: 'E-mail inválido.' });
+  if (!senha || String(senha).length < 6) return res.status(400).json({ erro: 'A senha deve ter pelo menos 6 caracteres.' });
+
+  const usuarios = lerUsuarios();
+  if (usuarios.some((u) => u.email === emailAparado)) {
+    return res.status(400).json({ erro: 'Já existe uma conta com este e-mail.' });
+  }
+
+  const { salt, hash } = gerarHashSenha(String(senha));
+  const novoUsuario = {
+    id: gerarId(),
+    nome: nomeAparado,
+    email: emailAparado,
+    senhaSalt: salt,
+    senhaHash: hash,
+    tipo: 'candidato',
+    googleId: null,
+    criadoEm: new Date().toISOString()
+  };
+
+  usuarios.push(novoUsuario);
+  salvarUsuarios(usuarios);
+
+  const token = criarSessao(novoUsuario.id);
+  return res.status(201).json({ mensagem: 'Conta criada com sucesso!', token, usuario: dadosPublicosUsuario(novoUsuario) });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { email, senha } = req.body;
+  const emailAparado = String(email || '').trim().toLowerCase();
+
+  const usuarios = lerUsuarios();
+  const usuario = usuarios.find((u) => u.email === emailAparado);
+
+  if (!usuario || !usuario.senhaHash || !senhaConfere(String(senha || ''), usuario.senhaSalt, usuario.senhaHash)) {
+    return res.status(401).json({ erro: 'E-mail ou senha incorretos.' });
+  }
+
+  const token = criarSessao(usuario.id);
+  return res.status(200).json({ mensagem: 'Login realizado com sucesso!', token, usuario: dadosPublicosUsuario(usuario) });
+});
+
+// Login/registro via Google Sign-In (Google Identity Services). O frontend
+// envia o "credential" (ID Token JWT) emitido pelo Google; o backend valida
+// a assinatura e a audiência junto ao Google antes de confiar nos dados.
+app.post('/api/auth/google', async (req, res) => {
+  const { credential } = req.body;
+  if (!credential) return res.status(400).json({ erro: 'Credencial do Google ausente.' });
+
+  if (!clienteGoogle) {
+    return res.status(400).json({
+      erro: 'Login com Google não está configurado neste ambiente. Defina a variável GOOGLE_CLIENT_ID (ver .env.example).'
+    });
+  }
+
+  let payload;
+  try {
+    const ticket = await clienteGoogle.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID });
+    payload = ticket.getPayload();
+  } catch (erro) {
+    return res.status(401).json({ erro: 'Não foi possível validar a credencial do Google.' });
+  }
+
+  const emailGoogle = String(payload.email || '').trim().toLowerCase();
+  if (!emailGoogle) return res.status(400).json({ erro: 'A conta Google não possui e-mail associado.' });
+
+  const usuarios = lerUsuarios();
+  let usuario = usuarios.find((u) => u.email === emailGoogle);
+
+  if (!usuario) {
+    usuario = {
+      id: gerarId(),
+      nome: payload.name || emailGoogle,
+      email: emailGoogle,
+      senhaSalt: null,
+      senhaHash: null,
+      tipo: 'candidato',
+      googleId: payload.sub,
+      criadoEm: new Date().toISOString()
+    };
+    usuarios.push(usuario);
+    salvarUsuarios(usuarios);
+  } else if (!usuario.googleId) {
+    usuario.googleId = payload.sub;
+    salvarUsuarios(usuarios);
+  }
+
+  const token = criarSessao(usuario.id);
+  return res.status(200).json({ mensagem: 'Login com Google realizado com sucesso!', token, usuario: dadosPublicosUsuario(usuario) });
+});
+
+// Informa ao frontend se o Google Sign-In está configurado neste ambiente
+// (e o Client ID a usar) - evita renderizar o botão do Google sem propósito.
+app.get('/api/auth/google-client-id', (req, res) => {
+  return res.status(200).json({ clientId: GOOGLE_CLIENT_ID || null });
+});
+
+app.get('/api/auth/sessao', autenticar, (req, res) => {
+  return res.status(200).json({ usuario: dadosPublicosUsuario(req.usuario) });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const cabecalho = req.headers.authorization || '';
+  const token = cabecalho.startsWith('Bearer ') ? cabecalho.slice(7) : null;
+  if (token) {
+    const sessoes = lerSessoes().filter((s) => s.token !== token);
+    salvarSessoes(sessoes);
+  }
+  return res.status(200).json({ mensagem: 'Sessão encerrada.' });
+});
+
+// Fichas vinculadas ao usuário autenticado (vínculo estrito ficha <-> perfil).
+app.get('/api/auth/minhas-fichas', autenticar, (req, res) => {
+  const candidatos = lerCandidatos();
+  const minhasFichas = candidatos.filter((c) => c.usuarioId === req.usuario.id);
+  return res.status(200).json(minhasFichas);
+});
+
+// ---------------------------------------------------------------------------
 // ROTA: cadastro de nova ficha de candidato (Etapa 1 - Dados Pessoais)
 // ---------------------------------------------------------------------------
-app.post('/api/candidato', (req, res) => {
+app.post('/api/candidato', autenticarOpcional, (req, res) => {
   const {
     nomeCompleto,
     dataNascimento,
@@ -292,6 +550,9 @@ app.post('/api/candidato', (req, res) => {
     decisaoFinal: null,
     decisaoFinalEm: null,
     mensagens: [],
+    // Vínculo estrito com o perfil autenticado que originou a ficha (se houver sessão).
+    usuarioId: req.usuario ? req.usuario.id : null,
+    contrato: criarContratoInicial(),
     criadoEm: new Date().toISOString()
   };
 
@@ -558,7 +819,7 @@ app.patch('/api/candidato/:id/status', (req, res) => {
 // ---------------------------------------------------------------------------
 // ROTA: listagem de fichas para o Painel de Gestão do RH (Etapa 2)
 // ---------------------------------------------------------------------------
-app.get('/api/rh/fichas', (req, res) => {
+app.get('/api/rh/fichas', exigirRh, (req, res) => {
   const candidatos = lerCandidatos();
   return res.status(200).json(candidatos);
 });
@@ -570,7 +831,7 @@ const STATUS_VALIDOS_RH = ['VERMELHO', 'AMARELO', 'VERDE'];
 // ROTA: alteração de status de uma ficha pelo RH, com registro na trilha de
 // auditoria (LGPD): quem, quando (timestamp) e de onde (IP) a alteração partiu.
 // ---------------------------------------------------------------------------
-app.patch('/api/rh/fichas/:id/status', (req, res) => {
+app.patch('/api/rh/fichas/:id/status', exigirRh, (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
@@ -690,7 +951,7 @@ app.post('/api/candidato/:id/mensagens', (req, res) => {
 // com justificativa obrigatória. Libera especificamente aquele documento para
 // o candidato reenviar, e registra o evento na trilha de auditoria (LGPD).
 // ---------------------------------------------------------------------------
-app.patch('/api/rh/fichas/:id/documento/:tipo/pendencia', (req, res) => {
+app.patch('/api/rh/fichas/:id/documento/:tipo/pendencia', exigirRh, (req, res) => {
   const { id, tipo } = req.params;
   const { justificativa } = req.body;
 
@@ -753,7 +1014,7 @@ app.patch('/api/rh/fichas/:id/documento/:tipo/pendencia', (req, res) => {
 // documento). Encerra uma eventual pendência aberta e conta como primeira
 // interação do RH com a ficha.
 // ---------------------------------------------------------------------------
-app.patch('/api/rh/fichas/:id/documento/:tipo/aceitar', (req, res) => {
+app.patch('/api/rh/fichas/:id/documento/:tipo/aceitar', exigirRh, (req, res) => {
   const { id, tipo } = req.params;
 
   if (!TIPOS_DOCUMENTO.includes(tipo)) {
@@ -806,7 +1067,7 @@ app.patch('/api/rh/fichas/:id/documento/:tipo/aceitar', (req, res) => {
 // ROTA: RH abriu/visualizou um documento (clique em "Visualizar/Baixar PDF").
 // Conta como primeira interação, mas não altera nada no documento em si.
 // ---------------------------------------------------------------------------
-app.patch('/api/rh/fichas/:id/documento/:tipo/visualizado', (req, res) => {
+app.patch('/api/rh/fichas/:id/documento/:tipo/visualizado', exigirRh, (req, res) => {
   const { id, tipo } = req.params;
 
   if (!TIPOS_DOCUMENTO.includes(tipo)) {
@@ -847,7 +1108,7 @@ const DECISOES_VALIDAS = ['APROVADO', 'REPROVADO'];
 // ROTA: decisão final do processo (Aprovar/Reprovar), com registro na trilha
 // de auditoria. A ficha do candidato passa a ficar travada para edição.
 // ---------------------------------------------------------------------------
-app.patch('/api/rh/fichas/:id/decisao', (req, res) => {
+app.patch('/api/rh/fichas/:id/decisao', exigirRh, (req, res) => {
   const { id } = req.params;
   const { decisao } = req.body;
 
@@ -897,7 +1158,8 @@ const ROTULO_STATUS_CSV = {
   VERMELHO: 'NÃO AVALIADO',
   AMARELO: 'EM ANÁLISE',
   APROVADO: 'APROVADO',
-  REPROVADO: 'REPROVADO'
+  REPROVADO: 'REPROVADO',
+  CONTRATACAO_CONCLUIDA: 'CONTRATAÇÃO CONCLUÍDA'
 };
 
 // Escapa um valor para uma célula de CSV (aspas duplas + delimitador ';').
@@ -908,7 +1170,7 @@ function paraCelulaCsv(valor) {
 // ---------------------------------------------------------------------------
 // ROTA: exportação do relatório de candidatos em CSV (compatível com Excel)
 // ---------------------------------------------------------------------------
-app.get('/api/rh/exportar-csv', (req, res) => {
+app.get('/api/rh/exportar-csv', exigirRh, (req, res) => {
   const { filtro } = req.query;
   let candidatos = lerCandidatos();
 
@@ -946,6 +1208,201 @@ app.get('/api/rh/exportar-csv', (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="candidatos_${dataArquivo}.csv"`);
   return res.status(200).send(conteudo);
 });
+
+// ---------------------------------------------------------------------------
+// MÓDULO DE CONTRATAÇÃO: ACEITE VIRTUAL DO CONTRATO DE TRABALHO
+// ---------------------------------------------------------------------------
+
+const NOME_ARQUIVO_MINUTA = 'minuta-contrato-trabalho.pdf';
+const CAMINHO_MINUTA = path.join(PASTA_UPLOADS, NOME_ARQUIVO_MINUTA);
+
+// Gera, uma única vez (se ainda não existir em disco), a minuta padrão do
+// contrato de trabalho como PDF de exemplo - texto simples, suficiente para
+// abrir corretamente no visualizador de PDF do navegador. Em um cenário real,
+// este arquivo seria fornecido pelo time Jurídico/RH.
+function garantirMinutaContrato() {
+  if (fs.existsSync(CAMINHO_MINUTA)) return;
+  const conteudo = `%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 220 >>
+stream
+BT /F1 14 Tf 50 780 Td (MINUTA - CONTRATO DE TRABALHO) Tj ET
+BT /F1 10 Tf 50 750 Td (Documento de exemplo - Onboarding Digital) Tj ET
+BT /F1 10 Tf 50 730 Td (Substitua por um modelo real fornecido pelo Juridico/RH.) Tj ET
+endstream
+endobj
+trailer
+<< /Size 6 /Root 1 0 R >>
+%%EOF`;
+  fs.writeFileSync(CAMINHO_MINUTA, conteudo);
+}
+
+// Download da minuta padrão do contrato de trabalho.
+app.get('/api/contrato/minuta', (req, res) => {
+  garantirMinutaContrato();
+  return res.download(CAMINHO_MINUTA, NOME_ARQUIVO_MINUTA);
+});
+
+// O candidato confirma que leu e aceita os termos do contrato (aceite
+// virtual). Só é permitido para fichas já APROVADAS pelo RH. Grava
+// timestamp (ISO) e IP na ficha e na trilha de auditoria (LGPD).
+app.post('/api/candidato/:id/contrato/aceite', (req, res) => {
+  const { id } = req.params;
+  const candidatos = lerCandidatos();
+  const candidato = candidatos.find((c) => c.id === id);
+
+  if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  if (candidato.status !== 'APROVADO') {
+    return res.status(400).json({ erro: 'O aceite do contrato só está disponível após a aprovação da ficha.' });
+  }
+
+  const agora = new Date().toISOString();
+  candidato.contrato.aceite = { timestamp: agora, ip: req.ip };
+  candidato.contrato.atualizadoEm = agora;
+  candidato.atualizadoEm = agora;
+  salvarCandidatos(candidatos);
+
+  registrarEventoAuditoria({
+    id: gerarId(),
+    tipoEvento: 'aceite_virtual_contrato',
+    candidatoId: id,
+    timestamp: agora,
+    ip: req.ip
+  });
+
+  return res.status(200).json({ mensagem: 'Aceite do contrato registrado com sucesso!', candidato });
+});
+
+// Upload do contrato assinado (PDF, até 10 MB) - só liberado após o aceite virtual.
+app.post('/api/candidato/:id/contrato/assinatura', (req, res) => {
+  upload.single('arquivo')(req, res, (erroUpload) => {
+    if (erroUpload) {
+      if (erroUpload.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ erro: 'Arquivo excedeu o tamanho limite de 10 MB' });
+      }
+      return res.status(400).json({ erro: erroUpload.message });
+    }
+
+    const { id } = req.params;
+    const descartarArquivo = () => {
+      if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    };
+
+    if (!req.file) return res.status(400).json({ erro: 'Nenhum arquivo PDF foi enviado.' });
+
+    const candidatos = lerCandidatos();
+    const candidato = candidatos.find((c) => c.id === id);
+
+    if (!candidato) {
+      descartarArquivo();
+      return res.status(404).json({ erro: 'Candidato não encontrado.' });
+    }
+    if (candidato.status !== 'APROVADO') {
+      descartarArquivo();
+      return res.status(400).json({ erro: 'O envio do contrato assinado só está disponível após a aprovação da ficha.' });
+    }
+    if (!candidato.contrato.aceite) {
+      descartarArquivo();
+      return res.status(400).json({ erro: 'Confirme o aceite virtual dos termos antes de enviar o contrato assinado.' });
+    }
+
+    if (candidato.contrato.arquivoAssinado) {
+      const caminhoAntigo = path.join(__dirname, candidato.contrato.arquivoAssinado);
+      fs.unlink(caminhoAntigo, (erro) => {
+        if (erro && erro.code !== 'ENOENT') console.error('Falha ao excluir contrato antigo:', caminhoAntigo, erro.message);
+      });
+    }
+
+    const agora = new Date().toISOString();
+    candidato.contrato.arquivoAssinado = 'uploads/' + req.file.filename;
+    candidato.contrato.atualizadoEm = agora;
+    candidato.atualizadoEm = agora;
+    salvarCandidatos(candidatos);
+
+    registrarEventoAuditoria({
+      id: gerarId(),
+      tipoEvento: 'contrato_assinado_enviado',
+      candidatoId: id,
+      timestamp: agora,
+      ip: req.ip
+    });
+
+    return res.status(201).json({ mensagem: 'Contrato assinado enviado com sucesso!', candidato });
+  });
+});
+
+// RH valida o contrato assinado e conclui a contratação (status terminal).
+app.patch('/api/rh/fichas/:id/contrato/validar', exigirRh, (req, res) => {
+  const { id } = req.params;
+  const candidatos = lerCandidatos();
+  const candidato = candidatos.find((c) => c.id === id);
+
+  if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  if (candidato.status !== 'APROVADO') {
+    return res.status(400).json({ erro: 'Só é possível validar a contratação de uma ficha aprovada.' });
+  }
+  if (!candidato.contrato.arquivoAssinado) {
+    return res.status(400).json({ erro: 'Aguardando o envio do contrato assinado pelo candidato.' });
+  }
+
+  const agora = new Date().toISOString();
+  candidato.contrato.validacaoRh = { timestamp: agora, ip: req.ip, validadoPor: req.usuario.id };
+  candidato.status = 'CONTRATACAO_CONCLUIDA';
+  candidato.atualizadoEm = agora;
+  salvarCandidatos(candidatos);
+
+  registrarEventoAuditoria({
+    id: gerarId(),
+    tipoEvento: 'contratacao_concluida',
+    candidatoId: id,
+    timestamp: agora,
+    ip: req.ip
+  });
+
+  return res.status(200).json({ mensagem: 'Contratação concluída com sucesso!', candidato });
+});
+
+// ---------------------------------------------------------------------------
+// CONTA DE RH DE TESTES (MVP/Dev) - semeada de forma idempotente no boot,
+// já que o formulário público de registro só cria contas 'candidato'.
+// Credenciais documentadas no README.md, apenas para uso em desenvolvimento.
+// ---------------------------------------------------------------------------
+const EMAIL_RH_TESTE = 'rh@onboarding.local';
+const SENHA_RH_TESTE = 'onboarding123';
+
+function garantirUsuarioRhTeste() {
+  const usuarios = lerUsuarios();
+  if (usuarios.some((u) => u.email === EMAIL_RH_TESTE)) return;
+
+  const { salt, hash } = gerarHashSenha(SENHA_RH_TESTE);
+  usuarios.push({
+    id: gerarId(),
+    nome: 'RH Onboarding Digital',
+    email: EMAIL_RH_TESTE,
+    senhaSalt: salt,
+    senhaHash: hash,
+    tipo: 'rh',
+    googleId: null,
+    criadoEm: new Date().toISOString()
+  });
+  salvarUsuarios(usuarios);
+  console.log('--- Conta de RH de testes criada (MVP/Dev):', EMAIL_RH_TESTE, '---');
+}
+
+garantirUsuarioRhTeste();
+garantirMinutaContrato();
 
 // Porta configurável via variável de ambiente PORT (padrão do Node/Express e
 // das plataformas de deploy em nuvem, como Render e Railway, que injetam essa

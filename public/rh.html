@@ -179,6 +179,49 @@
       text-decoration: none;
     }
     .link-navegacao:hover { text-decoration: underline; }
+    .area-sessao {
+      flex: 1;
+      font-size: 13px;
+      color: #6c757d;
+    }
+    .area-sessao button {
+      background: none;
+      border: none;
+      color: var(--vermelho);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 0;
+      margin-left: 6px;
+      text-decoration: underline;
+    }
+
+    /* --- CARD "CONTRATO ASSINADO" --- */
+    .secao-contrato-rh {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--cinza-borda);
+    }
+    .status-contrato-rh {
+      font-size: 12px;
+      padding: 8px 10px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+    }
+    .status-contrato-rh.info { background: rgba(0, 163, 53, 0.1); color: #00812a; }
+    .status-contrato-rh.aviso { background: rgba(255, 193, 7, 0.15); color: #7a5c00; }
+    .status-contrato-rh.sucesso { background: rgba(40, 167, 69, 0.15); color: #14532d; font-weight: 700; }
+    .btn-validar-contrato {
+      background-color: var(--verde-intelbras);
+      color: #ffffff;
+      border: none;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .btn-validar-contrato:hover { background-color: var(--verde-intelbras-escuro); }
 
     /* --- BOTÃO "VER DOCUMENTOS" E LINHA DE DETALHES EXPANSÍVEL --- */
     .btn-documentos { background-color: #1a252f; }
@@ -584,6 +627,7 @@
 
   <div class="container">
     <div class="barra-navegacao">
+      <span class="area-sessao" id="areaSessaoRh"></span>
       <a class="link-navegacao" href="/index.html">&larr; Ficha do Candidato</a>
     </div>
     <div class="barra-topo">
@@ -626,6 +670,7 @@
       <button type="button" class="btn-filtro" data-filtro="EM_ANALISE">Em Análise</button>
       <button type="button" class="btn-filtro" data-filtro="APROVADO">Aprovados</button>
       <button type="button" class="btn-filtro" data-filtro="REPROVADO">Reprovados</button>
+      <button type="button" class="btn-filtro" data-filtro="CONTRATACAO_CONCLUIDA">Contratação Concluída</button>
     </div>
 
     <!-- TABELA DE GESTÃO DAS FICHAS -->
@@ -652,6 +697,49 @@
   <div id="areaImpressao"></div>
 
   <script>
+    const API = '/api';
+
+    // =========================================================================
+    // ACESSO RESTRITO AO PAINEL DO RH: exige uma sessão válida com tipo 'rh'.
+    // Sem sessão (ou sessão de candidato), redireciona para o login.
+    // =========================================================================
+    function tokenSessaoRh() {
+      return localStorage.getItem('onboarding_token');
+    }
+
+    function cabecalhosRh(extra) {
+      return Object.assign({ Authorization: 'Bearer ' + tokenSessaoRh() }, extra || {});
+    }
+
+    function sairDoPainelRh() {
+      fetch(API + '/auth/logout', { method: 'POST', headers: cabecalhosRh() }).catch(() => {});
+      localStorage.removeItem('onboarding_token');
+      localStorage.removeItem('onboarding_usuario');
+      window.location.href = '/login.html';
+    }
+
+    async function exigirSessaoRh() {
+      const token = tokenSessaoRh();
+      if (!token) { window.location.href = '/login.html'; return false; }
+
+      try {
+        const r = await fetch(API + '/auth/sessao', { headers: cabecalhosRh() });
+        if (!r.ok) { window.location.href = '/login.html'; return false; }
+        const corpo = await r.json();
+        if (corpo.usuario.tipo !== 'rh') {
+          alert('Acesso restrito à equipe de RH.');
+          window.location.href = '/login.html';
+          return false;
+        }
+        document.getElementById('areaSessaoRh').innerHTML =
+          `RH: ${escapeHtml(corpo.usuario.nome)} <button type="button" onclick="sairDoPainelRh()">Sair</button>`;
+        return true;
+      } catch (erro) {
+        window.location.href = '/login.html';
+        return false;
+      }
+    }
+
     // Mapa de status para a classe visual do badge/botão correspondente.
     // VERMELHO/AMARELO são estados intermediários da ficha (Não avaliado/Em
     // Análise); APROVADO/REPROVADO são os estados finais e definitivos,
@@ -660,14 +748,16 @@
       VERMELHO: 'badge-vermelho',
       AMARELO: 'badge-amarelo',
       APROVADO: 'badge-verde',
-      REPROVADO: 'badge-vermelho'
+      REPROVADO: 'badge-vermelho',
+      CONTRATACAO_CONCLUIDA: 'badge-verde'
     };
 
     const ROTULO_STATUS = {
       VERMELHO: 'NÃO AVALIADO',
       AMARELO: 'EM ANÁLISE',
       APROVADO: 'APROVADO',
-      REPROVADO: 'REPROVADO'
+      REPROVADO: 'REPROVADO',
+      CONTRATACAO_CONCLUIDA: 'CONTRATAÇÃO CONCLUÍDA'
     };
 
     // Documentos obrigatórios da jornada do candidato (mesma lista de public/index.html).
@@ -785,6 +875,41 @@
             <button type="button" class="btn-cancelar-pendencia" data-cancelar-decisao="${ficha.id}">Cancelar</button>
           </div>
           ${decidido ? `<span class="badge-decisao badge-decisao-${decidido.toLowerCase()}">${decidido} em ${formatarData(ficha.decisaoFinalEm)}</span>` : ''}
+        </div>
+      `;
+    }
+
+    // Monta o card "Contrato Assinado" - só aparece para fichas Aprovadas (ou
+    // já com a contratação concluída). Mostra o aceite virtual do candidato,
+    // o link do PDF assinado e o botão de validação final do RH.
+    function montarSecaoContrato(ficha) {
+      if (ficha.status !== 'APROVADO' && ficha.status !== 'CONTRATACAO_CONCLUIDA') return '';
+
+      const contrato = ficha.contrato || {};
+      let statusHtml;
+      let botaoValidar = '';
+
+      if (ficha.status === 'CONTRATACAO_CONCLUIDA') {
+        statusHtml = `<div class="status-contrato-rh sucesso">Contratação concluída em ${formatarData(contrato.validacaoRh?.timestamp)}.</div>`;
+      } else if (!contrato.aceite) {
+        statusHtml = '<div class="status-contrato-rh aviso">Aguardando o aceite virtual dos termos pelo candidato.</div>';
+      } else if (!contrato.arquivoAssinado) {
+        statusHtml = `<div class="status-contrato-rh info">Aceite virtual confirmado em ${formatarData(contrato.aceite.timestamp)} (IP ${escapeHtml(contrato.aceite.ip || '-')}). Aguardando envio do contrato assinado.</div>`;
+      } else {
+        statusHtml = `<div class="status-contrato-rh info">Aceite virtual confirmado em ${formatarData(contrato.aceite.timestamp)}. Contrato assinado recebido.</div>`;
+        botaoValidar = `<button type="button" class="btn-validar-contrato" data-validar-contrato="${ficha.id}">Validar Contratação</button>`;
+      }
+
+      const linkAssinado = contrato.arquivoAssinado
+        ? `<a class="btn-pdf" href="/visualizador.html?arquivo=${encodeURIComponent(contrato.arquivoAssinado)}" target="_blank" rel="noopener noreferrer">Ver Contrato Assinado</a>`
+        : '';
+
+      return `
+        <div class="secao-contrato-rh">
+          <div class="secao-titulo">Contrato Assinado</div>
+          ${statusHtml}
+          ${linkAssinado}
+          ${botaoValidar}
         </div>
       `;
     }
@@ -1031,7 +1156,8 @@
       corpo.innerHTML = '<tr><td colspan="5" class="vazio">Carregando fichas...</td></tr>';
 
       try {
-        const resposta = await fetch('/api/rh/fichas');
+        const resposta = await fetch('/api/rh/fichas', { headers: cabecalhosRh() });
+        if (resposta.status === 401 || resposta.status === 403) { window.location.href = '/login.html'; return; }
         const todasAsFichas = await resposta.json();
 
         if (!Array.isArray(todasAsFichas)) {
@@ -1106,6 +1232,7 @@
                 <button type="button" class="btn-imprimir" data-imprimir="${f.id}">Imprimir/Gerar PDF da Ficha</button>
               </div>
               ${montarSecaoDecisao(f)}
+              ${montarSecaoContrato(f)}
               ${montarSecaoChat(f)}
             </td>
           `;
@@ -1154,6 +1281,11 @@
 
       const secaoDecisao = trDetalhes.querySelector('.secao-decisao');
       if (secaoDecisao) secaoDecisao.outerHTML = montarSecaoDecisao(fichaAtualizada);
+
+      const secaoContrato = trDetalhes.querySelector('.secao-contrato-rh');
+      const novoHtmlContrato = montarSecaoContrato(fichaAtualizada);
+      if (secaoContrato && novoHtmlContrato) secaoContrato.outerHTML = novoHtmlContrato;
+      else if (secaoContrato) secaoContrato.remove();
     }
 
     // RH marca um documento já enviado como pendente, com justificativa obrigatória.
@@ -1161,7 +1293,7 @@
       try {
         const resposta = await fetch(`/api/rh/fichas/${id}/documento/${tipo}/pendencia`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: cabecalhosRh({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ justificativa })
         });
         const resultado = await resposta.json();
@@ -1181,7 +1313,7 @@
     // RH aceita um documento já enviado (marca como Aprovado/Ok a nível de documento).
     async function aceitarDocumento(id, tipo) {
       try {
-        const resposta = await fetch(`/api/rh/fichas/${id}/documento/${tipo}/aceitar`, { method: 'PATCH' });
+        const resposta = await fetch(`/api/rh/fichas/${id}/documento/${tipo}/aceitar`, { method: 'PATCH', headers: cabecalhosRh() });
         const resultado = await resposta.json();
 
         if (!resposta.ok) {
@@ -1201,7 +1333,7 @@
     // (o link continua abrindo normalmente em nova aba, sem esperar isso).
     async function marcarDocumentoVisualizado(id, tipo) {
       try {
-        const resposta = await fetch(`/api/rh/fichas/${id}/documento/${tipo}/visualizado`, { method: 'PATCH' });
+        const resposta = await fetch(`/api/rh/fichas/${id}/documento/${tipo}/visualizado`, { method: 'PATCH', headers: cabecalhosRh() });
         if (resposta.ok) {
           const resultado = await resposta.json();
           atualizarFichaEmCache(resultado.candidato);
@@ -1216,13 +1348,30 @@
       try {
         const resposta = await fetch(`/api/rh/fichas/${id}/decisao`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: cabecalhosRh({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ decisao })
         });
         const resultado = await resposta.json();
 
         if (!resposta.ok) {
           alert('Erro: ' + (resultado.erro || 'não foi possível registrar a decisão.'));
+          return;
+        }
+
+        await carregarFichas();
+      } catch (erro) {
+        alert('Falha ao comunicar com o servidor.');
+      }
+    }
+
+    // RH valida o contrato assinado e conclui a contratação (status terminal).
+    async function validarContrato(id) {
+      try {
+        const resposta = await fetch(`/api/rh/fichas/${id}/contrato/validar`, { method: 'PATCH', headers: cabecalhosRh() });
+        const resultado = await resposta.json();
+
+        if (!resposta.ok) {
+          alert('Erro: ' + (resultado.erro || 'não foi possível validar a contratação.'));
           return;
         }
 
@@ -1296,6 +1445,12 @@
       if (btnAceitarDocumento) {
         const [idFicha, tipo] = btnAceitarDocumento.dataset.aceitarDocumento.split(':');
         aceitarDocumento(idFicha, tipo);
+        return;
+      }
+
+      const btnValidarContrato = e.target.closest('[data-validar-contrato]');
+      if (btnValidarContrato) {
+        validarContrato(btnValidarContrato.dataset.validarContrato);
         return;
       }
 
@@ -1414,13 +1569,29 @@
     document.getElementById('btnAtualizar').addEventListener('click', carregarFichas);
 
     // Exporta o relatório em CSV, respeitando o filtro por decisão ativo no momento.
-    document.getElementById('btnExportarCsv').addEventListener('click', () => {
+    // A exportação exige o header Authorization, então não dá para usar uma
+    // navegação direta (window.location.href) - baixa via fetch + Blob.
+    document.getElementById('btnExportarCsv').addEventListener('click', async () => {
       const params = filtroAtual !== 'TODOS' ? `?filtro=${encodeURIComponent(filtroAtual)}` : '';
-      window.location.href = '/api/rh/exportar-csv' + params;
+      try {
+        const resposta = await fetch('/api/rh/exportar-csv' + params, { headers: cabecalhosRh() });
+        if (!resposta.ok) { alert('Não foi possível exportar o relatório.'); return; }
+        const blob = await resposta.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `candidatos_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } catch (erro) {
+        alert('Falha ao comunicar com o servidor.');
+      }
     });
 
-    // Carrega o painel assim que a página abre.
-    carregarFichas();
+    // Carrega o painel assim que a página abre (só depois de confirmar a sessão de RH).
+    exigirSessaoRh().then((autorizado) => { if (autorizado) carregarFichas(); });
   </script>
 </body>
 </html>

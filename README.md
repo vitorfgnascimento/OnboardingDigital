@@ -1,6 +1,6 @@
 # OnboardingDigital
 
-**Status do Projeto:** MVP em Desenvolvimento Ativo. Etapa 1 (Jornada e Ficha do Candidato) Concluída. Etapa 2 (Módulo do RH) em andamento. Etapa 3 (Documentação, LGPD e Preparação para Deploy) em consolidação.
+**Status do Projeto:** MVP em Desenvolvimento Ativo. Etapa 1 (Jornada e Ficha do Candidato) Concluída. Etapa 2 (Módulo do RH) Concluída. Etapa 3 (Documentação, LGPD e Preparação para Deploy) em consolidação. Etapa 4 (Autenticação e Contratação) em consolidação.
 
 Sistema de admissão digital para coleta de aceite de documentos trabalhistas, com trilha de auditoria e conformidade com a LGPD.
 
@@ -16,14 +16,17 @@ O MVP é dividido em dois módulos, servidos pelo mesmo backend Express e comuni
 
 ```
 public/
-  index.html    -> Módulo Candidato: ficha de admissão, upload de documentos, chat, banner de decisão
-  rh.html       -> Módulo RH: painel de gestão, pendências, decisão final, exportação e impressão
+  login.html    -> Autenticação: entrar, criar conta, entrar com o Google
+  index.html    -> Módulo Candidato: ficha de admissão, upload de documentos, chat, banner de decisão, aceite de contrato
+  rh.html       -> Módulo RH: painel de gestão, pendências, decisão final, contrato, exportação e impressão (acesso restrito)
   testes.html   -> bateria de testes automatizados contra a API em execução
 
-index.js        -> servidor Express único, expõe as rotas dos dois módulos
+index.js        -> servidor Express único, expõe as rotas dos módulos
 candidatos.json -> persistência das fichas (não versionado - dados pessoais, LGPD)
+usuarios.json   -> contas de usuário, senha com hash/salt (não versionado - dados pessoais, LGPD)
+sessoes.json    -> tokens de sessão ativos (não versionado)
 auditoria.json  -> trilha de auditoria imutável (não versionado - LGPD)
-uploads/        -> PDFs enviados pelos candidatos (não versionado - dados pessoais, LGPD)
+uploads/        -> PDFs enviados pelos candidatos e contratos assinados (não versionado - dados pessoais, LGPD)
 ```
 
 **Módulo Candidato** (`public/index.html`): formulário de dados pessoais com máscaras e validação estrita, upload dos 6 documentos obrigatórios, envio unificado da ficha, chat com o RH e reabertura pontual de documentos com pendência. Uma ficha já enviada pode ser revisitada pelo link `http://localhost:3001/index.html?id=<candidatoId>`.
@@ -51,7 +54,7 @@ A interface do candidato está funcional, cobrindo:
 - "CPF incluso na Identidade": ao marcar, a barra do CPF é desabilitada e herda o status da Identidade.
 - Certificado de Reservista: exigido apenas para o gênero Masculino; nos demais casos a barra é dispensada e marcada automaticamente como Aprovado (verde).
 
-## Resumo técnico da Etapa 2 (em andamento)
+## Resumo técnico da Etapa 2
 
 O Painel de Gestão do RH (`public/rh.html`) está em construção, cobrindo até aqui:
 
@@ -71,9 +74,7 @@ O Painel de Gestão do RH (`public/rh.html`) está em construção, cobrindo at�
 
 Rotas do backend dedicadas ao painel: `GET /api/rh/fichas`, `PATCH /api/rh/fichas/:id/status`, `PATCH /api/rh/fichas/:id/documento/:tipo/pendencia`, `PATCH /api/rh/fichas/:id/documento/:tipo/aceitar`, `PATCH /api/rh/fichas/:id/documento/:tipo/visualizado`, `PATCH /api/rh/fichas/:id/decisao`, `GET /api/rh/exportar-csv` (aceita `?filtro=APROVADO|REPROVADO|PENDENTE|EM_ANALISE`). Rotas compartilhadas com o candidato: `GET /api/candidato/:id` (retorno via link `?id=`) e `POST /api/candidato/:id/mensagens` (chat).
 
-> **Candidato de testes fixo:** a cada início do servidor, o backend garante a existência de um candidato "Teste Teste" (CPF `123.123.154-25`) com os 6 documentos de exemplo já anexados, para permitir validar o Painel do RH sem preencher a Ficha do Candidato manualmente a cada ciclo. Ele só é **criado** se ainda não existir (checagem por CPF); alterações feitas nele durante os testes (status, pendências, decisão, chat) sobrevivem a reinícios do servidor.
-
-Ainda **não implementado** nesta etapa: autenticação do RH (login manual/OAuth) para acesso ao painel.
+> **Massa de dados de testes:** a base local (`candidatos.json`) mantém exclusivamente a candidata fictícia **"Maria Gadu"**, usada para validar manualmente o Painel do RH (e, na Etapa 4, o fluxo completo de login/aprovação/contrato) sem precisar recriar dados a cada ciclo. Diferente do candidato fixo de etapas anteriores, ela não é recriada automaticamente no boot - é mantida manualmente.
 
 ## Resumo técnico da Etapa 3 (em consolidação)
 
@@ -83,11 +84,23 @@ Foco em documentação, conformidade com a LGPD e preparação para publicar o M
 - **Porta configurável via `PORT`** - o servidor lê `process.env.PORT` (padrão das plataformas de deploy em nuvem, como Render e Railway, que injetam essa variável automaticamente), caindo para `3001` em execução local. Arquivo `.env.example` documenta a variável.
 - **README consolidado** - arquitetura completa do projeto, todas as funcionalidades das Etapas 1 e 2 documentadas, e as duas formas de rodar localmente.
 
+## Resumo técnico da Etapa 4 (em consolidação)
+
+Módulo de Autenticação e Contratação:
+
+- **Login e Registro** (`public/login.html`) - entrar com e-mail/senha, criar conta, ou entrar com o Google (Google Identity Services). Senhas usam hash `scrypt` + salt (nunca texto puro); sessão via token opaco (`Authorization: Bearer`), persistido em `sessoes.json` (7 dias de validade).
+- **Google Sign-In** requer uma credencial OAuth real (`GOOGLE_CLIENT_ID`, ver `.env.example`) gerada no Google Cloud Console pelo Líder de Projeto; sem ela, o botão fica visível mas a autenticação real não funciona nesse ambiente.
+- **Autopreenchimento da ficha** - Nome e E-mail são preenchidos automaticamente a partir do perfil autenticado ao abrir `public/index.html` (campos continuam editáveis).
+- **Vínculo ficha ↔ perfil** - toda ficha criada por um candidato logado grava `usuarioId`; `GET /api/auth/minhas-fichas` devolve só as fichas do usuário autenticado. O acesso direto por link (`?id=`) continua funcionando por compatibilidade com o recurso "Copiar link" do RH.
+- **Painel do RH protegido** - `public/rh.html` exige sessão do tipo `rh`; sem ela, redireciona para o login. As rotas `/api/rh/*` exigem o mesmo token no backend.
+- **Aceite Virtual do Contrato de Trabalho** - liberado para fichas com status `APROVADO`: download da minuta, confirmação do aceite (grava timestamp ISO + IP na ficha e na auditoria) e upload do contrato assinado em PDF (até 10 MB). O Painel do RH ganha o card "Contrato Assinado" com o botão "Validar Contratação", que move o status para o estado terminal `CONTRATACAO_CONCLUIDA`.
+
+> **Conta de RH de testes:** semeada de forma idempotente no boot do servidor (não recriada se já existir) - `rh@onboarding.local` / `onboarding123`. Apenas para uso em desenvolvimento; o formulário público de registro sempre cria contas do tipo `candidato`.
+
 ## Próximas fases do roteiro de desenvolvimento
 
-- Autenticação e Segurança (login manual e OAuth com Google) para acesso ao Painel do RH.
-- Registro na trilha de auditoria também dos aceites/consentimentos do candidato (hoje ela cobre as ações do RH e as mensagens do chat).
-- Deploy do MVP em um serviço de nuvem (Render/Railway), usando a variável `PORT` já preparada nesta etapa.
+- Deploy do MVP em um serviço de nuvem (Render/Railway), usando a variável `PORT` já preparada em etapa anterior.
+- Gestão de credenciais reais do Google OAuth para o ambiente de produção.
 
 ## Como Executar o Projeto Localmente
 
@@ -114,6 +127,7 @@ cp .env.example .env
 | Variável | Padrão | Descrição |
 |---|---|---|
 | `PORT` | `3001` | Porta em que o servidor escuta. Injetada automaticamente por plataformas de deploy em nuvem (Render, Railway, etc.). |
+| `GOOGLE_CLIENT_ID` | *(vazio)* | Client ID OAuth 2.0 do Google (Google Cloud Console), necessário para o botão "Entrar com o Google" funcionar de verdade. Sem ela, o botão continua visível mas a rota `/api/auth/google` responde 400. |
 
 ### Opção 1 (Recomendada - Docker)
 
