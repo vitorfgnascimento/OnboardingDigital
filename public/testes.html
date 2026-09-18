@@ -611,6 +611,76 @@
           const semCandidatoAprovado = !texto.includes('Candidato Teste');
           return { ok: r.status === 200 && semCandidatoAprovado, detalhe: `status ${r.status}, contém "Candidato Teste": ${!semCandidatoAprovado ? 'não' : 'sim'}` };
         }
+      },
+
+      { grupo: 'Automação de Status e Candidato de Testes Fixo' },
+
+      {
+        nome: 'GET /api/rh/fichas inclui o candidato de testes fixo "Teste Teste"',
+        run: async () => {
+          const r = await fetch(API + '/rh/fichas');
+          const fichas = await r.json();
+          const testeFixo = fichas.find((f) => f.cpf === '123.123.154-25');
+          const ok = r.status === 200 && !!testeFixo && testeFixo.nomeCompleto === 'Teste Teste';
+          return { ok, detalhe: `encontrado: ${!!testeFixo}, id: ${testeFixo?.id}` };
+        }
+      },
+      {
+        nome: 'Nova ficha nasce com status VERMELHO (Não avaliado)',
+        run: async () => {
+          const r = await postJson('/candidato', fichaValida({ cpf: '390.533.447-05' }));
+          window.__idAutomacao = r.corpo.candidato?.id;
+          return { ok: r.status === 201 && r.corpo.candidato?.status === 'VERMELHO', detalhe: `status ${r.status}, status geral ${r.corpo.candidato?.status}` };
+        }
+      },
+      {
+        nome: 'Mensagem do Candidato não altera o status (continua VERMELHO)',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idAutomacao + '/mensagens', { autor: 'Candidato', texto: 'Oi, enviei minha ficha.' });
+          return { ok: r.status === 201 && r.corpo.candidato?.status === 'VERMELHO', detalhe: `status geral após msg do candidato: ${r.corpo.candidato?.status}` };
+        }
+      },
+      {
+        nome: 'Mensagem do RH move o status para AMARELO (Em Análise)',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idAutomacao + '/mensagens', { autor: 'RH', texto: 'Recebemos sua ficha!' });
+          return { ok: r.status === 201 && r.corpo.candidato?.status === 'AMARELO', detalhe: `status geral após msg do RH: ${r.corpo.candidato?.status}` };
+        }
+      },
+      {
+        nome: 'PATCH .../visualizado move VERMELHO -> AMARELO (documento novo)',
+        run: async () => {
+          const r2 = await postJson('/candidato', fichaValida({ cpf: '111.222.333-44' }));
+          window.__idVisualizado = r2.corpo.candidato?.id;
+          const r = await patchJson('/rh/fichas/' + window.__idVisualizado + '/documento/identidade/visualizado', {});
+          return { ok: r.status === 200 && r.corpo.candidato?.status === 'AMARELO', detalhe: `status ${r.status}, status geral ${r.corpo.candidato?.status}` };
+        }
+      },
+      {
+        nome: 'PATCH .../aceitar exige documento já enviado (400)',
+        run: async () => {
+          const r = await patchJson('/rh/fichas/' + window.__idVisualizado + '/documento/cpf/aceitar', {});
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'PATCH .../aceitar aprova o documento e mantém/gera AMARELO geral',
+        run: async () => {
+          await enviarDocumento(window.__idAutomacao, 'identidade', pdfDeTeste('doc-aceitar.pdf'));
+          const r = await patchJson('/rh/fichas/' + window.__idAutomacao + '/documento/identidade/aceitar', {});
+          const docOk = r.corpo.candidato?.documentos?.identidade?.status === 'VERDE';
+          return { ok: r.status === 200 && docOk && r.corpo.candidato?.status === 'AMARELO', detalhe: `status ${r.status}, documento.status ${r.corpo.candidato?.documentos?.identidade?.status}, geral ${r.corpo.candidato?.status}` };
+        }
+      },
+      {
+        nome: 'PATCH .../pendencia também move VERMELHO -> AMARELO',
+        run: async () => {
+          const r3 = await postJson('/candidato', fichaValida({ cpf: '529.982.247-25' }));
+          const idPendencia = r3.corpo.candidato?.id;
+          await enviarDocumento(idPendencia, 'identidade', pdfDeTeste('doc-pendencia.pdf'));
+          const r = await patchJson('/rh/fichas/' + idPendencia + '/documento/identidade/pendencia', { justificativa: 'Teste automatizado' });
+          return { ok: r.status === 200 && r.corpo.candidato?.status === 'AMARELO', detalhe: `status ${r.status}, status geral ${r.corpo.candidato?.status}` };
+        }
       }
     ];
 
