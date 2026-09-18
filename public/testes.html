@@ -558,6 +558,49 @@
           const r = await enviarDocumento(window.__idMasculino, 'carteiraTrabalho', pdfDeTeste('ctps2.pdf'));
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
+      },
+
+      { grupo: 'Exportação de Relatório (GET /api/rh/exportar-csv)' },
+
+      {
+        nome: 'Exporta CSV (200, content-type text/csv, cabeçalho correto)',
+        run: async () => {
+          const r = await fetch(API + '/rh/exportar-csv');
+          const texto = await r.text();
+          const contentType = r.headers.get('content-type') || '';
+          const primeiraLinha = texto.replace(/^﻿/, '').split('\r\n')[0];
+          const cabecalhoOk = primeiraLinha === '"Nome";"CPF";"E-mail";"Telefone";"CEP";"Endereço";"Data de Submissão";"Status Atual"';
+          const ok = r.status === 200 && contentType.includes('text/csv') && cabecalhoOk;
+          return { ok, detalhe: `status ${r.status}, content-type ${contentType}, cabeçalho: ${primeiraLinha}` };
+        }
+      },
+      {
+        nome: 'CSV contém o candidato aprovado nos testes',
+        run: async () => {
+          const r = await fetch(API + '/rh/exportar-csv');
+          const texto = await r.text();
+          return { ok: texto.includes('Candidato Teste'), detalhe: `contém "Candidato Teste": ${texto.includes('Candidato Teste')}` };
+        }
+      },
+      {
+        nome: 'CSV respeita o filtro por decisão (?filtro=APROVADO)',
+        run: async () => {
+          const r = await fetch(API + '/rh/exportar-csv?filtro=APROVADO');
+          const texto = await r.text();
+          const linhas = texto.trim().split('\r\n');
+          const todasAprovadas = linhas.slice(1).every((l) => l.includes('APROVADO') || l.trim() === '');
+          return { ok: r.status === 200 && todasAprovadas, detalhe: `status ${r.status}, ${linhas.length - 1} linha(s) de dados` };
+        }
+      },
+      {
+        nome: 'CSV filtrado por uma decisão não inclui candidatos de outra decisão',
+        run: async () => {
+          const r = await fetch(API + '/rh/exportar-csv?filtro=REPROVADO');
+          const texto = await r.text();
+          // O candidato de teste (aprovado acima) nao deve aparecer no filtro de reprovados
+          const semCandidatoAprovado = !texto.includes('Candidato Teste');
+          return { ok: r.status === 200 && semCandidatoAprovado, detalhe: `status ${r.status}, contém "Candidato Teste": ${!semCandidatoAprovado ? 'não' : 'sim'}` };
+        }
       }
     ];
 
