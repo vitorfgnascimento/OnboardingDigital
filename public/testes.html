@@ -360,6 +360,33 @@
         }
       },
       {
+        // Usa um candidato dedicado (não window.__idMasculino) para não
+        // contaminar o estado de pendência esperado pelos testes seguintes
+        // de reenvio de documento.
+        nome: 'CPF incluso: aceitar a Identidade também aceita o CPF automaticamente',
+        run: async () => {
+          const rc = await postJson('/candidato', fichaValida({ cpf: '741.852.963-00' }));
+          const idCpfSync = rc.corpo.candidato?.id;
+          window.__idCpfSync = idCpfSync;
+          await patchJson('/candidato/' + idCpfSync + '/dados', { cpfInclusoNaIdentidade: true });
+          await enviarDocumento(idCpfSync, 'identidade', pdfDeTeste('rg-sync.pdf'));
+
+          const r = await patchJson('/rh/fichas/' + idCpfSync + '/documento/identidade/aceitar', {});
+          const c = r.corpo.candidato || {};
+          const ok = r.status === 200 && c.documentos?.identidade?.status === 'VERDE' && c.documentos?.cpf?.status === 'VERDE';
+          return { ok, detalhe: `identidade ${c.documentos?.identidade?.status} / cpf ${c.documentos?.cpf?.status}` };
+        }
+      },
+      {
+        nome: 'CPF incluso: marcar pendência na Identidade também move o CPF para pendente',
+        run: async () => {
+          const r = await patchJson('/rh/fichas/' + window.__idCpfSync + '/documento/identidade/pendencia', { justificativa: 'RG ilegível' });
+          const c = r.corpo.candidato || {};
+          const ok = r.status === 200 && c.documentos?.identidade?.status === 'VERMELHO' && c.documentos?.cpf?.status === 'VERMELHO';
+          return { ok, detalhe: `identidade ${c.documentos?.identidade?.status} / cpf ${c.documentos?.cpf?.status}` };
+        }
+      },
+      {
         nome: 'Mudar gênero para Feminino zera exigência do reservista (VERDE)',
         run: async () => {
           const r = await patchJson('/candidato/' + window.__idFeminino + '/dados', { genero: 'Feminino' });
@@ -563,6 +590,28 @@
         }
       },
       {
+        nome: 'Decisão final é exclusiva: status geral também vira APROVADO (sai de Em Análise)',
+        run: async () => {
+          const r = await fetch(API + '/rh/fichas');
+          const fichas = await r.json();
+          const ficha = fichas.find((f) => f.id === window.__idMasculino);
+          const ok = !!ficha && ficha.status === 'APROVADO';
+          return { ok, detalhe: `status geral: ${ficha?.status}` };
+        }
+      },
+      {
+        nome: 'CSV filtrado por EM_ANALISE não inclui candidato já decidido',
+        run: async () => {
+          const r = await fetch(API + '/rh/exportar-csv?filtro=EM_ANALISE');
+          const texto = await r.text();
+          // window.__idMasculino tem CPF único (123.456.789-09) - garante que é
+          // exatamente ele (e não outro "Candidato Teste" ainda em análise) que
+          // está sendo checado.
+          const ok = r.status === 200 && !texto.includes('123.456.789-09');
+          return { ok, detalhe: `status ${r.status}, contém o CPF do decidido: ${texto.includes('123.456.789-09')}` };
+        }
+      },
+      {
         nome: 'Após decisão final, nenhum novo envio de documento é aceito (400)',
         run: async () => {
           const r = await enviarDocumento(window.__idMasculino, 'carteiraTrabalho', pdfDeTeste('ctps2.pdf'));
@@ -616,13 +665,13 @@
       { grupo: 'Automação de Status e Candidato de Testes Fixo' },
 
       {
-        nome: 'GET /api/rh/fichas inclui o candidato de testes fixo "Teste Teste"',
+        nome: 'GET /api/rh/fichas inclui o candidato de testes "Maria Gadu"',
         run: async () => {
           const r = await fetch(API + '/rh/fichas');
           const fichas = await r.json();
-          const testeFixo = fichas.find((f) => f.cpf === '123.123.154-25');
-          const ok = r.status === 200 && !!testeFixo && testeFixo.nomeCompleto === 'Teste Teste';
-          return { ok, detalhe: `encontrado: ${!!testeFixo}, id: ${testeFixo?.id}` };
+          const mariaGadu = fichas.find((f) => f.cpf === '121.231.321-32');
+          const ok = r.status === 200 && !!mariaGadu && mariaGadu.nomeCompleto === 'Maria Gadu';
+          return { ok, detalhe: `encontrada: ${!!mariaGadu}, id: ${mariaGadu?.id}` };
         }
       },
       {
