@@ -228,6 +228,22 @@
     .btn-remover:hover { background: #b02a37; }
     .btn-remover:disabled { opacity: 0.4; cursor: not-allowed; }
 
+    .btn-enviar-documento {
+      flex: 0 0 auto;
+      background-color: var(--verde-intelbras);
+      color: #ffffff;
+      border: none;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: bold;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .btn-enviar-documento:hover { background-color: var(--verde-intelbras-escuro); }
+    .btn-enviar-documento:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-enviar-documento[hidden] { display: none; }
+
     .aviso-regra {
       background: rgba(0, 163, 53, 0.08);
       border-left: 4px solid var(--verde-intelbras);
@@ -752,15 +768,17 @@
         erroUpload.dataset.erroUpload = '';
         painel.appendChild(erroUpload);
 
-        // Linha do arquivo anexado (nome + botão x)
+        // Linha do arquivo anexado (nome + botão de enviar reenvio + botão x)
         const anexo = document.createElement('div');
         anexo.className = 'arquivo-anexado';
         anexo.dataset.anexo = '';
         anexo.innerHTML = `
           <span class="arquivo-nome" data-nome></span>
+          <button type="button" class="btn-enviar-documento" data-enviar-documento hidden>Enviar</button>
           <button type="button" class="btn-remover" data-remover title="Remover PDF">&times;</button>
         `;
         anexo.querySelector('[data-remover]').addEventListener('click', () => removerDocumento(doc.tipo));
+        anexo.querySelector('[data-enviar-documento]').addEventListener('click', () => enviarDocumentoPendencia(doc.tipo));
         painel.appendChild(anexo);
 
         configurarDropzone(dropzone, doc.tipo);
@@ -826,32 +844,42 @@
         const anexo = barra.querySelector('[data-anexo]');
         const nome = barra.querySelector('[data-nome]');
         const btnRemover = barra.querySelector('[data-remover]');
+        const btnEnviar = barra.querySelector('[data-enviar-documento]');
 
         // "desabilitada" já considera fichaBloqueada (com a exceção de pendência ativa)
         input.disabled = desabilitada;
         dropzone.classList.toggle('dropzone-travada', desabilitada);
         btnRemover.disabled = fichaBloqueada && !temPendenciaAtiva;
 
+        const arquivoNovoSelecionado = Boolean(arquivosPendentes[tipo]);
         const nomeArquivo = arquivosPendentes[tipo]
           ? arquivosPendentes[tipo].name
           : (candidato && candidato.documentos && candidato.documentos[tipo] && candidato.documentos[tipo].arquivo
               ? candidato.documentos[tipo].arquivo.split('/').pop()
               : null);
 
-        if (nomeArquivo && temPendenciaAtiva) {
-          // Pendência ativa: mantém a dropzone visível mesmo com um arquivo já
-          // anexado, para permitir anexar o substituto diretamente (sem precisar
-          // excluir o antigo primeiro).
+        if (nomeArquivo && temPendenciaAtiva && arquivoNovoSelecionado) {
+          // Novo arquivo selecionado para o reenvio, aguardando o clique em "Enviar".
+          anexo.classList.add('visivel');
+          nome.textContent = 'Pronto para enviar: ' + nomeArquivo;
+          dropzone.style.display = 'none';
+          btnEnviar.hidden = false;
+        } else if (nomeArquivo && temPendenciaAtiva) {
+          // Pendência ativa, ainda com o arquivo atual do servidor: mantém a
+          // dropzone visível para permitir escolher o substituto.
           anexo.classList.add('visivel');
           nome.textContent = 'Arquivo atual (o RH pediu reenvio): ' + nomeArquivo;
           dropzone.style.display = 'block';
+          btnEnviar.hidden = true;
         } else if (nomeArquivo) {
           anexo.classList.add('visivel');
           nome.textContent = 'Anexado: ' + nomeArquivo;
           dropzone.style.display = 'none';
+          btnEnviar.hidden = true;
         } else {
           anexo.classList.remove('visivel');
           dropzone.style.display = 'block';
+          btnEnviar.hidden = true;
         }
       });
 
@@ -934,24 +962,39 @@
           return;
         }
 
-        // Ficha já enviada e este documento tem pendência aberta: reenvia na hora,
-        // sem esperar o botão "Concluir" (que só existe no preenchimento inicial).
-        if (fichaBloqueada && documentoTemPendenciaAtiva(tipo)) {
-          try {
-            await uploadArquivo(tipo, arquivo);
-            if (input) input.value = '';
-          } catch (erro) {
-            erroUpload.textContent = erro.message;
-            erroUpload.style.display = 'block';
-          }
-          atualizarBarras();
-          return;
-        }
-
+        // Documento fica pronto para envio (staged); o envio em si só acontece
+        // quando o candidato clica em "Concluir" (preenchimento inicial) ou em
+        // "Enviar" (reenvio de um documento com pendência aberta pelo RH).
         arquivosPendentes[tipo] = arquivo;
         atualizarBarras();
       } finally {
         uploadsEmProcessamento.delete(tipo);
+      }
+    }
+
+    // Envia (upload) um documento com pendência aberta que já foi selecionado
+    // localmente, acionado pelo botão "Enviar" ao lado do nome do arquivo.
+    async function enviarDocumentoPendencia(tipo) {
+      const arquivo = arquivosPendentes[tipo];
+      if (!arquivo) return;
+
+      const barra = document.querySelector(`.barra[data-tipo="${tipo}"]`);
+      const erroUpload = barra.querySelector('[data-erro-upload]');
+      const btnEnviar = barra.querySelector('[data-enviar-documento]');
+      erroUpload.style.display = 'none';
+      if (btnEnviar) btnEnviar.disabled = true;
+
+      try {
+        await uploadArquivo(tipo, arquivo);
+        delete arquivosPendentes[tipo];
+        const input = barra.querySelector('[data-input]');
+        if (input) input.value = '';
+      } catch (erro) {
+        erroUpload.textContent = erro.message;
+        erroUpload.style.display = 'block';
+      } finally {
+        if (btnEnviar) btnEnviar.disabled = false;
+        atualizarBarras();
       }
     }
 
@@ -961,10 +1004,19 @@
     async function removerDocumento(tipo) {
       if (fichaBloqueada && !documentoTemPendenciaAtiva(tipo)) return;
 
-      delete arquivosPendentes[tipo];
-
       const barra = document.querySelector(`.barra[data-tipo="${tipo}"]`);
-      barra.querySelector('[data-input]').value = '';
+      const input = barra.querySelector('[data-input]');
+
+      // Havia um arquivo novo selecionado localmente e ainda não enviado:
+      // só cancela essa seleção, sem mexer em nada no servidor.
+      if (arquivosPendentes[tipo]) {
+        delete arquivosPendentes[tipo];
+        input.value = '';
+        atualizarBarras();
+        return;
+      }
+
+      input.value = '';
 
       // Se o documento já foi persistido no servidor, exclui o arquivo físico
       if (candidatoId && candidato && candidato.documentos[tipo] && candidato.documentos[tipo].arquivo) {
