@@ -1305,6 +1305,7 @@
         candidato = resultado.candidato;
         renderizarMensagens(candidato.mensagens || []);
         campo.value = '';
+        campo.focus();
       } catch (erro) {
         alert('Falha ao enviar mensagem.');
       }
