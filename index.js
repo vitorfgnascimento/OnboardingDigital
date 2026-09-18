@@ -763,6 +763,55 @@ app.patch('/api/rh/fichas/:id/decisao', (req, res) => {
   });
 });
 
+// Rótulos do status (documento/ficha em análise) usados no relatório exportado.
+const ROTULO_STATUS_CSV = { VERMELHO: 'PENDENTE', AMARELO: 'EM ANÁLISE', VERDE: 'APROVADO' };
+
+// Escapa um valor para uma célula de CSV (aspas duplas + delimitador ';').
+function paraCelulaCsv(valor) {
+  return `"${String(valor == null ? '' : valor).replace(/"/g, '""')}"`;
+}
+
+// ---------------------------------------------------------------------------
+// ROTA: exportação do relatório de candidatos em CSV (compatível com Excel)
+// ---------------------------------------------------------------------------
+app.get('/api/rh/exportar-csv', (req, res) => {
+  const { filtro } = req.query;
+  let candidatos = lerCandidatos();
+
+  if (filtro === 'PENDENTE') {
+    candidatos = candidatos.filter((c) => !c.decisaoFinal);
+  } else if (filtro === 'APROVADO' || filtro === 'REPROVADO') {
+    candidatos = candidatos.filter((c) => c.decisaoFinal === filtro);
+  }
+
+  const cabecalho = ['Nome', 'CPF', 'E-mail', 'Telefone', 'CEP', 'Endereço', 'Data de Submissão', 'Status Atual'];
+
+  const linhas = candidatos.map((c) => {
+    const endereco = [c.logradouro, c.numero, c.complemento, c.bairro].filter(Boolean).join(', ');
+    const statusTexto = ROTULO_STATUS_CSV[c.status] || c.status || '';
+    const statusFinal = c.decisaoFinal ? `${statusTexto} (${c.decisaoFinal})` : statusTexto;
+
+    return [
+      c.nomeCompleto,
+      c.cpf,
+      c.email,
+      c.whatsapp,
+      c.cep,
+      endereco,
+      c.criadoEm ? new Date(c.criadoEm).toLocaleString('pt-BR') : '',
+      statusFinal
+    ].map(paraCelulaCsv).join(';');
+  });
+
+  const csv = [cabecalho.map(paraCelulaCsv).join(';'), ...linhas].join('\r\n');
+  const conteudo = '﻿' + csv; // BOM: garante acentuação correta ao abrir no Excel
+
+  const dataArquivo = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="candidatos_${dataArquivo}.csv"`);
+  return res.status(200).send(conteudo);
+});
+
 // Porta configurável via variável de ambiente PORTA (padrão 3001 - evita
 // conflito com outros servidores locais, como o do projeto Pré-Vendas na 3000).
 const PORTA = process.env.PORTA || 3001;
