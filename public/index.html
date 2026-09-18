@@ -305,6 +305,10 @@
     .aviso-pendencia[hidden] { display: none; }
 
     /* --- BANNER DE DECISÃO FINAL (Aprovado/Reprovado) --- */
+    @keyframes bannerEntrada {
+      from { opacity: 0; transform: translateY(-16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
     .banner-decisao {
       display: none;
       margin-bottom: 20px;
@@ -314,16 +318,17 @@
       font-weight: 600;
       line-height: 1.5;
     }
-    .banner-decisao.visivel { display: block; }
+    .banner-decisao.visivel { display: block; animation: bannerEntrada 0.55s ease-out; }
     .banner-aprovado {
-      background: rgba(40, 167, 69, 0.12);
-      border: 1px solid var(--verde);
+      background: linear-gradient(135deg, rgba(0, 163, 53, 0.16), rgba(40, 167, 69, 0.08));
+      border: 2px solid var(--verde);
       color: #14532d;
+      box-shadow: 0 4px 16px rgba(40, 167, 69, 0.25);
     }
     .banner-reprovado {
-      background: rgba(108, 117, 125, 0.12);
-      border: 1px solid #6c757d;
-      color: #3a3f44;
+      background: rgba(255, 193, 7, 0.15);
+      border: 1px solid var(--amarelo);
+      color: #7a5c00;
     }
 
     /* --- CHAT COM O RH --- */
@@ -1220,7 +1225,7 @@
 
       if (candidato.decisaoFinal === 'APROVADO') {
         banner.className = 'banner-decisao visivel banner-aprovado';
-        banner.textContent = 'Parabéns, você seguiu para a etapa final, verifique seu e-mail/WhatsApp para as próximas instruções!';
+        banner.textContent = 'Parabéns! Você foi aprovado para a última etapa do processo seletivo! Fique atento ao seu e-mail e WhatsApp para as próximas instruções.';
       } else {
         banner.className = 'banner-decisao visivel banner-reprovado';
         banner.textContent = 'Agradecemos por sua participação, mas decidimos seguir com outro talento. Não desanime! Suas informações ficaram salvas no nosso banco de dados e contataremos caso haja alguma oportunidade alinhada ao seu perfil.';
@@ -1269,6 +1274,14 @@
       document.getElementById('secaoChat').classList.add('visivel');
       renderizarMensagens(candidato.mensagens || []);
     }
+
+    // Enter envia a mensagem; Shift+Enter continua quebrando linha normalmente.
+    document.getElementById('campoMensagem').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        document.getElementById('formChat').requestSubmit();
+      }
+    });
 
     document.getElementById('formChat').addEventListener('submit', async (e) => {
       e.preventDefault();
