@@ -817,7 +817,16 @@
         }
         const ficha = await resposta.json();
         document.getElementById('areaImpressao').innerHTML = montarConteudoImpressao(ficha);
-        window.print();
+
+        // O conteúdo estava com display:none; alguns navegadores precisam de um
+        // ciclo de repaint antes de abrir a impressão, senão a prévia sai em
+        // branco/desatualizada. Dois requestAnimationFrame garantem que o
+        // navegador já desenhou o novo conteúdo antes de chamarmos print().
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            window.print();
+          });
+        });
       } catch (erro) {
         alert('Falha ao preparar a impressão da ficha.');
       }
