@@ -548,12 +548,23 @@
       { tipo: 'carteiraTrabalho',        titulo: '6. Carteira de Trabalho' }
     ];
 
+    // VERMELHO/AMARELO/VERDE são usados nos documentos individuais e no status
+    // geral antes da decisão; APROVADO/REPROVADO passam a ser o status geral
+    // da ficha (badge do topo da página) assim que o RH decide o processo.
     const ROTULO_STATUS = {
       VERMELHO: 'PENDENTE (VERMELHO)',
       AMARELO: 'EM ANÁLISE (AMARELO)',
-      VERDE: 'APROVADO (VERDE)'
+      VERDE: 'APROVADO (VERDE)',
+      APROVADO: 'APROVADO',
+      REPROVADO: 'REPROVADO'
     };
-    const CLASSE_BADGE = { VERMELHO: '', AMARELO: 'status-amarelo', VERDE: 'status-verde' };
+    const CLASSE_BADGE = {
+      VERMELHO: '',
+      AMARELO: 'status-amarelo',
+      VERDE: 'status-verde',
+      APROVADO: 'status-verde',
+      REPROVADO: ''
+    };
 
     // Estado da aplicação
     let candidatoId = null;                 // definido após o envio da ficha

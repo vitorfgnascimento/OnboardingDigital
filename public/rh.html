@@ -653,16 +653,21 @@
 
   <script>
     // Mapa de status para a classe visual do badge/botão correspondente.
+    // VERMELHO/AMARELO são estados intermediários da ficha (Não avaliado/Em
+    // Análise); APROVADO/REPROVADO são os estados finais e definitivos,
+    // atribuídos ao status geral da ficha assim que o RH decide o processo.
     const CLASSE_BADGE = {
       VERMELHO: 'badge-vermelho',
       AMARELO: 'badge-amarelo',
-      VERDE: 'badge-verde'
+      APROVADO: 'badge-verde',
+      REPROVADO: 'badge-vermelho'
     };
 
     const ROTULO_STATUS = {
       VERMELHO: 'NÃO AVALIADO',
       AMARELO: 'EM ANÁLISE',
-      VERDE: 'APROVADO'
+      APROVADO: 'APROVADO',
+      REPROVADO: 'REPROVADO'
     };
 
     // Documentos obrigatórios da jornada do candidato (mesma lista de public/index.html).
@@ -717,8 +722,12 @@
           `;
         }
 
+        // CPF incluso na Identidade nunca tem ações próprias (Aceitar/Pendência):
+        // seu status é só um espelho automático do que acontece na Identidade.
+        const cpfBloqueadoPorInclusao = doc.tipo === 'cpf' && ficha.cpfInclusoNaIdentidade;
+
         let areaPendencia = '';
-        if (documento.arquivo) {
+        if (documento.arquivo && !cpfBloqueadoPorInclusao) {
           if (pendenciaAtiva) {
             areaPendencia = `
               <div class="aviso-pendencia-ativa">
@@ -956,7 +965,7 @@
       const total = fichas.length;
       const pendentes = fichas.filter((f) => f.status === 'VERMELHO').length;
       const emAnalise = fichas.filter((f) => f.status === 'AMARELO').length;
-      const aprovados = fichas.filter((f) => f.decisaoFinal === 'APROVADO').length;
+      const aprovados = fichas.filter((f) => f.status === 'APROVADO').length;
 
       document.getElementById('cardTotal').textContent = total;
       document.getElementById('cardPendentes').textContent = pendentes;
@@ -974,7 +983,9 @@
       if (filtroAtual === 'TODOS') return fichas;
       if (filtroAtual === 'PENDENTE') return fichas.filter((f) => f.status === 'VERMELHO');
       if (filtroAtual === 'EM_ANALISE') return fichas.filter((f) => f.status === 'AMARELO');
-      return fichas.filter((f) => f.decisaoFinal === filtroAtual);
+      // APROVADO / REPROVADO: decisão final exclusiva - a ficha só existe
+      // nesta aba, nunca mais aparece em Não avaliados/Em Análise.
+      return fichas.filter((f) => f.status === filtroAtual);
     }
 
     // Termo de busca por nome ou CPF, atualizado em tempo real ao digitar.
@@ -1066,9 +1077,6 @@
 
           const classeBadge = CLASSE_BADGE[f.status] || 'badge-vermelho';
           const rotulo = ROTULO_STATUS[f.status] || f.status;
-          const badgeDecisao = f.decisaoFinal
-            ? `<span class="badge-decisao badge-decisao-${f.decisaoFinal.toLowerCase()}">${f.decisaoFinal}</span>`
-            : '';
 
           const expandidoAgora = detalhesExpandidos.has(f.id);
 
@@ -1076,7 +1084,7 @@
             <td>${f.nomeCompleto || '-'}</td>
             <td>${f.cpf || '-'}</td>
             <td>${formatarData(f.criadoEm)}</td>
-            <td><span class="badge ${classeBadge}">${rotulo}</span>${badgeDecisao}</td>
+            <td><span class="badge ${classeBadge}">${rotulo}</span></td>
             <td>
               <div class="acoes" role="group" aria-label="Ações de ${f.nomeCompleto || 'candidato'}">
                 <button class="btn-acao btn-documentos" data-expandir="${f.id}" type="button"
