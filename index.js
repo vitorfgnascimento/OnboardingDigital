@@ -651,11 +651,22 @@ app.post('/api/candidato/:id/mensagens', (req, res) => {
     id: gerarId(),
     autor,
     texto: textoAparado,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    ip: req.ip
   };
   candidato.mensagens.push(novaMensagem);
   candidato.atualizadoEm = novaMensagem.timestamp;
   salvarCandidatos(candidatos);
+
+  // Trilha de auditoria (LGPD): quem escreveu, quando e de onde.
+  registrarEventoAuditoria({
+    id: gerarId(),
+    tipoEvento: 'mensagem_chat',
+    candidatoId: id,
+    autor,
+    timestamp: novaMensagem.timestamp,
+    ip: req.ip
+  });
 
   return res.status(201).json({ mensagem: 'Mensagem enviada.', candidato });
 });
@@ -812,9 +823,11 @@ app.get('/api/rh/exportar-csv', (req, res) => {
   return res.status(200).send(conteudo);
 });
 
-// Porta configurável via variável de ambiente PORTA (padrão 3001 - evita
-// conflito com outros servidores locais, como o do projeto Pré-Vendas na 3000).
-const PORTA = process.env.PORTA || 3001;
+// Porta configurável via variável de ambiente PORT (padrão do Node/Express e
+// das plataformas de deploy em nuvem, como Render e Railway, que injetam essa
+// variável automaticamente). Padrão local: 3001, evitando conflito com outros
+// servidores locais, como o do projeto Pré-Vendas na 3000.
+const PORTA = process.env.PORT || 3001;
 app.listen(PORTA, () => {
   console.log(`Servidor de Onboarding Digital rodando em http://localhost:${PORTA}`);
 });

@@ -488,6 +488,16 @@
         }
       },
       {
+        nome: 'Mensagem do chat grava timestamp e IP (LGPD)',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idMasculino + '/mensagens', { autor: 'RH', texto: 'Registro para auditoria.' });
+          const msgs = r.corpo.candidato?.mensagens || [];
+          const ultima = msgs[msgs.length - 1];
+          const ok = r.status === 201 && !!ultima?.timestamp && !!ultima?.ip;
+          return { ok, detalhe: `status ${r.status}, timestamp ${ultima?.timestamp}, ip ${ultima?.ip}` };
+        }
+      },
+      {
         nome: 'Recusa mensagem com autor inválido (400)',
         run: async () => {
           const r = await postJson('/candidato/' + window.__idMasculino + '/mensagens', { autor: 'Hacker', texto: 'oi' });
