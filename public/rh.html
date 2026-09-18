@@ -675,7 +675,7 @@
         if (documento.arquivo) {
           linhaPrincipal = `
             <span class="item-documento-titulo">${doc.titulo}</span>
-            <a class="btn-pdf" href="/${documento.arquivo}" target="_blank" rel="noopener noreferrer">Visualizar/Baixar PDF</a>
+            <a class="btn-pdf" href="/visualizador.html?arquivo=${encodeURIComponent(documento.arquivo)}" target="_blank" rel="noopener noreferrer">Visualizar/Baixar PDF</a>
           `;
         } else {
           let situacao = 'Pendente';

@@ -838,7 +838,14 @@
               ? candidato.documentos[tipo].arquivo.split('/').pop()
               : null);
 
-        if (nomeArquivo) {
+        if (nomeArquivo && temPendenciaAtiva) {
+          // Pendência ativa: mantém a dropzone visível mesmo com um arquivo já
+          // anexado, para permitir anexar o substituto diretamente (sem precisar
+          // excluir o antigo primeiro).
+          anexo.classList.add('visivel');
+          nome.textContent = 'Arquivo atual (o RH pediu reenvio): ' + nomeArquivo;
+          dropzone.style.display = 'block';
+        } else if (nomeArquivo) {
           anexo.classList.add('visivel');
           nome.textContent = 'Anexado: ' + nomeArquivo;
           dropzone.style.display = 'none';
