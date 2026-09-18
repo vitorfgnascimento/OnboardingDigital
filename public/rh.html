@@ -415,12 +415,29 @@
     }
     .btn-enviar-mensagem:hover { background-color: var(--verde-intelbras-escuro); }
 
+    /* --- BUSCA POR NOME OU CPF --- */
+    .barra-busca { margin-top: 20px; }
+    .campo-busca {
+      width: 100%;
+      max-width: 360px;
+      padding: 10px 14px;
+      font-size: 14px;
+      border: 1px solid var(--cinza-borda);
+      border-radius: 20px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .campo-busca:focus {
+      border-color: var(--verde-intelbras);
+      box-shadow: 0 0 0 3px rgba(0, 163, 53, 0.15);
+    }
+
     /* --- FILTROS POR DECISÃO --- */
     .barra-filtros {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin: 20px 0 10px;
+      margin: 10px 0;
     }
     .btn-filtro {
       background: #ffffff;
@@ -571,6 +588,11 @@
         <div class="card-rotulo">Aprovados</div>
         <div class="card-valor" id="cardAprovados">0</div>
       </div>
+    </div>
+
+    <!-- BUSCA POR NOME OU CPF -->
+    <div class="barra-busca">
+      <input type="search" id="campoBusca" class="campo-busca" placeholder="Buscar por nome ou CPF..." aria-label="Buscar candidato por nome ou CPF">
     </div>
 
     <!-- FILTROS POR DECISÃO -->
@@ -920,6 +942,25 @@
       return fichas.filter((f) => f.decisaoFinal === filtroAtual);
     }
 
+    // Termo de busca por nome ou CPF, atualizado em tempo real ao digitar.
+    let termoBusca = '';
+
+    function aplicarBusca(fichas) {
+      const termo = termoBusca.trim().toLowerCase();
+      if (!termo) return fichas;
+
+      const termoDigitos = termo.replace(/\D/g, '');
+
+      return fichas.filter((f) => {
+        const nome = (f.nomeCompleto || '').toLowerCase();
+        const cpfDigitos = (f.cpf || '').replace(/\D/g, '');
+
+        const bateNome = nome.includes(termo);
+        const bateCpf = termoDigitos.length > 0 && cpfDigitos.includes(termoDigitos);
+        return bateNome || bateCpf;
+      });
+    }
+
     // Novos/não avaliados sempre no topo; dentro de cada grupo, mais recentes primeiro.
     function ordenarFichas(fichas) {
       const dataOrdenacao = (f) => new Date(f.atualizadoEm || f.criadoEm).getTime();
@@ -932,7 +973,12 @@
       });
     }
 
-    // Busca a lista de fichas no backend e redesenha o painel (cards + tabela).
+    // Última lista de fichas recebida do backend (sem filtro/busca aplicados),
+    // guardada para permitir filtrar e buscar localmente, sem recarregar a
+    // cada tecla digitada no campo de busca.
+    let ultimasFichasCarregadas = [];
+
+    // Busca a lista de fichas no backend, guarda em cache local e redesenha o painel.
     async function carregarFichas() {
       const corpo = document.getElementById('corpoTabela');
       corpo.innerHTML = '<tr><td colspan="5" class="vazio">Carregando fichas...</td></tr>';
@@ -946,19 +992,31 @@
           return;
         }
 
-        atualizarCardsResumo(todasAsFichas);
+        ultimasFichasCarregadas = todasAsFichas;
+        renderizarTabela();
+      } catch (erro) {
+        corpo.innerHTML = '<tr><td colspan="5" class="vazio">Falha ao carregar fichas.</td></tr>';
+      }
+    }
 
-        const fichas = ordenarFichas(aplicarFiltro(todasAsFichas));
+    // Redesenha cards + tabela a partir do cache local, aplicando busca e filtro
+    // de decisão vigentes. Não faz nenhuma requisição ao backend.
+    function renderizarTabela() {
+      const corpo = document.getElementById('corpoTabela');
 
-        if (fichas.length === 0) {
-          corpo.innerHTML = '<tr><td colspan="5" class="vazio">Nenhuma ficha encontrada para este filtro.</td></tr>';
-          return;
-        }
+      atualizarCardsResumo(ultimasFichasCarregadas);
 
-        corpo.innerHTML = '';
-        let grupoAtualRenderizado = null; // null | 'novos' | 'avaliados'
+      const fichas = ordenarFichas(aplicarFiltro(aplicarBusca(ultimasFichasCarregadas)));
 
-        fichas.forEach((f) => {
+      if (fichas.length === 0) {
+        corpo.innerHTML = '<tr><td colspan="5" class="vazio">Nenhuma ficha encontrada para esta busca/filtro.</td></tr>';
+        return;
+      }
+
+      corpo.innerHTML = '';
+      let grupoAtualRenderizado = null; // null | 'novos' | 'avaliados'
+
+      fichas.forEach((f) => {
           const grupoDaFicha = f.decisaoFinal ? 'avaliados' : 'novos';
           if (grupoDaFicha !== grupoAtualRenderizado) {
             grupoAtualRenderizado = grupoDaFicha;
@@ -1015,9 +1073,6 @@
           `;
           corpo.appendChild(trDetalhes);
         });
-      } catch (erro) {
-        corpo.innerHTML = '<tr><td colspan="5" class="vazio">Falha ao carregar fichas.</td></tr>';
-      }
     }
 
     // Envia a alteração de status para o backend (com trilha de auditoria) e recarrega o painel.
@@ -1250,13 +1305,19 @@
       }
     });
 
-    // Filtro por decisão: alterna o botão ativo e recarrega a tabela filtrada.
+    // Filtro por decisão: alterna o botão ativo e redesenha a tabela (sem recarregar do servidor).
     document.querySelector('.barra-filtros').addEventListener('click', (e) => {
       const botao = e.target.closest('[data-filtro]');
       if (!botao) return;
       filtroAtual = botao.dataset.filtro;
       document.querySelectorAll('.btn-filtro').forEach((b) => b.classList.toggle('ativo', b === botao));
-      carregarFichas();
+      renderizarTabela();
+    });
+
+    // Busca por nome ou CPF: filtragem local em tempo real, a cada tecla digitada.
+    document.getElementById('campoBusca').addEventListener('input', (e) => {
+      termoBusca = e.target.value;
+      renderizarTabela();
     });
 
     document.getElementById('btnAtualizar').addEventListener('click', carregarFichas);

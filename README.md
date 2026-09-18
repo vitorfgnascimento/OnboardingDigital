@@ -28,6 +28,8 @@ uploads/        -> PDFs enviados pelos candidatos (não versionado - dados pesso
 
 **Módulo Candidato** (`public/index.html`): formulário de dados pessoais com máscaras e validação estrita, upload dos 6 documentos obrigatórios, envio unificado da ficha, chat com o RH e reabertura pontual de documentos com pendência. Uma ficha já enviada pode ser revisitada pelo link `http://localhost:3001/index.html?id=<candidatoId>`.
 
+> **Nota sobre testes/arquitetura:** o botão "Copiar link" do candidato, no Painel do RH, gera exatamente esse link direto (`?id=<candidatoId>`). É um **recurso utilitário exclusivo da versão MVP/Dev**, pensado para agilizar a validação de testes locais (acessar a ficha de um candidato específico sem precisar procurar o `id` manualmente). Ele **não deve fazer parte do fluxo de produção final**: o lançamento da busca por nome/CPF (ver Etapa 2) cobre essa necessidade de localizar um candidato de forma adequada para uso real, sem depender de compartilhar links com identificadores de ficha.
+
 **Módulo RH** (`public/rh.html`): painel de gestão com cards de resumo, filtros por decisão, alteração de status, abertura de pendências, decisão final (Aprovar/Reprovar), chat, exportação de relatório em CSV e impressão/PDF da ficha individual.
 
 **Backend** (`index.js`): API REST em Express, upload de arquivos com Multer, persistência em arquivos JSON locais (sem banco de dados nesta etapa do MVP).
@@ -61,8 +63,10 @@ O Painel de Gestão do RH (`public/rh.html`) está em construção, cobrindo at�
 - **Chat RH ↔ Candidato** - conversa simples, com histórico persistido junto da ficha (ordenado por data/hora), disponível tanto no Painel do RH quanto na Ficha do Candidato (a partir do primeiro envio); Enter envia a mensagem, Shift+Enter quebra linha.
 - **Decisão final do processo** - botões "Aprovar Candidato"/"Reprovar Candidato" no Painel do RH; a Ficha do Candidato exibe um banner de sucesso ou de agradecimento e trava totalmente para edição, sem exceção (nem pendências residuais reabrem campos).
 - **Filtros e ordenação** - filtra a lista por decisão (Todos/Aprovados/Reprovados/Pendentes); candidatos ainda não avaliados ficam sempre no topo, com separação visual entre "Novos/Não avaliados" e "Já avaliados".
+- **Busca por nome ou CPF** - campo de busca no topo do painel, com filtragem em tempo real (a cada tecla digitada) e combinável com o filtro por decisão ativo.
 - **Exportação de relatório em CSV** - botão no cabeçalho da tabela baixa um `.csv` (compatível com Excel, com BOM UTF-8) contendo Nome, CPF, E-mail, Telefone, CEP, Endereço, Data de Submissão e Status Atual, respeitando o filtro de decisão ativo.
 - **Relatório individual / impressão em PDF** - cada candidato tem um botão que monta uma versão formatada para impressão (dados pessoais, documentos e declaração de consentimento LGPD com o timestamp real de submissão), usando o "Salvar como PDF" do navegador.
+- **Copiar link do candidato** *(recurso MVP/Dev - ver nota na Arquitetura do Projeto)* - botão que copia o link direto da ficha de um candidato para a área de transferência.
 
 Rotas do backend dedicadas ao painel: `GET /api/rh/fichas`, `PATCH /api/rh/fichas/:id/status`, `PATCH /api/rh/fichas/:id/documento/:tipo/pendencia`, `PATCH /api/rh/fichas/:id/decisao`, `GET /api/rh/exportar-csv` (aceita `?filtro=APROVADO|REPROVADO|PENDENTE`). Rotas compartilhadas com o candidato: `GET /api/candidato/:id` (retorno via link `?id=`) e `POST /api/candidato/:id/mensagens` (chat).
 
