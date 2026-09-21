@@ -159,25 +159,33 @@ para arquivos PDF (até 10 MB):
   de forma idempotente na inicialização do servidor (credenciais documentadas
   no `README.md`, apenas para uso em ambiente de desenvolvimento).
 
-### B) Contratação e Aceite Virtual do Contrato de Trabalho
+### B) Aceite Virtual de Contratos por Clique (Assinatura Eletrônica Simples)
 
 - Disponível somente para fichas com status geral `APROVADO`.
+- Lista fixa de documentos/contratos (`CONTRATOS_DOCUMENTOS` em `index.js`):
+  Contrato de Trabalho (CLT), Termo de Confidencialidade e Política de
+  Privacidade e Tratamento de Dados (LGPD) - cada um com sua própria minuta
+  em PDF (`GET /api/contrato/minuta/:tipo`).
 - Na Ficha do Candidato (`public/index.html`), nova seção **"Etapa Final:
-  Aceite do Contrato de Trabalho"**, com:
-  - Botão de download da minuta padrão do contrato de trabalho
-    (`GET /api/contrato/minuta`).
-  - Botão de confirmação do aceite virtual dos termos
-    (`POST /api/candidato/:id/contrato/aceite`) - grava `timestamp` (ISO) e
-    `ip` do momento do aceite, tanto na ficha quanto na trilha de auditoria.
-  - Campo de reenvio (upload) do contrato assinado em PDF, até 10 MB,
-    liberado somente após o aceite virtual
-    (`POST /api/candidato/:id/contrato/assinatura`).
+  Aceite Virtual dos Contratos"**, com uma linha por documento: botão
+  "Visualizar/Baixar Minuta" e botão "Li e Aceito os Termos" - um clique =
+  um aceite (`POST /api/candidato/:id/contrato/:tipo/aceite`), gravando
+  `timestamp` (ISO) e `ip` no documento e na trilha de auditoria.
+- O botão unificado **"Concluir Assinatura Digital"**
+  (`POST /api/candidato/:id/contrato/concluir`) só é liberado quando TODOS
+  os documentos da lista já estiverem aceitos; ao confirmar, grava o log de
+  auditoria completo com `timestamp` (ISO), `ip`, `cpf` do candidato e um
+  hash SHA-256 do conteúdo exato das minutas aceitas (evidência de
+  integridade da assinatura eletrônica simples).
 - No Painel do RH (`public/rh.html`), dentro do painel de detalhes da ficha
-  aprovada, novo card **"Contrato Assinado"**, mostrando o aceite virtual
-  (data/hora), o link para o PDF assinado enviado pelo candidato e o botão
-  **"Validar Contratação"** (`PATCH /api/rh/fichas/:id/contrato/validar`),
-  que exige o PDF assinado já enviado e move o status geral da ficha para o
-  estado terminal `CONTRATACAO_CONCLUIDA`.
+  aprovada, novo card **"Contrato de Trabalho - Aceite Digital"**, no mesmo
+  layout dos cards de documento (`Visualizar/Baixar PDF` + `Aceitar
+  Documento` ou o indicador **"✓ Assinado via Aceite Digital"**) - o RH
+  também pode aceitar um documento em nome do candidato
+  (`PATCH /api/rh/fichas/:id/contrato/:tipo/aceitar`). O botão **"Validar
+  Contratação"** (`PATCH /api/rh/fichas/:id/contrato/validar`) só aparece
+  após a assinatura digital unificada estar concluída, e move o status geral
+  da ficha para o estado terminal `CONTRATACAO_CONCLUIDA`.
 
 ## 7. Regras de Execução de Código para o Claude Code
 

@@ -879,36 +879,58 @@
       `;
     }
 
-    // Monta o card "Contrato Assinado" - só aparece para fichas Aprovadas (ou
-    // já com a contratação concluída). Mostra o aceite virtual do candidato,
-    // o link do PDF assinado e o botão de validação final do RH.
+    // Lista de documentos/contratos do módulo de aceite virtual por clique
+    // (assinatura eletrônica simples) - mesma lista definida no backend.
+    const CONTRATOS_DOCUMENTOS = [
+      { tipo: 'contratoTrabalho',        titulo: 'Contrato de Trabalho (CLT)' },
+      { tipo: 'termoConfidencialidade',  titulo: 'Termo de Confidencialidade' },
+      { tipo: 'politicaPrivacidade',     titulo: 'Política de Privacidade e Tratamento de Dados (LGPD)' }
+    ];
+
+    // Monta o card "Contrato de Trabalho - Aceite Digital" - só aparece para
+    // fichas Aprovadas (ou já com a contratação concluída). Reaproveita o
+    // mesmo layout dos cards de documento (grade-documentos): "Visualizar/
+    // Baixar PDF", "Aceitar Documento" e o indicador "Assinado via Aceite
+    // Digital", um por documento da lista.
     function montarSecaoContrato(ficha) {
       if (ficha.status !== 'APROVADO' && ficha.status !== 'CONTRATACAO_CONCLUIDA') return '';
 
       const contrato = ficha.contrato || {};
+
+      const itensDocumentos = CONTRATOS_DOCUMENTOS.map((doc) => {
+        const aceite = contrato.documentos?.[doc.tipo]?.aceite;
+        const areaAcoes = aceite
+          ? `<span class="badge-documento-aceito">&#10003; Assinado via Aceite Digital (${aceite.por === 'RH' ? 'RH' : 'Candidato'}, ${formatarData(aceite.timestamp)})</span>`
+          : `<button type="button" class="btn-aceitar-documento" data-aceitar-contrato="${ficha.id}:${doc.tipo}">Aceitar Documento</button>`;
+
+        return `
+          <div class="item-documento">
+            <div class="item-documento-linha-principal">
+              <span class="item-documento-titulo">${doc.titulo}</span>
+              <a class="btn-pdf" href="/api/contrato/minuta/${doc.tipo}" target="_blank" rel="noopener noreferrer">Visualizar/Baixar PDF</a>
+            </div>
+            <div class="acoes-documento">${areaAcoes}</div>
+          </div>
+        `;
+      }).join('');
+
       let statusHtml;
       let botaoValidar = '';
 
       if (ficha.status === 'CONTRATACAO_CONCLUIDA') {
         statusHtml = `<div class="status-contrato-rh sucesso">Contratação concluída em ${formatarData(contrato.validacaoRh?.timestamp)}.</div>`;
-      } else if (!contrato.aceite) {
-        statusHtml = '<div class="status-contrato-rh aviso">Aguardando o aceite virtual dos termos pelo candidato.</div>';
-      } else if (!contrato.arquivoAssinado) {
-        statusHtml = `<div class="status-contrato-rh info">Aceite virtual confirmado em ${formatarData(contrato.aceite.timestamp)} (IP ${escapeHtml(contrato.aceite.ip || '-')}). Aguardando envio do contrato assinado.</div>`;
+      } else if (!contrato.assinaturaConcluida) {
+        statusHtml = '<div class="status-contrato-rh aviso">Aguardando o candidato aceitar todos os documentos e concluir a assinatura digital.</div>';
       } else {
-        statusHtml = `<div class="status-contrato-rh info">Aceite virtual confirmado em ${formatarData(contrato.aceite.timestamp)}. Contrato assinado recebido.</div>`;
+        statusHtml = `<div class="status-contrato-rh info">Assinatura digital concluída em ${formatarData(contrato.assinaturaConcluida.timestamp)} (CPF ${escapeHtml(contrato.assinaturaConcluida.cpf || '-')}, hash ${escapeHtml((contrato.assinaturaConcluida.hash || '').slice(0, 12))}...).</div>`;
         botaoValidar = `<button type="button" class="btn-validar-contrato" data-validar-contrato="${ficha.id}">Validar Contratação</button>`;
       }
 
-      const linkAssinado = contrato.arquivoAssinado
-        ? `<a class="btn-pdf" href="/visualizador.html?arquivo=${encodeURIComponent(contrato.arquivoAssinado)}" target="_blank" rel="noopener noreferrer">Ver Contrato Assinado</a>`
-        : '';
-
       return `
         <div class="secao-contrato-rh">
-          <div class="secao-titulo">Contrato Assinado</div>
+          <div class="secao-titulo">Contrato de Trabalho - Aceite Digital</div>
+          <div class="grade-documentos">${itensDocumentos}</div>
           ${statusHtml}
-          ${linkAssinado}
           ${botaoValidar}
         </div>
       `;
@@ -1364,6 +1386,25 @@
       }
     }
 
+    // RH aceita um documento do contrato em nome do candidato (mesma ação
+    // "Aceitar Documento" usada nos demais cards do painel).
+    async function aceitarDocumentoContrato(id, tipo) {
+      try {
+        const resposta = await fetch(`/api/rh/fichas/${id}/contrato/${tipo}/aceitar`, { method: 'PATCH', headers: cabecalhosRh() });
+        const resultado = await resposta.json();
+
+        if (!resposta.ok) {
+          alert('Erro: ' + (resultado.erro || 'não foi possível aceitar o documento.'));
+          return;
+        }
+
+        atualizarFichaEmCache(resultado.candidato);
+        atualizarPainelDetalhesInline(resultado.candidato);
+      } catch (erro) {
+        alert('Falha ao comunicar com o servidor.');
+      }
+    }
+
     // RH valida o contrato assinado e conclui a contratação (status terminal).
     async function validarContrato(id) {
       try {
@@ -1445,6 +1486,13 @@
       if (btnAceitarDocumento) {
         const [idFicha, tipo] = btnAceitarDocumento.dataset.aceitarDocumento.split(':');
         aceitarDocumento(idFicha, tipo);
+        return;
+      }
+
+      const btnAceitarContrato = e.target.closest('[data-aceitar-contrato]');
+      if (btnAceitarContrato) {
+        const [idFicha, tipo] = btnAceitarContrato.dataset.aceitarContrato.split(':');
+        aceitarDocumentoContrato(idFicha, tipo);
         return;
       }
 

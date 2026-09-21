@@ -483,6 +483,56 @@
     .status-contrato.info { background: rgba(0, 163, 53, 0.1); color: #00812a; }
     .status-contrato.aviso { background: rgba(255, 193, 7, 0.15); color: #7a5c00; }
     .status-contrato.sucesso { background: rgba(40, 167, 69, 0.15); color: #14532d; font-weight: 700; }
+
+    /* --- LISTA DE DOCUMENTOS/CONTRATOS A ACEITAR (assinatura por clique) --- */
+    .item-documento-contrato {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: #ffffff;
+      border: 1px solid var(--cinza-borda);
+      border-radius: 6px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .item-documento-contrato .titulo-documento-contrato { font-weight: 600; font-size: 14px; }
+    .item-documento-contrato .acoes-item-contrato {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .btn-ver-minuta {
+      background: #ffffff;
+      color: var(--verde-intelbras-escuro);
+      border: 1px solid var(--verde-intelbras);
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: bold;
+      border-radius: 5px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .btn-ver-minuta:hover { background: rgba(0, 163, 53, 0.08); }
+    .btn-li-aceito {
+      background-color: var(--verde-intelbras);
+      color: #ffffff;
+      border: none;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: bold;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .btn-li-aceito:hover { background-color: var(--verde-intelbras-escuro); }
+    .badge-documento-contrato-aceito {
+      color: var(--verde-intelbras-escuro);
+      font-size: 12px;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -599,27 +649,18 @@
       </form>
     </div>
 
-    <!-- ETAPA FINAL: ACEITE VIRTUAL DO CONTRATO DE TRABALHO (só para fichas Aprovadas) -->
+    <!-- ETAPA FINAL: ACEITE VIRTUAL DE CONTRATOS POR CLIQUE (só para fichas Aprovadas) -->
     <div class="secao-contrato" id="secaoContrato">
-      <h3>Etapa Final: Aceite do Contrato de Trabalho</h3>
+      <h3>Etapa Final: Aceite Virtual dos Contratos (Assinatura Eletrônica Simples)</h3>
 
       <div id="statusContrato"></div>
 
-      <div class="acoes-contrato">
-        <a class="btn-contrato secundario" href="/api/contrato/minuta" target="_blank" rel="noopener noreferrer">
-          Baixar Minuta do Contrato
-        </a>
-        <button type="button" class="btn-contrato" id="btnAceitarContrato">
-          Confirmo que li e aceito os termos do contrato
-        </button>
-      </div>
+      <div id="listaDocumentosContrato"></div>
 
-      <div id="areaAssinaturaContrato" hidden>
-        <label for="inputContratoAssinado" style="font-weight:600; display:block; margin-bottom:8px;">
-          Envie o contrato assinado (PDF, até 10 MB):
-        </label>
-        <input type="file" id="inputContratoAssinado" accept="application/pdf">
-        <span class="erro-texto" id="erroContratoAssinado"></span>
+      <div class="acoes-contrato">
+        <button type="button" class="btn-contrato" id="btnConcluirAssinatura" disabled>
+          Concluir Assinatura Digital
+        </button>
       </div>
     </div>
 
@@ -1530,9 +1571,38 @@
     });
 
     // =========================================================================
-    // ETAPA FINAL: ACEITE VIRTUAL DO CONTRATO DE TRABALHO
-    // Só é exibida quando o status geral da ficha é APROVADO (ou já concluída).
+    // ETAPA FINAL: ACEITE VIRTUAL DE CONTRATOS POR CLIQUE (ASSINATURA
+    // ELETRÔNICA SIMPLES). Só é exibida quando o status geral da ficha é
+    // APROVADO (ou já concluída). Cada documento tem seu próprio aceite; o
+    // botão unificado "Concluir Assinatura Digital" só libera quando TODOS
+    // os documentos da lista já foram aceitos.
     // =========================================================================
+    const CONTRATOS_DOCUMENTOS = [
+      { tipo: 'contratoTrabalho',        titulo: 'Contrato de Trabalho (CLT)' },
+      { tipo: 'termoConfidencialidade',  titulo: 'Termo de Confidencialidade' },
+      { tipo: 'politicaPrivacidade',     titulo: 'Política de Privacidade e Tratamento de Dados (LGPD)' }
+    ];
+
+    function montarListaDocumentosContrato(contrato) {
+      return CONTRATOS_DOCUMENTOS.map((doc) => {
+        const aceite = contrato.documentos[doc.tipo].aceite;
+        return `
+          <div class="item-documento-contrato">
+            <span class="titulo-documento-contrato">${doc.titulo}</span>
+            <div class="acoes-item-contrato">
+              <a class="btn-ver-minuta" href="/api/contrato/minuta/${doc.tipo}" target="_blank" rel="noopener noreferrer">
+                Visualizar/Baixar Minuta
+              </a>
+              ${aceite
+                ? `<span class="badge-documento-contrato-aceito">&#10003; Li e Aceito (${formatarDataHora(aceite.timestamp)})</span>`
+                : `<button type="button" class="btn-li-aceito" data-aceitar-contrato="${doc.tipo}">Li e Aceito os Termos</button>`
+              }
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
     function renderizarSecaoContrato() {
       const secao = document.getElementById('secaoContrato');
       if (!candidato || (candidato.status !== 'APROVADO' && candidato.status !== 'CONTRATACAO_CONCLUIDA')) {
@@ -1541,44 +1611,45 @@
       }
       secao.classList.add('visivel');
 
-      const contrato = candidato.contrato || {};
+      const contrato = candidato.contrato;
       const statusEl = document.getElementById('statusContrato');
-      const btnAceitar = document.getElementById('btnAceitarContrato');
-      const areaAssinatura = document.getElementById('areaAssinaturaContrato');
+      const listaEl = document.getElementById('listaDocumentosContrato');
+      const btnConcluir = document.getElementById('btnConcluirAssinatura');
 
       if (candidato.status === 'CONTRATACAO_CONCLUIDA') {
         statusEl.innerHTML = '<div class="status-contrato sucesso">Contratação concluída! Seja bem-vindo(a) à equipe.</div>';
-        btnAceitar.hidden = true;
-        areaAssinatura.hidden = true;
+        listaEl.innerHTML = montarListaDocumentosContrato(contrato);
+        btnConcluir.hidden = true;
         return;
       }
 
-      if (!contrato.aceite) {
-        statusEl.innerHTML = '<div class="status-contrato info">Baixe a minuta, leia com atenção e confirme o aceite dos termos para liberar o envio do contrato assinado.</div>';
-        btnAceitar.hidden = false;
-        areaAssinatura.hidden = true;
-        return;
+      listaEl.innerHTML = montarListaDocumentosContrato(contrato);
+      btnConcluir.hidden = false;
+
+      const todosAceitos = CONTRATOS_DOCUMENTOS.every((doc) => !!contrato.documentos[doc.tipo].aceite);
+
+      if (contrato.assinaturaConcluida) {
+        statusEl.innerHTML = `<div class="status-contrato sucesso">Assinatura digital concluída em ${formatarDataHora(contrato.assinaturaConcluida.timestamp)} - aguardando validação final do RH.</div>`;
+        btnConcluir.disabled = true;
+        btnConcluir.textContent = 'Assinatura Digital Concluída';
+      } else if (todosAceitos) {
+        statusEl.innerHTML = '<div class="status-contrato info">Todos os documentos foram aceitos. Clique em "Concluir Assinatura Digital" para finalizar.</div>';
+        btnConcluir.disabled = false;
+        btnConcluir.textContent = 'Concluir Assinatura Digital';
+      } else {
+        statusEl.innerHTML = '<div class="status-contrato info">Visualize e aceite cada documento abaixo para liberar a conclusão da assinatura digital.</div>';
+        btnConcluir.disabled = true;
+        btnConcluir.textContent = 'Concluir Assinatura Digital';
       }
-
-      btnAceitar.hidden = true;
-
-      if (!contrato.arquivoAssinado) {
-        statusEl.innerHTML = `<div class="status-contrato info">Aceite virtual confirmado em ${formatarDataHora(contrato.aceite.timestamp)}. Envie o contrato assinado abaixo.</div>`;
-        areaAssinatura.hidden = false;
-        return;
-      }
-
-      areaAssinatura.hidden = true;
-      const validado = contrato.validacaoRh;
-      statusEl.innerHTML = validado
-        ? '<div class="status-contrato sucesso">Contrato assinado validado pelo RH.</div>'
-        : '<div class="status-contrato aviso">Contrato assinado enviado - aguardando validação final do RH.</div>';
     }
 
-    document.getElementById('btnAceitarContrato').addEventListener('click', async () => {
-      if (!candidatoId) return;
+    document.getElementById('listaDocumentosContrato').addEventListener('click', async (e) => {
+      const botao = e.target.closest('[data-aceitar-contrato]');
+      if (!botao || !candidatoId) return;
+      const tipo = botao.dataset.aceitarContrato;
+
       try {
-        const resposta = await fetch('/api/candidato/' + candidatoId + '/contrato/aceite', { method: 'POST' });
+        const resposta = await fetch('/api/candidato/' + candidatoId + '/contrato/' + tipo + '/aceite', { method: 'POST' });
         const resultado = await resposta.json();
         if (!resposta.ok) { alert('Erro: ' + (resultado.erro || 'não foi possível registrar o aceite.')); return; }
         candidato = resultado.candidato;
@@ -1588,45 +1659,16 @@
       }
     });
 
-    document.getElementById('inputContratoAssinado').addEventListener('change', async (e) => {
-      const arquivo = e.target.files[0];
-      if (!arquivo || !candidatoId) return;
-
-      const erroEl = document.getElementById('erroContratoAssinado');
-      erroEl.style.display = 'none';
-
-      const ehPdf = /\.pdf$/i.test(arquivo.name) && (arquivo.type === '' || /pdf|octet-stream/i.test(arquivo.type));
-      if (!ehPdf) {
-        erroEl.textContent = 'Apenas arquivos PDF são aceitos.';
-        erroEl.style.display = 'block';
-        e.target.value = '';
-        return;
-      }
-      if (arquivo.size > TAMANHO_MAXIMO_PDF) {
-        erroEl.textContent = 'Arquivo excedeu o tamanho limite de 10 MB';
-        erroEl.style.display = 'block';
-        e.target.value = '';
-        return;
-      }
-
-      const dados = new FormData();
-      dados.append('tipoDocumento', 'contrato-assinado');
-      dados.append('arquivo', arquivo);
-
+    document.getElementById('btnConcluirAssinatura').addEventListener('click', async () => {
+      if (!candidatoId) return;
       try {
-        const resposta = await fetch('/api/candidato/' + candidatoId + '/contrato/assinatura', { method: 'POST', body: dados });
+        const resposta = await fetch('/api/candidato/' + candidatoId + '/contrato/concluir', { method: 'POST' });
         const resultado = await resposta.json();
-        if (!resposta.ok) {
-          erroEl.textContent = resultado.erro || 'Falha no envio do contrato assinado.';
-          erroEl.style.display = 'block';
-          e.target.value = '';
-          return;
-        }
+        if (!resposta.ok) { alert('Erro: ' + (resultado.erro || 'não foi possível concluir a assinatura digital.')); return; }
         candidato = resultado.candidato;
         renderizarSecaoContrato();
       } catch (erro) {
-        erroEl.textContent = 'Falha ao comunicar com o servidor.';
-        erroEl.style.display = 'block';
+        alert('Falha ao comunicar com o servidor.');
       }
     });
 

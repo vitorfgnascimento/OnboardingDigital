@@ -127,7 +127,7 @@ function lerCandidatos() {
   // não têm os campos "contrato"/"usuarioId" - preenche com o valor padrão
   // para que as novas rotas funcionem sem precisar recriar a base de dados.
   candidatos.forEach((c) => {
-    if (!c.contrato) c.contrato = criarContratoInicial();
+    if (!c.contrato || !c.contrato.documentos) c.contrato = criarContratoInicial();
     if (c.usuarioId === undefined) c.usuarioId = null;
   });
 
@@ -286,12 +286,6 @@ function criarDocumentosIniciais(genero) {
   }
 
   return documentos;
-}
-
-// Estrutura inicial do módulo de contratação (aceite virtual do contrato de
-// trabalho) - só é preenchida depois que a ficha é aprovada pelo RH.
-function criarContratoInicial() {
-  return { aceite: null, arquivoAssinado: null, atualizadoEm: null, validacaoRh: null };
 }
 
 // Reavalia a regra do reservista quando o gênero do candidato muda.
@@ -1210,18 +1204,44 @@ app.get('/api/rh/exportar-csv', exigirRh, (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// MÓDULO DE CONTRATAÇÃO: ACEITE VIRTUAL DO CONTRATO DE TRABALHO
+// MÓDULO DE ACEITE VIRTUAL DE CONTRATOS POR CLIQUE (ASSINATURA ELETRÔNICA
+// SIMPLES) - lista de documentos/contratos que o candidato aprovado precisa
+// ler e aceitar individualmente (um clique = um aceite), antes de concluir a
+// assinatura digital unificada.
 // ---------------------------------------------------------------------------
 
-const NOME_ARQUIVO_MINUTA = 'minuta-contrato-trabalho.pdf';
-const CAMINHO_MINUTA = path.join(PASTA_UPLOADS, NOME_ARQUIVO_MINUTA);
+const CONTRATOS_DOCUMENTOS = [
+  { tipo: 'contratoTrabalho', titulo: 'Contrato de Trabalho (CLT)' },
+  { tipo: 'termoConfidencialidade', titulo: 'Termo de Confidencialidade' },
+  { tipo: 'politicaPrivacidade', titulo: 'Política de Privacidade e Tratamento de Dados (LGPD)' }
+];
+const TIPOS_CONTRATO = CONTRATOS_DOCUMENTOS.map((d) => d.tipo);
 
-// Gera, uma única vez (se ainda não existir em disco), a minuta padrão do
-// contrato de trabalho como PDF de exemplo - texto simples, suficiente para
-// abrir corretamente no visualizador de PDF do navegador. Em um cenário real,
-// este arquivo seria fornecido pelo time Jurídico/RH.
-function garantirMinutaContrato() {
-  if (fs.existsSync(CAMINHO_MINUTA)) return;
+// Estrutura inicial do módulo de contratação: um estado de aceite por
+// documento (null até o clique) + a assinatura digital unificada (só existe
+// depois que TODOS os documentos acima estiverem aceitos) + a validação do RH.
+function criarContratoInicial() {
+  const documentos = {};
+  TIPOS_CONTRATO.forEach((tipo) => { documentos[tipo] = { aceite: null }; });
+  return { documentos, assinaturaConcluida: null, validacaoRh: null };
+}
+
+function nomeArquivoMinuta(tipo) {
+  return `minuta-${tipo}.pdf`;
+}
+
+function caminhoMinuta(tipo) {
+  return path.join(PASTA_UPLOADS, nomeArquivoMinuta(tipo));
+}
+
+// Gera, uma única vez por tipo (se ainda não existir em disco), a minuta
+// padrão de cada documento como PDF de exemplo - texto simples, suficiente
+// para abrir corretamente no visualizador de PDF do navegador. Em um
+// cenário real, estes arquivos seriam fornecidos pelo time Jurídico/RH.
+function garantirMinutaContrato(tipo, titulo) {
+  const caminho = caminhoMinuta(tipo);
+  if (fs.existsSync(caminho)) return;
+  const tituloEscapado = titulo.replace(/[()\\]/g, '');
   const conteudo = `%PDF-1.4
 1 0 obj
 << /Type /Catalog /Pages 2 0 R >>
@@ -1238,7 +1258,7 @@ endobj
 5 0 obj
 << /Length 220 >>
 stream
-BT /F1 14 Tf 50 780 Td (MINUTA - CONTRATO DE TRABALHO) Tj ET
+BT /F1 14 Tf 50 780 Td (MINUTA - ${tituloEscapado}) Tj ET
 BT /F1 10 Tf 50 750 Td (Documento de exemplo - Onboarding Digital) Tj ET
 BT /F1 10 Tf 50 730 Td (Substitua por um modelo real fornecido pelo Juridico/RH.) Tj ET
 endstream
@@ -1246,104 +1266,145 @@ endobj
 trailer
 << /Size 6 /Root 1 0 R >>
 %%EOF`;
-  fs.writeFileSync(CAMINHO_MINUTA, conteudo);
+  fs.writeFileSync(caminho, conteudo);
 }
 
-// Download da minuta padrão do contrato de trabalho.
-app.get('/api/contrato/minuta', (req, res) => {
-  garantirMinutaContrato();
-  return res.download(CAMINHO_MINUTA, NOME_ARQUIVO_MINUTA);
+function garantirMinutasContrato() {
+  CONTRATOS_DOCUMENTOS.forEach((doc) => garantirMinutaContrato(doc.tipo, doc.titulo));
+}
+
+// Hash SHA-256 do conteúdo exato de todas as minutas, na ordem fixa de
+// CONTRATOS_DOCUMENTOS - evidência de integridade de qual versão dos
+// documentos foi efetivamente aceita no momento da assinatura digital.
+function calcularHashDocumentosContrato() {
+  const hash = crypto.createHash('sha256');
+  CONTRATOS_DOCUMENTOS.forEach((doc) => {
+    hash.update(fs.readFileSync(caminhoMinuta(doc.tipo)));
+  });
+  return hash.digest('hex');
+}
+
+// Download da minuta de um documento/contrato específico.
+app.get('/api/contrato/minuta/:tipo', (req, res) => {
+  const { tipo } = req.params;
+  if (!TIPOS_CONTRATO.includes(tipo)) {
+    return res.status(400).json({ erro: 'Documento de contrato inválido.' });
+  }
+  garantirMinutaContrato(tipo, CONTRATOS_DOCUMENTOS.find((d) => d.tipo === tipo).titulo);
+  return res.download(caminhoMinuta(tipo), nomeArquivoMinuta(tipo));
 });
 
-// O candidato confirma que leu e aceita os termos do contrato (aceite
-// virtual). Só é permitido para fichas já APROVADAS pelo RH. Grava
-// timestamp (ISO) e IP na ficha e na trilha de auditoria (LGPD).
-app.post('/api/candidato/:id/contrato/aceite', (req, res) => {
+// O candidato clica em "Li e Aceito os Termos" para UM documento (aceite por
+// clique = assinatura eletrônica simples). Só é permitido para fichas já
+// APROVADAS pelo RH. Grava timestamp (ISO) e IP no documento e na auditoria.
+app.post('/api/candidato/:id/contrato/:tipo/aceite', (req, res) => {
+  const { id, tipo } = req.params;
+  if (!TIPOS_CONTRATO.includes(tipo)) {
+    return res.status(400).json({ erro: 'Documento de contrato inválido.' });
+  }
+
+  const candidatos = lerCandidatos();
+  const candidato = candidatos.find((c) => c.id === id);
+
+  if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  if (candidato.status !== 'APROVADO') {
+    return res.status(400).json({ erro: 'O aceite dos documentos só está disponível para fichas aprovadas e ainda não contratadas.' });
+  }
+
+  const agora = new Date().toISOString();
+  candidato.contrato.documentos[tipo].aceite = { timestamp: agora, ip: req.ip, por: 'CANDIDATO' };
+  candidato.atualizadoEm = agora;
+  salvarCandidatos(candidatos);
+
+  registrarEventoAuditoria({
+    id: gerarId(),
+    tipoEvento: 'aceite_documento_contrato',
+    candidatoId: id,
+    documentoTipo: tipo,
+    por: 'CANDIDATO',
+    timestamp: agora,
+    ip: req.ip
+  });
+
+  return res.status(200).json({ mensagem: 'Documento aceito com sucesso!', candidato });
+});
+
+// RH também pode marcar o aceite de um documento em nome do candidato
+// (mesmo layout/ação "Aceitar Documento" usado nos demais cards do painel).
+app.patch('/api/rh/fichas/:id/contrato/:tipo/aceitar', exigirRh, (req, res) => {
+  const { id, tipo } = req.params;
+  if (!TIPOS_CONTRATO.includes(tipo)) {
+    return res.status(400).json({ erro: 'Documento de contrato inválido.' });
+  }
+
+  const candidatos = lerCandidatos();
+  const candidato = candidatos.find((c) => c.id === id);
+
+  if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  if (candidato.status !== 'APROVADO') {
+    return res.status(400).json({ erro: 'O aceite dos documentos só está disponível para fichas aprovadas e ainda não contratadas.' });
+  }
+
+  const agora = new Date().toISOString();
+  candidato.contrato.documentos[tipo].aceite = { timestamp: agora, ip: req.ip, por: 'RH' };
+  candidato.atualizadoEm = agora;
+  salvarCandidatos(candidatos);
+
+  registrarEventoAuditoria({
+    id: gerarId(),
+    tipoEvento: 'aceite_documento_contrato',
+    candidatoId: id,
+    documentoTipo: tipo,
+    por: 'RH',
+    timestamp: agora,
+    ip: req.ip
+  });
+
+  return res.status(200).json({ mensagem: 'Documento aceito com sucesso!', candidato });
+});
+
+// Conclusão unificada da assinatura digital: só é permitida quando TODOS os
+// documentos da lista já foram aceitos individualmente. Grava o log de
+// auditoria completo (IP, timestamp ISO, CPF do candidato e hash SHA-256 do
+// conteúdo exato das minutas aceitas).
+app.post('/api/candidato/:id/contrato/concluir', (req, res) => {
   const { id } = req.params;
   const candidatos = lerCandidatos();
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
   if (candidato.status !== 'APROVADO') {
-    return res.status(400).json({ erro: 'O aceite do contrato só está disponível após a aprovação da ficha.' });
+    return res.status(400).json({ erro: 'A assinatura digital só está disponível para fichas aprovadas e ainda não contratadas.' });
   }
 
+  const pendentes = TIPOS_CONTRATO.filter((tipo) => !candidato.contrato.documentos[tipo].aceite);
+  if (pendentes.length) {
+    return res.status(400).json({ erro: 'Confirme o aceite de todos os documentos antes de concluir a assinatura digital.' });
+  }
+
+  garantirMinutasContrato();
   const agora = new Date().toISOString();
-  candidato.contrato.aceite = { timestamp: agora, ip: req.ip };
-  candidato.contrato.atualizadoEm = agora;
+  const hash = calcularHashDocumentosContrato();
+
+  candidato.contrato.assinaturaConcluida = { timestamp: agora, ip: req.ip, cpf: candidato.cpf, hash };
   candidato.atualizadoEm = agora;
   salvarCandidatos(candidatos);
 
   registrarEventoAuditoria({
     id: gerarId(),
-    tipoEvento: 'aceite_virtual_contrato',
+    tipoEvento: 'assinatura_digital_concluida',
     candidatoId: id,
+    cpf: candidato.cpf,
+    hashDocumentos: hash,
     timestamp: agora,
     ip: req.ip
   });
 
-  return res.status(200).json({ mensagem: 'Aceite do contrato registrado com sucesso!', candidato });
+  return res.status(200).json({ mensagem: 'Assinatura digital concluída com sucesso!', candidato });
 });
 
-// Upload do contrato assinado (PDF, até 10 MB) - só liberado após o aceite virtual.
-app.post('/api/candidato/:id/contrato/assinatura', (req, res) => {
-  upload.single('arquivo')(req, res, (erroUpload) => {
-    if (erroUpload) {
-      if (erroUpload.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ erro: 'Arquivo excedeu o tamanho limite de 10 MB' });
-      }
-      return res.status(400).json({ erro: erroUpload.message });
-    }
-
-    const { id } = req.params;
-    const descartarArquivo = () => {
-      if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    };
-
-    if (!req.file) return res.status(400).json({ erro: 'Nenhum arquivo PDF foi enviado.' });
-
-    const candidatos = lerCandidatos();
-    const candidato = candidatos.find((c) => c.id === id);
-
-    if (!candidato) {
-      descartarArquivo();
-      return res.status(404).json({ erro: 'Candidato não encontrado.' });
-    }
-    if (candidato.status !== 'APROVADO') {
-      descartarArquivo();
-      return res.status(400).json({ erro: 'O envio do contrato assinado só está disponível após a aprovação da ficha.' });
-    }
-    if (!candidato.contrato.aceite) {
-      descartarArquivo();
-      return res.status(400).json({ erro: 'Confirme o aceite virtual dos termos antes de enviar o contrato assinado.' });
-    }
-
-    if (candidato.contrato.arquivoAssinado) {
-      const caminhoAntigo = path.join(__dirname, candidato.contrato.arquivoAssinado);
-      fs.unlink(caminhoAntigo, (erro) => {
-        if (erro && erro.code !== 'ENOENT') console.error('Falha ao excluir contrato antigo:', caminhoAntigo, erro.message);
-      });
-    }
-
-    const agora = new Date().toISOString();
-    candidato.contrato.arquivoAssinado = 'uploads/' + req.file.filename;
-    candidato.contrato.atualizadoEm = agora;
-    candidato.atualizadoEm = agora;
-    salvarCandidatos(candidatos);
-
-    registrarEventoAuditoria({
-      id: gerarId(),
-      tipoEvento: 'contrato_assinado_enviado',
-      candidatoId: id,
-      timestamp: agora,
-      ip: req.ip
-    });
-
-    return res.status(201).json({ mensagem: 'Contrato assinado enviado com sucesso!', candidato });
-  });
-});
-
-// RH valida o contrato assinado e conclui a contratação (status terminal).
+// RH finaliza o processo: exige a assinatura digital unificada já concluída
+// pelo candidato, e move o status geral da ficha para o estado terminal.
 app.patch('/api/rh/fichas/:id/contrato/validar', exigirRh, (req, res) => {
   const { id } = req.params;
   const candidatos = lerCandidatos();
@@ -1353,8 +1414,8 @@ app.patch('/api/rh/fichas/:id/contrato/validar', exigirRh, (req, res) => {
   if (candidato.status !== 'APROVADO') {
     return res.status(400).json({ erro: 'Só é possível validar a contratação de uma ficha aprovada.' });
   }
-  if (!candidato.contrato.arquivoAssinado) {
-    return res.status(400).json({ erro: 'Aguardando o envio do contrato assinado pelo candidato.' });
+  if (!candidato.contrato.assinaturaConcluida) {
+    return res.status(400).json({ erro: 'Aguardando a conclusão da assinatura digital pelo candidato.' });
   }
 
   const agora = new Date().toISOString();
@@ -1402,7 +1463,7 @@ function garantirUsuarioRhTeste() {
 }
 
 garantirUsuarioRhTeste();
-garantirMinutaContrato();
+garantirMinutasContrato();
 
 // Porta configurável via variável de ambiente PORT (padrão do Node/Express e
 // das plataformas de deploy em nuvem, como Render e Railway, que injetam essa
