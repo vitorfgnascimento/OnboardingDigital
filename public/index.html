@@ -1318,16 +1318,9 @@
           await uploadArquivo(doc.tipo, arquivosPendentes[doc.tipo]);
         }
 
-        // 6) move o status geral para EM ANÁLISE (AMARELO)
-        const respStatus = await fetch('/api/candidato/' + candidatoId + '/status', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'AMARELO' })
-        });
-        const resStatus = await respStatus.json();
-        if (respStatus.ok) candidato = resStatus.candidato;
-
-        // 7) bloqueia a ficha e habilita o chat com o RH
+        // 6) bloqueia a ficha e habilita o chat com o RH. O status geral
+        // permanece VERMELHO (Não avaliado) - só migra para Em Análise na
+        // primeira interação do RH (ver marcarPrimeiraInteracaoRh no backend).
         bloquearFicha();
         window.history.replaceState(null, '', '?id=' + candidatoId);
         exibirPainelChat();
@@ -1357,7 +1350,9 @@
 
     function bloquearFicha() {
       // Chamada logo após o envio bem-sucedido da ficha nesta mesma sessão.
-      candidato.status = 'AMARELO';
+      // O status GERAL da ficha não é alterado aqui: permanece VERMELHO (Não
+      // avaliado) até a primeira interação do RH - só os documentos já
+      // enviados aparecem como "Em Análise" a nível individual.
       DOCUMENTOS.forEach((doc) => {
         const atual = candidato.documentos[doc.tipo];
         if (atual.status === 'VERDE') return; // reservista dispensado permanece VERDE
