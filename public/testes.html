@@ -853,60 +853,97 @@
         }
       },
 
-      { grupo: 'Contratação e Aceite Virtual do Contrato de Trabalho' },
+      { grupo: 'Aceite Virtual de Contratos por Clique (Assinatura Eletrônica Simples)' },
 
       {
-        nome: 'Aceite do contrato antes da aprovação é recusado (400)',
+        nome: 'Aceite de documento do contrato antes da aprovação é recusado (400)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/aceite', {});
+          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/contratoTrabalho/aceite', {});
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
       {
-        nome: 'GET /api/contrato/minuta baixa um PDF (200)',
+        nome: 'GET /api/contrato/minuta/:tipo baixa um PDF (200)',
         run: async () => {
-          const r = await fetch(API + '/contrato/minuta');
+          const r = await fetch(API + '/contrato/minuta/contratoTrabalho');
           const contentType = r.headers.get('content-type') || '';
           return { ok: r.status === 200 && contentType.includes('application/pdf'), detalhe: `status ${r.status}, content-type ${contentType}` };
         }
       },
       {
-        nome: 'RH aprova a ficha - libera a etapa do contrato',
+        nome: 'GET /api/contrato/minuta/:tipo com tipo inválido é recusado (400)',
+        run: async () => {
+          const r = await fetch(API + '/contrato/minuta/naoExiste');
+          return { ok: r.status === 400, detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'RH aprova a ficha - libera a etapa de aceite dos contratos',
         run: async () => {
           const r = await patchJsonRh('/rh/fichas/' + window.__idAuthFicha + '/decisao', { decisao: 'APROVADO' });
           return { ok: r.status === 200 && r.corpo.candidato?.status === 'APROVADO', detalhe: `status ${r.status}, geral ${r.corpo.candidato?.status}` };
         }
       },
       {
-        nome: 'Envio do contrato assinado antes do aceite virtual é recusado (400)',
+        nome: 'Concluir assinatura digital com documentos pendentes é recusado (400)',
         run: async () => {
-          const fd = new FormData();
-          fd.append('tipoDocumento', 'contrato-assinado');
-          fd.append('arquivo', pdfDeTeste('contrato-sem-aceite.pdf'));
-          const resp = await fetch(API + '/candidato/' + window.__idAuthFicha + '/contrato/assinatura', { method: 'POST', body: fd });
-          const corpo = await resp.json();
-          return { ok: resp.status === 400, detalhe: `status ${resp.status} — ${corpo.erro || ''}` };
+          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/concluir', {});
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
       {
-        nome: 'Aceite virtual do contrato registra timestamp e IP (LGPD)',
+        nome: 'Aceite (clique) do 1º documento registra timestamp, IP e autor (LGPD)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/aceite', {});
-          const aceite = r.corpo.candidato?.contrato?.aceite;
-          const ok = r.status === 200 && !!aceite?.timestamp && !!aceite?.ip;
+          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/contratoTrabalho/aceite', {});
+          const aceite = r.corpo.candidato?.contrato?.documentos?.contratoTrabalho?.aceite;
+          const ok = r.status === 200 && !!aceite?.timestamp && !!aceite?.ip && aceite?.por === 'CANDIDATO';
           return { ok, detalhe: `status ${r.status}, aceite ${JSON.stringify(aceite)}` };
         }
       },
       {
-        nome: 'Envio do contrato assinado (PDF) após o aceite é aceito (201)',
+        nome: 'Tipo de documento de contrato inválido no aceite é recusado (400)',
         run: async () => {
-          const fd = new FormData();
-          fd.append('tipoDocumento', 'contrato-assinado');
-          fd.append('arquivo', pdfDeTeste('contrato-assinado.pdf'));
-          const resp = await fetch(API + '/candidato/' + window.__idAuthFicha + '/contrato/assinatura', { method: 'POST', body: fd });
-          const corpo = await resp.json();
-          const ok = resp.status === 201 && !!corpo.candidato?.contrato?.arquivoAssinado;
-          return { ok, detalhe: `status ${resp.status}, arquivo ${corpo.candidato?.contrato?.arquivoAssinado}` };
+          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/naoExiste/aceite', {});
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'RH também pode aceitar um documento do contrato em nome do candidato',
+        run: async () => {
+          const r = await patchRh('/rh/fichas/' + window.__idAuthFicha + '/contrato/termoConfidencialidade/aceitar');
+          const aceite = r.corpo.candidato?.contrato?.documentos?.termoConfidencialidade?.aceite;
+          const ok = r.status === 200 && aceite?.por === 'RH';
+          return { ok, detalhe: `status ${r.status}, aceite ${JSON.stringify(aceite)}` };
+        }
+      },
+      {
+        nome: 'Concluir com 1 documento ainda pendente continua recusado (400)',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/concluir', {});
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Validar contratação antes da assinatura digital é recusado (400)',
+        run: async () => {
+          const r = await patchRh('/rh/fichas/' + window.__idAuthFicha + '/contrato/validar');
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Aceita o 3º documento restante (política de privacidade)',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/politicaPrivacidade/aceite', {});
+          return { ok: r.status === 200, detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'Concluir assinatura digital com todos aceitos grava CPF e hash (LGPD)',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/concluir', {});
+          const assinatura = r.corpo.candidato?.contrato?.assinaturaConcluida;
+          const ok = r.status === 200 && !!assinatura?.timestamp && !!assinatura?.ip && !!assinatura?.cpf && !!assinatura?.hash;
+          return { ok, detalhe: `status ${r.status}, assinatura ${JSON.stringify(assinatura)}` };
         }
       },
       {
