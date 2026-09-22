@@ -130,6 +130,8 @@ function lerCandidatos() {
   candidatos.forEach((c) => {
     if (!c.contrato || !c.contrato.documentos) c.contrato = criarContratoInicial();
     if (c.usuarioId === undefined) c.usuarioId = null;
+    if (c.consentimentoFichaLGPD === undefined) c.consentimentoFichaLGPD = null;
+    if (c.consentimentoContratoLGPD === undefined) c.consentimentoContratoLGPD = null;
   });
 
   return candidatos;
@@ -376,20 +378,29 @@ const REGEX_EMAIL_AUTH = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const clienteGoogle = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 
+// Versão vigente dos Termos de Uso / Política de Privacidade exibidos no
+// cadastro - referenciada nos logs de consentimento para rastreabilidade
+// caso o texto dos termos mude no futuro.
+const VERSAO_TERMOS_CADASTRO = 'v1.0';
+
 app.post('/api/auth/registrar', (req, res) => {
-  const { nome, email, senha } = req.body;
+  const { nome, email, senha, aceiteTermos } = req.body;
   const nomeAparado = String(nome || '').trim();
   const emailAparado = String(email || '').trim().toLowerCase();
 
   if (!nomeAparado) return res.status(400).json({ erro: 'Informe seu nome.' });
   if (!REGEX_EMAIL_AUTH.test(emailAparado)) return res.status(400).json({ erro: 'E-mail inválido.' });
   if (!senha || String(senha).length < 6) return res.status(400).json({ erro: 'A senha deve ter pelo menos 6 caracteres.' });
+  if (aceiteTermos !== true) {
+    return res.status(400).json({ erro: 'É necessário aceitar os Termos de Uso e a Política de Privacidade para criar a conta.' });
+  }
 
   const usuarios = lerUsuarios();
   if (usuarios.some((u) => u.email === emailAparado)) {
     return res.status(400).json({ erro: 'Já existe uma conta com este e-mail.' });
   }
 
+  const agora = new Date().toISOString();
   const { salt, hash } = gerarHashSenha(String(senha));
   const novoUsuario = {
     id: gerarId(),
@@ -399,11 +410,24 @@ app.post('/api/auth/registrar', (req, res) => {
     senhaHash: hash,
     tipo: 'candidato',
     googleId: null,
-    criadoEm: new Date().toISOString()
+    // Aceite inicial dos Termos de Uso/Política de Privacidade (LGPD -
+    // Momento 1 da jornada), com evidência de quando e de onde partiu.
+    consentimentoCadastro: { aceito: true, timestamp: agora, ip: req.ip, versaoTermo: VERSAO_TERMOS_CADASTRO },
+    criadoEm: agora
   };
 
   usuarios.push(novoUsuario);
   salvarUsuarios(usuarios);
+
+  registrarEventoAuditoria({
+    id: gerarId(),
+    tipoEvento: 'consentimento_cadastro',
+    usuarioId: novoUsuario.id,
+    email: emailAparado,
+    versaoTermo: VERSAO_TERMOS_CADASTRO,
+    timestamp: agora,
+    ip: req.ip
+  });
 
   const token = criarSessao(novoUsuario.id);
   return res.status(201).json({ mensagem: 'Conta criada com sucesso!', token, usuario: dadosPublicosUsuario(novoUsuario) });
@@ -503,6 +527,11 @@ app.get('/api/auth/minhas-fichas', autenticar, (req, res) => {
 // ---------------------------------------------------------------------------
 // ROTA: cadastro de nova ficha de candidato (Etapa 1 - Dados Pessoais)
 // ---------------------------------------------------------------------------
+// Versão vigente do Termo de Consentimento LGPD exibido no envio da ficha
+// (Momento 2 da jornada) - referenciada no log de auditoria.
+const VERSAO_TERMO_FICHA_LGPD = '1.0';
+const FINALIDADE_TERMO_FICHA_LGPD = 'Processo Admissional e Validação de Documentos';
+
 app.post('/api/candidato', autenticarOpcional, (req, res) => {
   const {
     nomeCompleto,
@@ -515,7 +544,8 @@ app.post('/api/candidato', autenticarOpcional, (req, res) => {
     complemento,
     email,
     whatsapp,
-    genero
+    genero,
+    consentimentoLGPD
   } = req.body;
 
   const errosValidacao = validarDadosPessoais({
@@ -525,6 +555,11 @@ app.post('/api/candidato', autenticarOpcional, (req, res) => {
   if (errosValidacao.length) {
     return res.status(400).json({ erro: errosValidacao.join(' ') });
   }
+  if (consentimentoLGPD !== true) {
+    return res.status(400).json({ erro: 'É necessário concordar com o tratamento dos dados e documentos (LGPD) para enviar a ficha.' });
+  }
+
+  const agora = new Date().toISOString();
 
   const novoCandidato = {
     id: gerarId(),
@@ -548,12 +583,32 @@ app.post('/api/candidato', autenticarOpcional, (req, res) => {
     // Vínculo estrito com o perfil autenticado que originou a ficha (se houver sessão).
     usuarioId: req.usuario ? req.usuario.id : null,
     contrato: criarContratoInicial(),
-    criadoEm: new Date().toISOString()
+    // Consentimento LGPD do envio da ficha (Momento 2 da jornada) - evidência
+    // de quando, de onde e sob qual finalidade os dados foram autorizados.
+    consentimentoFichaLGPD: {
+      aceito: true,
+      dataHora: agora,
+      ip: req.ip,
+      versaoTermo: VERSAO_TERMO_FICHA_LGPD,
+      finalidade: FINALIDADE_TERMO_FICHA_LGPD
+    },
+    consentimentoContratoLGPD: null,
+    criadoEm: agora
   };
 
   const candidatos = lerCandidatos();
   candidatos.push(novoCandidato);
   salvarCandidatos(candidatos);
+
+  registrarEventoAuditoria({
+    id: gerarId(),
+    tipoEvento: 'consentimento_ficha_lgpd',
+    candidatoId: novoCandidato.id,
+    versaoTermo: VERSAO_TERMO_FICHA_LGPD,
+    finalidade: FINALIDADE_TERMO_FICHA_LGPD,
+    timestamp: agora,
+    ip: req.ip
+  });
 
   console.log('--- Novo Candidato Recebido ---');
   console.log('ID:', novoCandidato.id);
@@ -1310,6 +1365,23 @@ app.get('/api/rh/fichas/:id/pdf', exigirRh, (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// ROTA: log de auditoria bruto de uma ficha específica (Trilha de Auditoria
+// e Conformidade LGPD no Painel do RH) - devolve todos os eventos registrados
+// em auditoria.json para aquele candidato, para consulta em fiscalizações
+// trabalhistas.
+// ---------------------------------------------------------------------------
+app.get('/api/rh/fichas/:id/auditoria', exigirRh, (req, res) => {
+  const { id } = req.params;
+  const candidatos = lerCandidatos();
+  const candidato = candidatos.find((c) => c.id === id);
+
+  if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
+
+  const eventos = lerAuditoria().filter((e) => e.candidatoId === id);
+  return res.status(200).json(eventos);
+});
+
+// ---------------------------------------------------------------------------
 // MÓDULO DE ACEITE VIRTUAL DE CONTRATOS POR CLIQUE (ASSINATURA ELETRÔNICA
 // SIMPLES) - lista de documentos/contratos que o candidato aprovado precisa
 // ler e aceitar individualmente (um clique = um aceite), antes de concluir a
@@ -1473,8 +1545,14 @@ app.patch('/api/rh/fichas/:id/contrato/:tipo/aceitar', exigirRh, (req, res) => {
 // documentos da lista já foram aceitos individualmente. Grava o log de
 // auditoria completo (IP, timestamp ISO, CPF do candidato e hash SHA-256 do
 // conteúdo exato das minutas aceitas).
+// Base legal citada no log de assinatura eletrônica simples (Momento 3 da
+// jornada): validade da assinatura eletrônica (MP nº 2.200-2/2001 e Lei nº
+// 14.063/2020) e a base legal do tratamento dos metadados (LGPD, Art. 7º).
+const BASE_LEGAL_ASSINATURA_DIGITAL = 'MP nº 2.200-2/2001; Lei nº 14.063/2020; LGPD Art. 7º, II e V';
+
 app.post('/api/candidato/:id/contrato/concluir', (req, res) => {
   const { id } = req.params;
+  const { consentimentoContratoLGPD } = req.body;
   const candidatos = lerCandidatos();
   const candidato = candidatos.find((c) => c.id === id);
 
@@ -1487,12 +1565,25 @@ app.post('/api/candidato/:id/contrato/concluir', (req, res) => {
   if (pendentes.length) {
     return res.status(400).json({ erro: 'Confirme o aceite de todos os documentos antes de concluir a assinatura digital.' });
   }
+  if (consentimentoContratoLGPD !== true) {
+    return res.status(400).json({ erro: 'É necessário declarar ciência sobre a assinatura eletrônica (IP, timestamp e hash) para concluir.' });
+  }
 
   garantirMinutasContrato();
   const agora = new Date().toISOString();
   const hash = calcularHashDocumentosContrato();
 
   candidato.contrato.assinaturaConcluida = { timestamp: agora, ip: req.ip, cpf: candidato.cpf, hash };
+  // Consentimento específico da assinatura eletrônica do contrato (Momento 3
+  // da jornada) - registrado separadamente do consentimento da ficha (Momento
+  // 2), com o hash e a base legal citada ao candidato no momento do aceite.
+  candidato.consentimentoContratoLGPD = {
+    aceito: true,
+    dataHora: agora,
+    ip: req.ip,
+    hashDocumentos: hash,
+    baseLegal: BASE_LEGAL_ASSINATURA_DIGITAL
+  };
   candidato.atualizadoEm = agora;
   salvarCandidatos(candidatos);
 
@@ -1502,6 +1593,7 @@ app.post('/api/candidato/:id/contrato/concluir', (req, res) => {
     candidatoId: id,
     cpf: candidato.cpf,
     hashDocumentos: hash,
+    baseLegal: BASE_LEGAL_ASSINATURA_DIGITAL,
     timestamp: agora,
     ip: req.ip
   });

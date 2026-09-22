@@ -229,7 +229,8 @@
         complemento: '',
         email: 'teste@exemplo.com',
         whatsapp: '(11) 98765-4321',
-        genero: 'Masculino'
+        genero: 'Masculino',
+        consentimentoLGPD: true
       }, extra || {});
     }
 
@@ -291,6 +292,23 @@
           const ok = r.status === 201 && c.status === 'VERMELHO' && docs === 6 && !!c.id;
           window.__idMasculino = c.id;
           return { ok, detalhe: `status ${r.status}, geral ${c.status}, documentos ${docs}, id ${c.id}` };
+        }
+      },
+      {
+        // LGPD Momento 2: sem o consentimento explícito, a ficha não é criada.
+        nome: 'Recusa cadastro sem o consentimento LGPD (400)',
+        run: async () => {
+          const r = await postJson('/candidato', fichaValida({ consentimentoLGPD: false }));
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Consentimento LGPD da ficha grava timestamp, IP, versão e finalidade',
+        run: async () => {
+          const r = await postJson('/candidato', fichaValida({ cpf: '852.741.963-20' }));
+          const c = r.corpo.candidato?.consentimentoFichaLGPD;
+          const ok = r.status === 201 && c?.aceito === true && !!c?.dataHora && !!c?.ip && c?.versaoTermo === '1.0' && !!c?.finalidade;
+          return { ok, detalhe: `consentimentoFichaLGPD: ${JSON.stringify(c)}` };
         }
       },
       {
@@ -807,7 +825,7 @@
         nome: 'Registro de conta cria usuário tipo "candidato" e retorna token',
         run: async () => {
           const email = 'auth' + Date.now() + '@teste.com';
-          const r = await postJson('/auth/registrar', { nome: 'Fulano de Teste', email, senha: 'senha123' });
+          const r = await postJson('/auth/registrar', { nome: 'Fulano de Teste', email, senha: 'senha123', aceiteTermos: true });
           window.__emailAuth = email;
           window.__tokenAuth = r.corpo.token;
           const ok = r.status === 201 && !!r.corpo.token && r.corpo.usuario?.tipo === 'candidato';
@@ -817,14 +835,22 @@
       {
         nome: 'Registro com e-mail já cadastrado é recusado (400)',
         run: async () => {
-          const r = await postJson('/auth/registrar', { nome: 'Duplicado', email: window.__emailAuth, senha: 'senha123' });
+          const r = await postJson('/auth/registrar', { nome: 'Duplicado', email: window.__emailAuth, senha: 'senha123', aceiteTermos: true });
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
       {
         nome: 'Registro com senha curta é recusado (400)',
         run: async () => {
-          const r = await postJson('/auth/registrar', { nome: 'Teste', email: 'curta' + Date.now() + '@teste.com', senha: '123' });
+          const r = await postJson('/auth/registrar', { nome: 'Teste', email: 'curta' + Date.now() + '@teste.com', senha: '123', aceiteTermos: true });
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        // LGPD Momento 1: sem o aceite dos Termos de Uso/Política de Privacidade, o cadastro não é criado.
+        nome: 'Registro sem aceitar os Termos de Uso/Política de Privacidade é recusado (400)',
+        run: async () => {
+          const r = await postJson('/auth/registrar', { nome: 'Sem Aceite', email: 'semaceite' + Date.now() + '@teste.com', senha: 'senha123' });
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
@@ -974,12 +1000,31 @@
         }
       },
       {
-        nome: 'Concluir assinatura digital com todos aceitos grava CPF e hash (LGPD)',
+        // LGPD Momento 3: mesmo com todos os documentos aceitos, sem a ciência
+        // explícita sobre a assinatura eletrônica a conclusão é recusada.
+        nome: 'Concluir sem o consentimento da assinatura eletrônica é recusado (400)',
         run: async () => {
           const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/concluir', {});
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Concluir assinatura digital com todos aceitos grava CPF e hash (LGPD)',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/concluir', { consentimentoContratoLGPD: true });
           const assinatura = r.corpo.candidato?.contrato?.assinaturaConcluida;
           const ok = r.status === 200 && !!assinatura?.timestamp && !!assinatura?.ip && !!assinatura?.cpf && !!assinatura?.hash;
           return { ok, detalhe: `status ${r.status}, assinatura ${JSON.stringify(assinatura)}` };
+        }
+      },
+      {
+        nome: 'consentimentoContratoLGPD gravado na ficha com hash e base legal',
+        run: async () => {
+          const r = await getRh('/rh/fichas');
+          const ficha = r.corpo.find((f) => f.id === window.__idAuthFicha);
+          const c = ficha?.consentimentoContratoLGPD;
+          const ok = !!c?.aceito && !!c?.dataHora && !!c?.ip && !!c?.hashDocumentos && !!c?.baseLegal;
+          return { ok, detalhe: `consentimentoContratoLGPD: ${JSON.stringify(c)}` };
         }
       },
       {
@@ -995,6 +1040,34 @@
         run: async () => {
           const r = await patchRh('/rh/fichas/' + window.__idAuthFicha + '/contrato/validar');
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+
+      { grupo: 'Trilha de Auditoria LGPD (GET /api/rh/fichas/:id/auditoria)' },
+
+      {
+        nome: 'Log de auditoria da ficha inclui o consentimento e a assinatura digital',
+        run: async () => {
+          const r = await getRh('/rh/fichas/' + window.__idAuthFicha + '/auditoria');
+          const eventos = r.corpo;
+          const temConsentimentoFicha = Array.isArray(eventos) && eventos.some((e) => e.tipoEvento === 'consentimento_ficha_lgpd');
+          const temAssinatura = Array.isArray(eventos) && eventos.some((e) => e.tipoEvento === 'assinatura_digital_concluida');
+          const ok = r.status === 200 && temConsentimentoFicha && temAssinatura;
+          return { ok, detalhe: `status ${r.status}, ${Array.isArray(eventos) ? eventos.length : 0} evento(s), consentimento? ${temConsentimentoFicha}, assinatura? ${temAssinatura}` };
+        }
+      },
+      {
+        nome: 'Log de auditoria de ficha inexistente (404)',
+        run: async () => {
+          const r = await getRh('/rh/fichas/nao-existe/auditoria');
+          return { ok: r.status === 404, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Log de auditoria sem sessão de RH é recusado (401)',
+        run: async () => {
+          const r = await fetch(API + '/rh/fichas/' + window.__idAuthFicha + '/auditoria');
+          return { ok: r.status === 401, detalhe: `status ${r.status}` };
         }
       }
     ];

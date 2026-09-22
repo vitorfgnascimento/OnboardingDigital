@@ -97,6 +97,13 @@ Módulo de Autenticação e Contratação:
 
 > **Conta de RH de testes:** semeada de forma idempotente no boot do servidor (não recriada se já existir) - `rh@onboarding.local` / `onboarding123`. Apenas para uso em desenvolvimento; o formulário público de registro sempre cria contas do tipo `candidato`.
 
+## Conformidade LGPD nos 3 Momentos da Jornada
+
+- **Momento 1 (login.html):** checkbox obrigatório de aceite dos Termos de Uso/Política de Privacidade antes de criar a conta; backend grava `consentimentoCadastro` no usuário.
+- **Momento 2 (index.html):** card de Consentimento para Tratamento de Dados Pessoais e checkbox obrigatório antes de enviar a ficha; backend grava `consentimentoFichaLGPD` na ficha.
+- **Momento 3 (index.html):** cláusula sobre a validade da assinatura eletrônica e checkbox de ciência antes de concluir a assinatura digital; backend grava `consentimentoContratoLGPD` (com hash SHA-256 das minutas) na ficha.
+- **Painel do RH (rh.html):** card "Trilha de Auditoria e Conformidade LGPD" mostra o status dos dois consentimentos (data/hora e IP) e um botão "Visualizar Log de Auditoria" que exibe o JSON bruto dos eventos daquela ficha (`GET /api/rh/fichas/:id/auditoria`).
+
 ## Próximas fases do roteiro de desenvolvimento
 
 - Deploy do MVP em um serviço de nuvem (Render/Railway), usando a variável `PORT` já preparada em etapa anterior.

@@ -187,7 +187,41 @@ para arquivos PDF (até 10 MB):
   após a assinatura digital unificada estar concluída, e move o status geral
   da ficha para o estado terminal `CONTRATACAO_CONCLUIDA`.
 
-## 7. Regras de Execução de Código para o Claude Code
+## 7. Conformidade Total com a LGPD nos 3 Momentos da Jornada
+
+Cobertura de consentimento formal e trilha de auditoria nos três pontos
+obrigatórios de coleta/tratamento de dados pessoais da jornada:
+
+- **Momento 1 - Criação de Conta** (`public/login.html`): a aba "Criar Conta"
+  exige o aceite de um checkbox ("Declaro que li e aceito os Termos de Uso e
+  a Política de Privacidade...") antes de liberar o botão de cadastro; o
+  backend recusa o registro sem esse aceite (`POST /api/auth/registrar`) e
+  grava `consentimentoCadastro: { aceito, timestamp, ip, versaoTermo }` no
+  usuário, além de um evento `consentimento_cadastro` na auditoria.
+- **Momento 2 - Envio da Ficha e Documentos** (`public/index.html`): card
+  destacado com o Termo de Consentimento (Art. 7º e 11º da LGPD) e checkbox
+  obrigatório imediatamente acima do botão "Concluir e Enviar Admissão
+  Completa", que só é liberado após o aceite. O backend recusa a criação da
+  ficha sem `consentimentoLGPD: true` (`POST /api/candidato`) e grava
+  `consentimentoFichaLGPD: { aceito, dataHora, ip, versaoTermo, finalidade }`
+  na própria ficha, além de um evento `consentimento_ficha_lgpd` na
+  auditoria.
+- **Momento 3 - Assinatura Eletrônica do Contrato** (`public/index.html`):
+  cláusula sobre a validade da assinatura eletrônica (MP nº 2.200-2/2001 e
+  Lei nº 14.063/2020) e checkbox de ciência ao lado dos documentos do
+  contrato, que bloqueia o botão "Concluir Assinatura Digital" até ser
+  marcado. O backend recusa a conclusão sem `consentimentoContratoLGPD: true`
+  (`POST /api/candidato/:id/contrato/concluir`) e grava
+  `consentimentoContratoLGPD: { aceito, dataHora, ip, hashDocumentos,
+  baseLegal }` na ficha.
+- **Exibição da Trilha de Auditoria no Painel do RH** (`public/rh.html`):
+  card **"Trilha de Auditoria e Conformidade LGPD"** na ficha expandida,
+  mostrando o status dos dois consentimentos (ficha e contrato) com
+  data/hora e IP, e o botão **"Visualizar Log de Auditoria"**
+  (`GET /api/rh/fichas/:id/auditoria`) que exibe o JSON bruto de todos os
+  eventos daquela ficha, para consulta em fiscalizações trabalhistas.
+
+## 8. Regras de Execução de Código para o Claude Code
 
 - As alterações de código devem ser executadas com base nas instruções
   diretas dos prompts fornecidos pelo Líder de Projeto.
