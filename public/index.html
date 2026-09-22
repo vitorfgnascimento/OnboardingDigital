@@ -563,6 +563,107 @@
       font-size: 12px;
       font-weight: bold;
     }
+    .btn-ver-documento {
+      background: #ffffff;
+      color: var(--verde-intelbras-escuro);
+      border: 1px solid var(--verde-intelbras);
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: bold;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .btn-ver-documento:hover { background: rgba(0, 163, 53, 0.08); }
+
+    /* --- MODAL LEITOR DE MINUTA (trava de leitura obrigatória) --- */
+    .modal-leitor-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-leitor-overlay.visivel { display: flex; }
+    .modal-leitor-caixa {
+      background: #ffffff;
+      width: min(720px, 100%);
+      height: min(85vh, 900px);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+    }
+    .modal-leitor-cabecalho {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 16px;
+      background: #1a252f;
+      color: #ffffff;
+    }
+    .modal-leitor-titulo { font-weight: 700; font-size: 14px; }
+    .modal-leitor-acoes-cabecalho { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; }
+    .btn-baixar-modal {
+      background: #ffffff;
+      color: #1a252f;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: bold;
+      text-decoration: none;
+    }
+    .btn-fechar-modal {
+      background: none;
+      border: none;
+      color: #ffffff;
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0 4px;
+    }
+    .modal-leitor-corpo {
+      flex: 1;
+      overflow-y: auto;
+      background: #525659;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    .modal-leitor-corpo canvas {
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+      max-width: 100%;
+      height: auto;
+    }
+    .modal-leitor-corpo .modal-leitor-carregando {
+      color: #ffffff;
+      font-size: 13px;
+    }
+    .modal-leitor-rodape {
+      padding: 12px 16px;
+      border-top: 1px solid var(--cinza-borda);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .aviso-rolagem { font-size: 12px; color: #6c757d; text-align: center; }
+    .btn-aceitar-modal {
+      background-color: var(--verde-intelbras);
+      color: #ffffff;
+      border: none;
+      padding: 12px;
+      font-size: 14px;
+      font-weight: bold;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .btn-aceitar-modal:disabled { background-color: #adb5bd; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -713,13 +814,35 @@
 
       <div class="acoes-contrato">
         <button type="button" class="btn-contrato" id="btnConcluirAssinatura" disabled>
-          Concluir Assinatura Digital
+          Concluir Admissão e Enviar Contrato
         </button>
       </div>
     </div>
 
   </div>
 
+  <!-- MODAL LEITOR DE MINUTA: única forma de visualizar/baixar cada documento
+       do contrato. O aceite só é liberado depois que o candidato rola o
+       documento até o final (ver JS: pdf.js renderiza em canvases dentro de
+       #modalLeitorCorpo, que é o elemento com scroll monitorado). -->
+  <div class="modal-leitor-overlay" id="modalLeitorOverlay">
+    <div class="modal-leitor-caixa">
+      <div class="modal-leitor-cabecalho">
+        <span class="modal-leitor-titulo" id="modalLeitorTitulo"></span>
+        <div class="modal-leitor-acoes-cabecalho">
+          <a class="btn-baixar-modal" id="modalLeitorBaixar" download>Baixar PDF</a>
+          <button type="button" class="btn-fechar-modal" id="modalLeitorFechar" aria-label="Fechar">&times;</button>
+        </div>
+      </div>
+      <div class="modal-leitor-corpo" id="modalLeitorCorpo"></div>
+      <div class="modal-leitor-rodape">
+        <span class="aviso-rolagem" id="modalLeitorAviso">Role o documento até o final para habilitar o aceite.</span>
+        <button type="button" class="btn-aceitar-modal" id="modalLeitorAceitar" disabled>Li e Aceito este Termo</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
   <script>
     const API = '/api';
 
@@ -1668,23 +1791,17 @@
       return CONTRATOS_DOCUMENTOS.map((doc) => {
         const documento = contrato.documentos[doc.tipo];
         const aceite = documento.aceite;
-        // Antes do aceite, o link aponta para a minuta genérica; depois do
-        // aceite, aponta para o PDF já carimbado com a assinatura eletrônica
-        // daquele candidato específico.
-        const linkPdf = documento.arquivoAssinado
-          ? `/visualizador.html?arquivo=${encodeURIComponent(documento.arquivoAssinado)}`
-          : `/api/contrato/minuta/${doc.tipo}`;
 
         return `
           <div class="item-documento-contrato">
             <span class="titulo-documento-contrato">${doc.titulo}</span>
             <div class="acoes-item-contrato">
-              <a class="btn-ver-minuta" href="${linkPdf}" target="_blank" rel="noopener noreferrer">
-                ${aceite ? 'Visualizar Documento Assinado' : 'Visualizar/Baixar Minuta'}
-              </a>
+              <button type="button" class="btn-ver-documento" data-ver-documento-contrato="${doc.tipo}">
+                ${aceite ? 'Ver Documento Assinado' : 'Visualizar / Ler Documento'}
+              </button>
               ${aceite
-                ? `<span class="badge-documento-contrato-aceito">&#10003; Li e Aceito - Assinado Eletronicamente (${formatarDataHora(aceite.timestamp)})</span>`
-                : `<button type="button" class="btn-li-aceito" data-aceitar-contrato="${doc.tipo}">Li e Aceito os Termos</button>`
+                ? `<span class="badge-documento-contrato-aceito">&#10003; Aceito (${formatarDataHora(aceite.timestamp)})</span>`
+                : ''
               }
             </div>
           </div>
@@ -1722,37 +1839,128 @@
       if (contrato.assinaturaConcluida) {
         statusEl.innerHTML = `<div class="status-contrato sucesso">Assinatura digital concluída em ${formatarDataHora(contrato.assinaturaConcluida.timestamp)} - aguardando validação final do RH.</div>`;
         btnConcluir.disabled = true;
-        btnConcluir.textContent = 'Assinatura Digital Concluída';
+        btnConcluir.textContent = 'Admissão Concluída';
         checkConsentimentoContrato.closest('.card-consentimento-lgpd').style.display = 'none';
       } else if (todosAceitos) {
-        statusEl.innerHTML = '<div class="status-contrato info">Todos os documentos foram aceitos. Confirme a ciência sobre a assinatura eletrônica abaixo e clique em "Concluir Assinatura Digital".</div>';
+        statusEl.innerHTML = '<div class="status-contrato info">Todos os documentos foram lidos e aceitos. Confirme a ciência sobre a assinatura eletrônica abaixo e clique em "Concluir Admissão e Enviar Contrato".</div>';
         btnConcluir.disabled = !checkConsentimentoContrato.checked;
-        btnConcluir.textContent = 'Concluir Assinatura Digital';
+        btnConcluir.textContent = 'Concluir Admissão e Enviar Contrato';
       } else {
-        statusEl.innerHTML = '<div class="status-contrato info">Visualize e aceite cada documento abaixo para liberar a conclusão da assinatura digital.</div>';
+        statusEl.innerHTML = '<div class="status-contrato info">Visualize, leia até o final e aceite cada documento abaixo para liberar a conclusão.</div>';
         btnConcluir.disabled = true;
-        btnConcluir.textContent = 'Concluir Assinatura Digital';
+        btnConcluir.textContent = 'Concluir Admissão e Enviar Contrato';
       }
     }
 
-    // O botão "Concluir Assinatura Digital" também depende do checkbox de
-    // ciência sobre a assinatura eletrônica (Momento 3 da jornada).
+    // O botão final também depende do checkbox de ciência sobre a
+    // assinatura eletrônica (Momento 3 da jornada).
     document.getElementById('checkConsentimentoContrato').addEventListener('change', renderizarSecaoContrato);
 
-    document.getElementById('listaDocumentosContrato').addEventListener('click', async (e) => {
-      const botao = e.target.closest('[data-aceitar-contrato]');
-      if (!botao || !candidatoId) return;
-      const tipo = botao.dataset.aceitarContrato;
+    // =========================================================================
+    // MODAL LEITOR DE MINUTA (trava de leitura obrigatória)
+    // Única forma de visualizar/baixar um documento do contrato. O botão "Li
+    // e Aceito este Termo" começa desabilitado e só libera quando o
+    // candidato rola o conteúdo renderizado até o final (ou quando o PDF
+    // inteiro já cabe na tela, sem precisar rolar - nesse caso já está "lido
+    // por completo" desde a abertura).
+    // =========================================================================
+    let tipoDocumentoNoModal = null;
 
+    function fecharModalLeitor() {
+      document.getElementById('modalLeitorOverlay').classList.remove('visivel');
+      document.getElementById('modalLeitorCorpo').innerHTML = '';
+      tipoDocumentoNoModal = null;
+    }
+
+    function verificarRolagemModal() {
+      const corpo = document.getElementById('modalLeitorCorpo');
+      const btnAceitar = document.getElementById('modalLeitorAceitar');
+      if (btnAceitar.dataset.jaAceito === 'true') return;
+      const chegouAoFim = corpo.scrollTop + corpo.clientHeight >= corpo.scrollHeight - 24;
+      if (chegouAoFim) {
+        btnAceitar.disabled = false;
+        document.getElementById('modalLeitorAviso').textContent = 'Documento lido até o final - aceite liberado.';
+      }
+    }
+
+    async function abrirModalLeitor(tipo, titulo, urlPdf, jaAceito) {
+      if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+      tipoDocumentoNoModal = tipo;
+      document.getElementById('modalLeitorTitulo').textContent = titulo;
+      document.getElementById('modalLeitorBaixar').href = urlPdf;
+
+      const corpo = document.getElementById('modalLeitorCorpo');
+      const btnAceitar = document.getElementById('modalLeitorAceitar');
+      const aviso = document.getElementById('modalLeitorAviso');
+      corpo.innerHTML = '<div class="modal-leitor-carregando">Carregando documento...</div>';
+
+      if (jaAceito) {
+        btnAceitar.hidden = true;
+        btnAceitar.dataset.jaAceito = 'true';
+        aviso.textContent = 'Documento já aceito - disponível apenas para consulta.';
+      } else {
+        btnAceitar.hidden = false;
+        btnAceitar.disabled = true;
+        btnAceitar.dataset.jaAceito = 'false';
+        aviso.textContent = 'Role o documento até o final para habilitar o aceite.';
+      }
+
+      document.getElementById('modalLeitorOverlay').classList.add('visivel');
+
+      try {
+        const pdf = await window.pdfjsLib.getDocument(urlPdf).promise;
+        corpo.innerHTML = '';
+        for (let numeroPagina = 1; numeroPagina <= pdf.numPages; numeroPagina++) {
+          const pagina = await pdf.getPage(numeroPagina);
+          const viewport = pagina.getViewport({ scale: 1.3 });
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          await pagina.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+          corpo.appendChild(canvas);
+        }
+        // Após renderizar, reavalia imediatamente: se o documento inteiro já
+        // coube na área visível (sem overflow), o aceite libera na hora.
+        verificarRolagemModal();
+      } catch (erro) {
+        corpo.innerHTML = '<div class="modal-leitor-carregando">Não foi possível carregar o documento.</div>';
+      }
+    }
+
+    document.getElementById('modalLeitorCorpo').addEventListener('scroll', verificarRolagemModal);
+    document.getElementById('modalLeitorFechar').addEventListener('click', fecharModalLeitor);
+    document.getElementById('modalLeitorOverlay').addEventListener('click', (e) => {
+      if (e.target.id === 'modalLeitorOverlay') fecharModalLeitor();
+    });
+
+    document.getElementById('modalLeitorAceitar').addEventListener('click', async () => {
+      if (!candidatoId || !tipoDocumentoNoModal) return;
+      const tipo = tipoDocumentoNoModal;
       try {
         const resposta = await fetch('/api/candidato/' + candidatoId + '/contrato/' + tipo + '/aceite', { method: 'POST' });
         const resultado = await resposta.json();
         if (!resposta.ok) { alert('Erro: ' + (resultado.erro || 'não foi possível registrar o aceite.')); return; }
         candidato = resultado.candidato;
+        fecharModalLeitor();
         renderizarSecaoContrato();
       } catch (erro) {
         alert('Falha ao comunicar com o servidor.');
       }
+    });
+
+    document.getElementById('listaDocumentosContrato').addEventListener('click', (e) => {
+      const botao = e.target.closest('[data-ver-documento-contrato]');
+      if (!botao || !candidato) return;
+      const tipo = botao.dataset.verDocumentoContrato;
+      const doc = CONTRATOS_DOCUMENTOS.find((d) => d.tipo === tipo);
+      const documento = candidato.contrato.documentos[tipo];
+      const jaAceito = !!documento.aceite;
+      const urlPdf = documento.arquivoAssinado
+        ? '/' + documento.arquivoAssinado
+        : `/api/contrato/minuta/${tipo}`;
+      abrirModalLeitor(tipo, doc.titulo, urlPdf, jaAceito);
     });
 
     document.getElementById('btnConcluirAssinatura').addEventListener('click', async () => {
