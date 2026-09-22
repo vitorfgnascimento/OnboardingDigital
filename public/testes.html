@@ -713,42 +713,6 @@
         }
       },
 
-      { grupo: 'Geração de PDF Real da Ficha (GET /api/rh/fichas/:id/pdf)' },
-
-      {
-        // Regressão: este botão já voltou a disparar só a caixa de diálogo de
-        // impressão do navegador (window.print()) em vez de abrir um PDF de
-        // verdade - este teste garante que a rota sempre devolve um arquivo
-        // PDF gerado no servidor (%PDF no início do conteúdo).
-        nome: 'Gera um PDF real da ficha (200, começa com %PDF)',
-        run: async () => {
-          const r = await getRh('/rh/fichas/' + window.__idMasculino + '/pdf');
-          const arquivo = r.corpo.arquivo || '';
-          const arquivoOk = /^uploads\/[\w.-]+\.pdf$/i.test(arquivo);
-          let comecaComPdf = false;
-          if (arquivoOk) {
-            const conteudo = await fetch('/' + arquivo).then((resp) => resp.text());
-            comecaComPdf = conteudo.startsWith('%PDF');
-          }
-          const ok = r.status === 200 && arquivoOk && comecaComPdf;
-          return { ok, detalhe: `status ${r.status}, arquivo ${arquivo}, começa com %PDF: ${comecaComPdf}` };
-        }
-      },
-      {
-        nome: 'GET /api/rh/fichas/:id/pdf de candidato inexistente (404)',
-        run: async () => {
-          const r = await getRh('/rh/fichas/nao-existe/pdf');
-          return { ok: r.status === 404, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
-        }
-      },
-      {
-        nome: 'GET /api/rh/fichas/:id/pdf sem sessão de RH é recusado (401)',
-        run: async () => {
-          const r = await fetch(API + '/rh/fichas/' + window.__idMasculino + '/pdf');
-          return { ok: r.status === 401, detalhe: `status ${r.status}` };
-        }
-      },
-
       { grupo: 'Automação de Status e Candidato de Testes Fixo' },
 
       {
@@ -963,6 +927,25 @@
         }
       },
       {
+        // O documento aceito precisa mostrar uma indicação visível de
+        // assinatura online (carimbo eletrônico) - não basta o registro
+        // interno; o PDF de verdade gerado tem que existir e ser válido.
+        nome: 'Aceite gera um PDF assinado real do documento (indicação de assinatura online)',
+        run: async () => {
+          const r = await getRh('/rh/fichas');
+          const ficha = r.corpo.find((f) => f.id === window.__idAuthFicha);
+          const arquivo = ficha?.contrato?.documentos?.contratoTrabalho?.arquivoAssinado || '';
+          const arquivoOk = /^uploads\/[\w.-]+\.pdf$/i.test(arquivo);
+          let comecaComPdf = false;
+          if (arquivoOk) {
+            const conteudo = await fetch('/' + arquivo).then((resp) => resp.text());
+            comecaComPdf = conteudo.startsWith('%PDF');
+          }
+          const ok = arquivoOk && comecaComPdf;
+          return { ok, detalhe: `arquivo ${arquivo}, começa com %PDF: ${comecaComPdf}` };
+        }
+      },
+      {
         nome: 'Tipo de documento de contrato inválido no aceite é recusado (400)',
         run: async () => {
           const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/naoExiste/aceite', {});
@@ -973,9 +956,9 @@
         nome: 'RH também pode aceitar um documento do contrato em nome do candidato',
         run: async () => {
           const r = await patchRh('/rh/fichas/' + window.__idAuthFicha + '/contrato/termoConfidencialidade/aceitar');
-          const aceite = r.corpo.candidato?.contrato?.documentos?.termoConfidencialidade?.aceite;
-          const ok = r.status === 200 && aceite?.por === 'RH';
-          return { ok, detalhe: `status ${r.status}, aceite ${JSON.stringify(aceite)}` };
+          const documento = r.corpo.candidato?.contrato?.documentos?.termoConfidencialidade;
+          const ok = r.status === 200 && documento?.aceite?.por === 'RH' && !!documento?.arquivoAssinado;
+          return { ok, detalhe: `status ${r.status}, documento ${JSON.stringify(documento)}` };
         }
       },
       {
@@ -1043,30 +1026,46 @@
         }
       },
 
-      { grupo: 'Trilha de Auditoria LGPD (GET /api/rh/fichas/:id/auditoria)' },
+      { grupo: 'Geração de PDF Real da Ficha (GET /api/rh/fichas/:id/pdf)' },
 
       {
-        nome: 'Log de auditoria da ficha inclui o consentimento e a assinatura digital',
+        nome: 'Gerar PDF antes da contratação concluída é recusado (400)',
         run: async () => {
-          const r = await getRh('/rh/fichas/' + window.__idAuthFicha + '/auditoria');
-          const eventos = r.corpo;
-          const temConsentimentoFicha = Array.isArray(eventos) && eventos.some((e) => e.tipoEvento === 'consentimento_ficha_lgpd');
-          const temAssinatura = Array.isArray(eventos) && eventos.some((e) => e.tipoEvento === 'assinatura_digital_concluida');
-          const ok = r.status === 200 && temConsentimentoFicha && temAssinatura;
-          return { ok, detalhe: `status ${r.status}, ${Array.isArray(eventos) ? eventos.length : 0} evento(s), consentimento? ${temConsentimentoFicha}, assinatura? ${temAssinatura}` };
+          const r = await getRh('/rh/fichas/' + window.__idMasculino + '/pdf');
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
       {
-        nome: 'Log de auditoria de ficha inexistente (404)',
+        // Regressão: este botão já voltou a disparar só a caixa de diálogo de
+        // impressão do navegador (window.print()) em vez de abrir um PDF de
+        // verdade - este teste garante que a rota sempre devolve um arquivo
+        // PDF gerado no servidor (%PDF no início do conteúdo), só depois que
+        // a contratação foi definitivamente concluída.
+        nome: 'Gera um PDF real da ficha já contratada (200, começa com %PDF)',
         run: async () => {
-          const r = await getRh('/rh/fichas/nao-existe/auditoria');
+          const r = await getRh('/rh/fichas/' + window.__idAuthFicha + '/pdf');
+          const arquivo = r.corpo.arquivo || '';
+          const arquivoOk = /^uploads\/[\w.-]+\.pdf$/i.test(arquivo);
+          let comecaComPdf = false;
+          if (arquivoOk) {
+            const conteudo = await fetch('/' + arquivo).then((resp) => resp.text());
+            comecaComPdf = conteudo.startsWith('%PDF');
+          }
+          const ok = r.status === 200 && arquivoOk && comecaComPdf;
+          return { ok, detalhe: `status ${r.status}, arquivo ${arquivo}, começa com %PDF: ${comecaComPdf}` };
+        }
+      },
+      {
+        nome: 'GET /api/rh/fichas/:id/pdf de candidato inexistente (404)',
+        run: async () => {
+          const r = await getRh('/rh/fichas/nao-existe/pdf');
           return { ok: r.status === 404, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
       {
-        nome: 'Log de auditoria sem sessão de RH é recusado (401)',
+        nome: 'GET /api/rh/fichas/:id/pdf sem sessão de RH é recusado (401)',
         run: async () => {
-          const r = await fetch(API + '/rh/fichas/' + window.__idAuthFicha + '/auditoria');
+          const r = await fetch(API + '/rh/fichas/' + window.__idAuthFicha + '/pdf');
           return { ok: r.status === 401, detalhe: `status ${r.status}` };
         }
       }

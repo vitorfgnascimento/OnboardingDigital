@@ -239,31 +239,6 @@
     .rotulo-auditoria-lgpd { font-weight: 700; }
     .valor-auditoria-ok { color: var(--verde-intelbras-escuro); }
     .valor-auditoria-pendente { color: #6c757d; font-style: italic; }
-    .btn-log-auditoria {
-      background: #ffffff;
-      color: #1a252f;
-      border: 1px solid var(--cinza-borda);
-      padding: 6px 12px;
-      font-size: 12px;
-      font-weight: bold;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-top: 4px;
-    }
-    .btn-log-auditoria:hover { background-color: #f4f6f9; }
-    .log-auditoria-bruto {
-      margin-top: 10px;
-      padding: 10px 12px;
-      background: #1a252f;
-      color: #d4f5dd;
-      border-radius: 6px;
-      font-size: 11px;
-      max-height: 260px;
-      overflow: auto;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .log-auditoria-bruto[hidden] { display: none; }
 
     /* --- BOTÃO "VER DOCUMENTOS" E LINHA DE DETALHES EXPANSÍVEL --- */
     .btn-documentos { background-color: #1a252f; }
@@ -881,16 +856,22 @@
       const contrato = ficha.contrato || {};
 
       const itensDocumentos = CONTRATOS_DOCUMENTOS.map((doc) => {
-        const aceite = contrato.documentos?.[doc.tipo]?.aceite;
+        const documento = contrato.documentos?.[doc.tipo] || {};
+        const aceite = documento.aceite;
         const areaAcoes = aceite
           ? `<span class="badge-documento-aceito">&#10003; Assinado via Aceite Digital (${aceite.por === 'RH' ? 'RH' : 'Candidato'}, ${formatarData(aceite.timestamp)})</span>`
           : `<button type="button" class="btn-aceitar-documento" data-aceitar-contrato="${ficha.id}:${doc.tipo}">Aceitar Documento</button>`;
+        // Antes do aceite, o link aponta para a minuta genérica; depois do
+        // aceite, para o PDF já carimbado com a assinatura eletrônica.
+        const linkPdf = documento.arquivoAssinado
+          ? `/visualizador.html?arquivo=${encodeURIComponent(documento.arquivoAssinado)}`
+          : `/api/contrato/minuta/${doc.tipo}`;
 
         return `
           <div class="item-documento">
             <div class="item-documento-linha-principal">
               <span class="item-documento-titulo">${doc.titulo}</span>
-              <a class="btn-pdf" href="/api/contrato/minuta/${doc.tipo}" target="_blank" rel="noopener noreferrer">Visualizar/Baixar PDF</a>
+              <a class="btn-pdf" href="${linkPdf}" target="_blank" rel="noopener noreferrer">Visualizar/Baixar PDF</a>
             </div>
             <div class="acoes-documento">${areaAcoes}</div>
           </div>
@@ -945,8 +926,6 @@
             <span class="rotulo-auditoria-lgpd">Status do Consentimento Contratual:</span>
             <span class="${consentimentoContrato ? 'valor-auditoria-ok' : 'valor-auditoria-pendente'}">${statusContrato}</span>
           </div>
-          <button type="button" class="btn-log-auditoria" data-ver-log-auditoria="${ficha.id}">Visualizar Log de Auditoria</button>
-          <pre class="log-auditoria-bruto" data-log-auditoria="${ficha.id}" hidden></pre>
         </div>
       `;
     }
@@ -1194,9 +1173,11 @@
           trDetalhes.innerHTML = `
             <td colspan="5">
               <div class="grade-documentos">${montarGradeDocumentos(f)}</div>
+              ${f.status === 'CONTRATACAO_CONCLUIDA' ? `
               <div class="secao-impressao">
                 <button type="button" class="btn-imprimir" data-imprimir="${f.id}">Imprimir/Gerar PDF da Ficha</button>
               </div>
+              ` : ''}
               ${montarSecaoDecisao(f)}
               ${montarSecaoContrato(f)}
               ${montarSecaoAuditoriaLgpd(f)}
@@ -1370,34 +1351,6 @@
       }
     }
 
-    // Mostra/esconde o JSON bruto da trilha de auditoria daquela ficha
-    // (fiscalizações trabalhistas) - busca no servidor a cada abertura, para
-    // sempre refletir o estado mais recente.
-    async function alternarLogAuditoria(id, botao) {
-      const pre = document.querySelector(`[data-log-auditoria="${id}"]`);
-      if (!pre) return;
-
-      if (!pre.hidden) {
-        pre.hidden = true;
-        botao.textContent = 'Visualizar Log de Auditoria';
-        return;
-      }
-
-      try {
-        const resposta = await fetch(`/api/rh/fichas/${id}/auditoria`, { headers: cabecalhosRh() });
-        const eventos = await resposta.json();
-        if (!resposta.ok) {
-          alert('Erro: ' + (eventos.erro || 'não foi possível carregar o log de auditoria.'));
-          return;
-        }
-        pre.textContent = JSON.stringify(eventos, null, 2);
-        pre.hidden = false;
-        botao.textContent = 'Ocultar Log de Auditoria';
-      } catch (erro) {
-        alert('Falha ao comunicar com o servidor.');
-      }
-    }
-
     // Atualiza só a lista de mensagens de uma ficha já expandida, sem recarregar
     // a tabela inteira (evita o "salto" de rolagem ao enviar uma mensagem).
     function atualizarChatInline(id, mensagens) {
@@ -1475,12 +1428,6 @@
       const btnValidarContrato = e.target.closest('[data-validar-contrato]');
       if (btnValidarContrato) {
         validarContrato(btnValidarContrato.dataset.validarContrato);
-        return;
-      }
-
-      const btnVerLogAuditoria = e.target.closest('[data-ver-log-auditoria]');
-      if (btnVerLogAuditoria) {
-        alternarLogAuditoria(btnVerLogAuditoria.dataset.verLogAuditoria, btnVerLogAuditoria);
         return;
       }
 
