@@ -285,6 +285,36 @@
       accent-color: var(--verde-intelbras);
     }
 
+    /* --- CONSENTIMENTO LGPD (cards destacados, Momentos 2 e 3 da jornada) --- */
+    .card-consentimento-lgpd {
+      margin-top: 30px;
+      padding: 16px 18px;
+      background: rgba(0, 163, 53, 0.06);
+      border: 1px solid var(--verde-intelbras);
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #333333;
+    }
+    .check-lgpd {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--texto);
+      margin-top: 12px;
+      cursor: pointer;
+    }
+    .check-lgpd input[type="checkbox"] {
+      margin-top: 2px;
+      width: 16px;
+      height: 16px;
+      accent-color: var(--verde-intelbras);
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+
     /* --- BOTÃO ÚNICO DE CONCLUSÃO (fim da página) --- */
     .rodape-envio {
       margin-top: 35px;
@@ -627,9 +657,22 @@
     <h3>Documentos Obrigatórios</h3>
     <div id="containerDocumentos"></div>
 
+    <!-- TERMO DE CONSENTIMENTO LGPD (Momento 2 da jornada) -->
+    <div class="card-consentimento-lgpd" id="cardConsentimentoFicha">
+      <strong>Consentimento para Tratamento de Dados Pessoais e Sensíveis:</strong>
+      Ao enviar esta ficha e os documentos anexados, autorizo expressamente a coleta, armazenamento e
+      processamento das minhas informações pessoais, bancárias e documentos de identificação para fins
+      EXCLUSIVOS de análise de processo admissional, validação cadastral e cumprimento de obrigações legais
+      e trabalhistas, em conformidade com o Art. 7º e Art. 11º da LGPD (Lei 13.709/2018).
+      <label class="check-lgpd">
+        <input type="checkbox" id="checkConsentimentoFicha">
+        Li e concordo com o tratamento dos meus dados e documentos para fins de admissão.
+      </label>
+    </div>
+
     <!-- BOTÃO ÚNICO DE CONCLUSÃO -->
     <div class="rodape-envio">
-      <button type="button" id="btnConcluir">Concluir e Enviar Admissão Completa</button>
+      <button type="button" id="btnConcluir" disabled>Concluir e Enviar Admissão Completa</button>
       <div id="mensagemEnvioGeral"></div>
     </div>
 
@@ -656,6 +699,17 @@
       <div id="statusContrato"></div>
 
       <div id="listaDocumentosContrato"></div>
+
+      <div class="card-consentimento-lgpd">
+        Ao confirmar o aceite virtual do Contrato de Trabalho, declaro estar ciente de que a gravação do meu
+        IP, Timestamp e Hash do documento constitui assinatura eletrônica válida (MP nº 2.200-2/2001 e Lei nº
+        14.063/2020), sendo estes metadados mantidos sob guarda para cumprimento de obrigação legal e
+        contratual nos termos da LGPD (Art. 7º, II e V).
+        <label class="check-lgpd">
+          <input type="checkbox" id="checkConsentimentoContrato">
+          Estou ciente e concordo com o registro da assinatura eletrônica (IP, timestamp e hash).
+        </label>
+      </div>
 
       <div class="acoes-contrato">
         <button type="button" class="btn-contrato" id="btnConcluirAssinatura" disabled>
@@ -1292,12 +1346,24 @@
       candidato = resultado.candidato;
     }
 
+    // O botão só é liberado depois que o consentimento LGPD do envio da
+    // ficha (Momento 2 da jornada) é explicitamente marcado.
+    const checkConsentimentoFicha = document.getElementById('checkConsentimentoFicha');
+    checkConsentimentoFicha.addEventListener('change', () => {
+      document.getElementById('btnConcluir').disabled = !checkConsentimentoFicha.checked;
+    });
+
     document.getElementById('btnConcluir').addEventListener('click', async () => {
       if (fichaBloqueada) return;
 
       const mensagem = document.getElementById('mensagemEnvioGeral');
       mensagem.style.color = '#6c757d';
       mensagem.textContent = '';
+
+      if (!checkConsentimentoFicha.checked) {
+        alert('É necessário concordar com o tratamento dos seus dados e documentos (LGPD) para enviar a ficha.');
+        return;
+      }
 
       // 1) valida dados pessoais
       if (!validarDadosPessoais()) return;
@@ -1326,7 +1392,8 @@
           complemento: document.getElementById('complemento').value,
           email: document.getElementById('email').value.trim(),
           whatsapp: document.getElementById('whatsapp').value,
-          genero: document.getElementById('genero').value
+          genero: document.getElementById('genero').value,
+          consentimentoLGPD: true
         };
 
         const respFicha = await fetch('/api/candidato', {
@@ -1386,6 +1453,9 @@
       if (chk) chk.disabled = true;
       document.getElementById('btnConcluir').disabled = true;
       document.getElementById('avisoBloqueio').classList.add('visivel');
+      // A ficha já foi enviada (aceite do Momento 2 já registrado no backend) -
+      // o card de consentimento não faz mais sentido nesta tela.
+      document.getElementById('cardConsentimentoFicha').style.display = 'none';
       atualizarBarras();
     }
 
@@ -1615,11 +1685,13 @@
       const statusEl = document.getElementById('statusContrato');
       const listaEl = document.getElementById('listaDocumentosContrato');
       const btnConcluir = document.getElementById('btnConcluirAssinatura');
+      const checkConsentimentoContrato = document.getElementById('checkConsentimentoContrato');
 
       if (candidato.status === 'CONTRATACAO_CONCLUIDA') {
         statusEl.innerHTML = '<div class="status-contrato sucesso">Contratação concluída! Seja bem-vindo(a) à equipe.</div>';
         listaEl.innerHTML = montarListaDocumentosContrato(contrato);
         btnConcluir.hidden = true;
+        checkConsentimentoContrato.closest('.card-consentimento-lgpd').style.display = 'none';
         return;
       }
 
@@ -1632,9 +1704,10 @@
         statusEl.innerHTML = `<div class="status-contrato sucesso">Assinatura digital concluída em ${formatarDataHora(contrato.assinaturaConcluida.timestamp)} - aguardando validação final do RH.</div>`;
         btnConcluir.disabled = true;
         btnConcluir.textContent = 'Assinatura Digital Concluída';
+        checkConsentimentoContrato.closest('.card-consentimento-lgpd').style.display = 'none';
       } else if (todosAceitos) {
-        statusEl.innerHTML = '<div class="status-contrato info">Todos os documentos foram aceitos. Clique em "Concluir Assinatura Digital" para finalizar.</div>';
-        btnConcluir.disabled = false;
+        statusEl.innerHTML = '<div class="status-contrato info">Todos os documentos foram aceitos. Confirme a ciência sobre a assinatura eletrônica abaixo e clique em "Concluir Assinatura Digital".</div>';
+        btnConcluir.disabled = !checkConsentimentoContrato.checked;
         btnConcluir.textContent = 'Concluir Assinatura Digital';
       } else {
         statusEl.innerHTML = '<div class="status-contrato info">Visualize e aceite cada documento abaixo para liberar a conclusão da assinatura digital.</div>';
@@ -1642,6 +1715,10 @@
         btnConcluir.textContent = 'Concluir Assinatura Digital';
       }
     }
+
+    // O botão "Concluir Assinatura Digital" também depende do checkbox de
+    // ciência sobre a assinatura eletrônica (Momento 3 da jornada).
+    document.getElementById('checkConsentimentoContrato').addEventListener('change', renderizarSecaoContrato);
 
     document.getElementById('listaDocumentosContrato').addEventListener('click', async (e) => {
       const botao = e.target.closest('[data-aceitar-contrato]');
@@ -1661,8 +1738,16 @@
 
     document.getElementById('btnConcluirAssinatura').addEventListener('click', async () => {
       if (!candidatoId) return;
+      if (!document.getElementById('checkConsentimentoContrato').checked) {
+        alert('É necessário confirmar a ciência sobre a assinatura eletrônica (IP, timestamp e hash) para concluir.');
+        return;
+      }
       try {
-        const resposta = await fetch('/api/candidato/' + candidatoId + '/contrato/concluir', { method: 'POST' });
+        const resposta = await fetch('/api/candidato/' + candidatoId + '/contrato/concluir', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ consentimentoContratoLGPD: true })
+        });
         const resultado = await resposta.json();
         if (!resposta.ok) { alert('Erro: ' + (resultado.erro || 'não foi possível concluir a assinatura digital.')); return; }
         candidato = resultado.candidato;

@@ -98,6 +98,33 @@
       height: 1px;
       background: var(--cinza-borda);
     }
+    .aviso-lgpd {
+      background: rgba(0, 163, 53, 0.08);
+      border-left: 3px solid var(--verde-intelbras);
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #333333;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      line-height: 1.4;
+    }
+    .check-lgpd {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--texto);
+      margin-bottom: 12px;
+      cursor: pointer;
+    }
+    .check-lgpd input[type="checkbox"] {
+      margin-top: 2px;
+      width: 16px;
+      height: 16px;
+      accent-color: var(--verde-intelbras);
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
     #areaGoogle { display: flex; justify-content: center; min-height: 44px; }
     .aviso-google {
       font-size: 12px;
@@ -168,7 +195,14 @@
         <label for="registroSenha">Senha (mínimo 6 caracteres)</label>
         <input type="password" id="registroSenha" required minlength="6">
       </div>
-      <button type="submit" class="btn-primario">Criar Conta</button>
+      <div class="aviso-lgpd">
+        Declaro que li e aceito os Termos de Uso e a Política de Privacidade para criação de perfil na plataforma.
+      </div>
+      <label class="check-lgpd">
+        <input type="checkbox" id="checkAceiteTermos" required>
+        Li e aceito os Termos de Uso e a Política de Privacidade.
+      </label>
+      <button type="submit" class="btn-primario" id="btnCriarConta" disabled>Criar Conta</button>
     </form>
 
     <div class="separador">ou</div>
@@ -252,8 +286,21 @@
       }
     });
 
+    // O botão "Criar Conta" só é liberado depois que o checkbox de aceite dos
+    // Termos de Uso/Política de Privacidade é marcado (LGPD - Momento 1).
+    const checkAceiteTermos = document.getElementById('checkAceiteTermos');
+    const btnCriarConta = document.getElementById('btnCriarConta');
+    checkAceiteTermos.addEventListener('change', () => {
+      btnCriarConta.disabled = !checkAceiteTermos.checked;
+    });
+
     formCriarConta.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (!checkAceiteTermos.checked) {
+        mostrarErro('É necessário aceitar os Termos de Uso e a Política de Privacidade para criar a conta.');
+        return;
+      }
+
       const nome = document.getElementById('registroNome').value.trim();
       const email = document.getElementById('registroEmail').value.trim();
       const senha = document.getElementById('registroSenha').value;
@@ -262,7 +309,7 @@
         const r = await fetch(API + '/auth/registrar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nome, email, senha })
+          body: JSON.stringify({ nome, email, senha, aceiteTermos: true })
         });
         const corpo = await r.json();
         if (!r.ok) { mostrarErro(corpo.erro || 'Não foi possível criar a conta.'); return; }
