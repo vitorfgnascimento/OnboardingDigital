@@ -1084,6 +1084,19 @@
       });
 
       atualizarCheckboxCpf();
+      atualizarEstadoBotaoConcluir();
+    }
+
+    // O botão "Concluir e Enviar Admissão Completa" só é liberado quando
+    // TODOS os documentos obrigatórios já foram anexados E o consentimento
+    // LGPD do envio da ficha (Momento 2 da jornada) foi marcado - ambas as
+    // condições, sempre reavaliadas juntas.
+    function atualizarEstadoBotaoConcluir() {
+      const btn = document.getElementById('btnConcluir');
+      if (!btn || fichaBloqueada) return;
+      const faltam = documentosObrigatoriosFaltando();
+      const consentimentoOk = document.getElementById('checkConsentimentoFicha').checked;
+      btn.disabled = faltam.length > 0 || !consentimentoOk;
     }
 
     function atualizarCheckboxCpf() {
@@ -1349,9 +1362,7 @@
     // O botão só é liberado depois que o consentimento LGPD do envio da
     // ficha (Momento 2 da jornada) é explicitamente marcado.
     const checkConsentimentoFicha = document.getElementById('checkConsentimentoFicha');
-    checkConsentimentoFicha.addEventListener('change', () => {
-      document.getElementById('btnConcluir').disabled = !checkConsentimentoFicha.checked;
-    });
+    checkConsentimentoFicha.addEventListener('change', atualizarEstadoBotaoConcluir);
 
     document.getElementById('btnConcluir').addEventListener('click', async () => {
       if (fichaBloqueada) return;
@@ -1655,16 +1666,24 @@
 
     function montarListaDocumentosContrato(contrato) {
       return CONTRATOS_DOCUMENTOS.map((doc) => {
-        const aceite = contrato.documentos[doc.tipo].aceite;
+        const documento = contrato.documentos[doc.tipo];
+        const aceite = documento.aceite;
+        // Antes do aceite, o link aponta para a minuta genérica; depois do
+        // aceite, aponta para o PDF já carimbado com a assinatura eletrônica
+        // daquele candidato específico.
+        const linkPdf = documento.arquivoAssinado
+          ? `/visualizador.html?arquivo=${encodeURIComponent(documento.arquivoAssinado)}`
+          : `/api/contrato/minuta/${doc.tipo}`;
+
         return `
           <div class="item-documento-contrato">
             <span class="titulo-documento-contrato">${doc.titulo}</span>
             <div class="acoes-item-contrato">
-              <a class="btn-ver-minuta" href="/api/contrato/minuta/${doc.tipo}" target="_blank" rel="noopener noreferrer">
-                Visualizar/Baixar Minuta
+              <a class="btn-ver-minuta" href="${linkPdf}" target="_blank" rel="noopener noreferrer">
+                ${aceite ? 'Visualizar Documento Assinado' : 'Visualizar/Baixar Minuta'}
               </a>
               ${aceite
-                ? `<span class="badge-documento-contrato-aceito">&#10003; Li e Aceito (${formatarDataHora(aceite.timestamp)})</span>`
+                ? `<span class="badge-documento-contrato-aceito">&#10003; Li e Aceito - Assinado Eletronicamente (${formatarDataHora(aceite.timestamp)})</span>`
                 : `<button type="button" class="btn-li-aceito" data-aceitar-contrato="${doc.tipo}">Li e Aceito os Termos</button>`
               }
             </div>

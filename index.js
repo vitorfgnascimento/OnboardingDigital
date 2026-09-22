@@ -129,6 +129,11 @@ function lerCandidatos() {
   // para que as novas rotas funcionem sem precisar recriar a base de dados.
   candidatos.forEach((c) => {
     if (!c.contrato || !c.contrato.documentos) c.contrato = criarContratoInicial();
+    TIPOS_CONTRATO.forEach((tipo) => {
+      if (c.contrato.documentos[tipo] && c.contrato.documentos[tipo].arquivoAssinado === undefined) {
+        c.contrato.documentos[tipo].arquivoAssinado = null;
+      }
+    });
     if (c.usuarioId === undefined) c.usuarioId = null;
     if (c.consentimentoFichaLGPD === undefined) c.consentimentoFichaLGPD = null;
     if (c.consentimentoContratoLGPD === undefined) c.consentimentoContratoLGPD = null;
@@ -1292,6 +1297,11 @@ app.get('/api/rh/fichas/:id/pdf', exigirRh, (req, res) => {
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  // A ficha só pode ser impressa/gerada em PDF depois que todo o trâmite de
+  // contratação estiver definitivamente vigente (status terminal).
+  if (candidato.status !== 'CONTRATACAO_CONCLUIDA') {
+    return res.status(400).json({ erro: 'A ficha só pode ser impressa depois que a contratação for concluída.' });
+  }
 
   const nomeArquivo = `ficha-${candidato.id}.pdf`;
   const caminho = path.join(PASTA_UPLOADS, nomeArquivo);
@@ -1302,7 +1312,6 @@ app.get('/api/rh/fichas/:id/pdf', exigirRh, (req, res) => {
 
   const endereco = [candidato.logradouro, candidato.numero, candidato.complemento, candidato.bairro, candidato.cep]
     .filter(Boolean).join(', ');
-  const statusTexto = ROTULO_STATUS_CSV[candidato.status] || candidato.status || '-';
   const decisaoTexto = candidato.decisaoFinal
     ? `${candidato.decisaoFinal} em ${formatarDataBr(candidato.decisaoFinalEm)}`
     : 'Ainda não decidida';
@@ -1323,7 +1332,6 @@ app.get('/api/rh/fichas/:id/pdf', exigirRh, (req, res) => {
   campo('E-mail', candidato.email);
   campo('WhatsApp/Telefone', candidato.whatsapp);
   campo('Endereço', endereco);
-  campo('Status Atual', statusTexto);
   campo('Decisão Final', decisaoTexto);
   campo('Data de Submissão', formatarDataBr(candidato.criadoEm));
 
@@ -1365,23 +1373,6 @@ app.get('/api/rh/fichas/:id/pdf', exigirRh, (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// ROTA: log de auditoria bruto de uma ficha específica (Trilha de Auditoria
-// e Conformidade LGPD no Painel do RH) - devolve todos os eventos registrados
-// em auditoria.json para aquele candidato, para consulta em fiscalizações
-// trabalhistas.
-// ---------------------------------------------------------------------------
-app.get('/api/rh/fichas/:id/auditoria', exigirRh, (req, res) => {
-  const { id } = req.params;
-  const candidatos = lerCandidatos();
-  const candidato = candidatos.find((c) => c.id === id);
-
-  if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
-
-  const eventos = lerAuditoria().filter((e) => e.candidatoId === id);
-  return res.status(200).json(eventos);
-});
-
-// ---------------------------------------------------------------------------
 // MÓDULO DE ACEITE VIRTUAL DE CONTRATOS POR CLIQUE (ASSINATURA ELETRÔNICA
 // SIMPLES) - lista de documentos/contratos que o candidato aprovado precisa
 // ler e aceitar individualmente (um clique = um aceite), antes de concluir a
@@ -1396,11 +1387,12 @@ const CONTRATOS_DOCUMENTOS = [
 const TIPOS_CONTRATO = CONTRATOS_DOCUMENTOS.map((d) => d.tipo);
 
 // Estrutura inicial do módulo de contratação: um estado de aceite por
-// documento (null até o clique) + a assinatura digital unificada (só existe
-// depois que TODOS os documentos acima estiverem aceitos) + a validação do RH.
+// documento (null até o clique, com o PDF assinado gerado no aceite) + a
+// assinatura digital unificada (só existe depois que TODOS os documentos
+// acima estiverem aceitos) + a validação do RH.
 function criarContratoInicial() {
   const documentos = {};
-  TIPOS_CONTRATO.forEach((tipo) => { documentos[tipo] = { aceite: null }; });
+  TIPOS_CONTRATO.forEach((tipo) => { documentos[tipo] = { aceite: null, arquivoAssinado: null }; });
   return { documentos, assinaturaConcluida: null, validacaoRh: null };
 }
 
@@ -1462,6 +1454,59 @@ function calcularHashDocumentosContrato() {
   return hash.digest('hex');
 }
 
+// Nome/caminho do PDF assinado de UM documento de UM candidato (gerado no
+// momento do aceite - distinto da minuta genérica, que é a mesma para todos).
+function nomeArquivoContratoAssinado(candidatoId, tipo) {
+  return `contrato-${tipo}-${candidatoId}-assinado.pdf`;
+}
+
+// Gera (ou regenera, se o aceite for refeito) o PDF assinado de um documento
+// do contrato: reproduz o texto da minuta e acrescenta um carimbo visível de
+// assinatura eletrônica (nome, CPF, data/hora, IP e quem confirmou), para que
+// o documento aberto pelo candidato ou pelo RH mostre claramente que aquele
+// exemplar específico foi assinado - não é só um registro no banco de dados.
+function gerarDocumentoContratoAssinado(candidato, tipo, titulo, aceite) {
+  const nomeArquivo = nomeArquivoContratoAssinado(candidato.id, tipo);
+  const caminho = path.join(PASTA_UPLOADS, nomeArquivo);
+
+  const doc = new PDFDocument({ margin: 50, size: 'A4' });
+  const stream = fs.createWriteStream(caminho);
+  const prontoQuandoGravado = new Promise((resolve, reject) => {
+    stream.on('finish', () => resolve(nomeArquivo));
+    stream.on('error', reject);
+  });
+  doc.pipe(stream);
+
+  doc.fontSize(16).font('Helvetica-Bold').fillColor('#1a252f').text(titulo);
+  doc.moveDown(1);
+  doc.fontSize(10).font('Helvetica').fillColor('#333333').text(
+    'Documento de exemplo - Onboarding Digital. Em um cenário real, este seria o ' +
+    'texto integral do documento fornecido pelo time Jurídico/RH.'
+  );
+  doc.moveDown(2);
+
+  const alturaCarimbo = 110;
+  const yCarimbo = doc.y;
+  doc.save();
+  doc.rect(50, yCarimbo, doc.page.width - 100, alturaCarimbo).fillAndStroke('#eafaef', '#00A335');
+  doc.restore();
+
+  doc.fontSize(12).font('Helvetica-Bold').fillColor('#00812a')
+    .text('✓ ASSINADO ELETRONICAMENTE', 60, yCarimbo + 10);
+  doc.fontSize(9).font('Helvetica').fillColor('#1a252f');
+  doc.text(`Assinado por: ${candidato.nomeCompleto} (CPF ${candidato.cpf})`, 60, yCarimbo + 32);
+  doc.text(`Data/Hora: ${formatarDataBr(aceite.timestamp)}`, 60, yCarimbo + 47);
+  doc.text(`IP de origem: ${aceite.ip || '-'}`, 60, yCarimbo + 62);
+  doc.text(`Confirmado por: ${aceite.por === 'RH' ? 'RH (em nome do candidato)' : 'Candidato'}`, 60, yCarimbo + 77);
+  doc.text(
+    'Assinatura eletrônica válida nos termos da MP nº 2.200-2/2001 e da Lei nº 14.063/2020.',
+    60, yCarimbo + 92
+  );
+
+  doc.end();
+  return prontoQuandoGravado;
+}
+
 // Download da minuta de um documento/contrato específico.
 app.get('/api/contrato/minuta/:tipo', (req, res) => {
   const { tipo } = req.params;
@@ -1475,7 +1520,7 @@ app.get('/api/contrato/minuta/:tipo', (req, res) => {
 // O candidato clica em "Li e Aceito os Termos" para UM documento (aceite por
 // clique = assinatura eletrônica simples). Só é permitido para fichas já
 // APROVADAS pelo RH. Grava timestamp (ISO) e IP no documento e na auditoria.
-app.post('/api/candidato/:id/contrato/:tipo/aceite', (req, res) => {
+app.post('/api/candidato/:id/contrato/:tipo/aceite', async (req, res) => {
   const { id, tipo } = req.params;
   if (!TIPOS_CONTRATO.includes(tipo)) {
     return res.status(400).json({ erro: 'Documento de contrato inválido.' });
@@ -1490,7 +1535,13 @@ app.post('/api/candidato/:id/contrato/:tipo/aceite', (req, res) => {
   }
 
   const agora = new Date().toISOString();
-  candidato.contrato.documentos[tipo].aceite = { timestamp: agora, ip: req.ip, por: 'CANDIDATO' };
+  const aceite = { timestamp: agora, ip: req.ip, por: 'CANDIDATO' };
+  const titulo = CONTRATOS_DOCUMENTOS.find((d) => d.tipo === tipo).titulo;
+  garantirMinutaContrato(tipo, titulo);
+  const arquivoAssinado = await gerarDocumentoContratoAssinado(candidato, tipo, titulo, aceite);
+
+  candidato.contrato.documentos[tipo].aceite = aceite;
+  candidato.contrato.documentos[tipo].arquivoAssinado = 'uploads/' + arquivoAssinado;
   candidato.atualizadoEm = agora;
   salvarCandidatos(candidatos);
 
@@ -1509,7 +1560,7 @@ app.post('/api/candidato/:id/contrato/:tipo/aceite', (req, res) => {
 
 // RH também pode marcar o aceite de um documento em nome do candidato
 // (mesmo layout/ação "Aceitar Documento" usado nos demais cards do painel).
-app.patch('/api/rh/fichas/:id/contrato/:tipo/aceitar', exigirRh, (req, res) => {
+app.patch('/api/rh/fichas/:id/contrato/:tipo/aceitar', exigirRh, async (req, res) => {
   const { id, tipo } = req.params;
   if (!TIPOS_CONTRATO.includes(tipo)) {
     return res.status(400).json({ erro: 'Documento de contrato inválido.' });
@@ -1524,7 +1575,13 @@ app.patch('/api/rh/fichas/:id/contrato/:tipo/aceitar', exigirRh, (req, res) => {
   }
 
   const agora = new Date().toISOString();
-  candidato.contrato.documentos[tipo].aceite = { timestamp: agora, ip: req.ip, por: 'RH' };
+  const aceite = { timestamp: agora, ip: req.ip, por: 'RH' };
+  const titulo = CONTRATOS_DOCUMENTOS.find((d) => d.tipo === tipo).titulo;
+  garantirMinutaContrato(tipo, titulo);
+  const arquivoAssinado = await gerarDocumentoContratoAssinado(candidato, tipo, titulo, aceite);
+
+  candidato.contrato.documentos[tipo].aceite = aceite;
+  candidato.contrato.documentos[tipo].arquivoAssinado = 'uploads/' + arquivoAssinado;
   candidato.atualizadoEm = agora;
   salvarCandidatos(candidatos);
 
