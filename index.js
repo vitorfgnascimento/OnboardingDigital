@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
+const PDFDocument = require('pdfkit');
 const { OAuth2Client } = require('google-auth-library');
 
 const app = express();
@@ -1201,6 +1202,111 @@ app.get('/api/rh/exportar-csv', exigirRh, (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="candidatos_${dataArquivo}.csv"`);
   return res.status(200).send(conteudo);
+});
+
+// ---------------------------------------------------------------------------
+// ROTA: geração de um PDF real da ficha individual (dados pessoais,
+// documentos e declaração de consentimento LGPD), para o RH visualizar,
+// baixar ou imprimir a partir do visualizador de PDF do navegador - em vez
+// de acionar diretamente a caixa de diálogo de impressão do sistema.
+// ---------------------------------------------------------------------------
+const TITULOS_DOCUMENTO = {
+  identidade: 'Identidade (RG)',
+  cpf: 'CPF',
+  comprovanteResidencia: 'Comprovante de Residência',
+  comprovanteEscolaridade: 'Comprovante de Escolaridade',
+  reservista: 'Certificado de Reservista',
+  carteiraTrabalho: 'Carteira de Trabalho'
+};
+
+function formatarDataBr(iso) {
+  if (!iso) return '-';
+  return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function situacaoDocumentoPdf(candidato, tipo, documento) {
+  if (documento.arquivo) return 'Enviado';
+  if (tipo === 'reservista' && candidato.genero !== 'Masculino') return 'Não exigido';
+  if (tipo === 'cpf' && candidato.cpfInclusoNaIdentidade) return 'Não exigido (incluso na Identidade)';
+  return 'Pendente';
+}
+
+app.get('/api/rh/fichas/:id/pdf', exigirRh, (req, res) => {
+  const { id } = req.params;
+  const candidatos = lerCandidatos();
+  const candidato = candidatos.find((c) => c.id === id);
+
+  if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
+
+  const nomeArquivo = `ficha-${candidato.id}.pdf`;
+  const caminho = path.join(PASTA_UPLOADS, nomeArquivo);
+
+  const doc = new PDFDocument({ margin: 50, size: 'A4' });
+  const stream = fs.createWriteStream(caminho);
+  doc.pipe(stream);
+
+  const endereco = [candidato.logradouro, candidato.numero, candidato.complemento, candidato.bairro, candidato.cep]
+    .filter(Boolean).join(', ');
+  const statusTexto = ROTULO_STATUS_CSV[candidato.status] || candidato.status || '-';
+  const decisaoTexto = candidato.decisaoFinal
+    ? `${candidato.decisaoFinal} em ${formatarDataBr(candidato.decisaoFinalEm)}`
+    : 'Ainda não decidida';
+
+  doc.fontSize(18).font('Helvetica-Bold').fillColor('#1a252f')
+    .text(`Ficha de Admissão - ${candidato.nomeCompleto}`, { underline: false });
+  doc.moveDown(1);
+
+  doc.fontSize(13).font('Helvetica-Bold').fillColor('#00A335').text('Dados Pessoais');
+  doc.moveDown(0.3);
+  doc.fontSize(10).font('Helvetica').fillColor('#000000');
+
+  const campo = (rotulo, valor) => doc.font('Helvetica-Bold').text(`${rotulo}: `, { continued: true }).font('Helvetica').text(valor || '-');
+  campo('Nome Completo', candidato.nomeCompleto);
+  campo('CPF', candidato.cpf);
+  campo('Data de Nascimento', candidato.dataNascimento);
+  campo('Gênero', candidato.genero);
+  campo('E-mail', candidato.email);
+  campo('WhatsApp/Telefone', candidato.whatsapp);
+  campo('Endereço', endereco);
+  campo('Status Atual', statusTexto);
+  campo('Decisão Final', decisaoTexto);
+  campo('Data de Submissão', formatarDataBr(candidato.criadoEm));
+
+  doc.moveDown(1);
+  doc.fontSize(13).font('Helvetica-Bold').fillColor('#00A335').text('Documentos');
+  doc.moveDown(0.3);
+  doc.fontSize(10).font('Helvetica').fillColor('#000000');
+
+  TIPOS_DOCUMENTO.forEach((tipo) => {
+    const documento = candidato.documentos[tipo] || {};
+    const situacao = situacaoDocumentoPdf(candidato, tipo, documento);
+    doc.font('Helvetica-Bold').text(`${TITULOS_DOCUMENTO[tipo]}: `, { continued: true }).font('Helvetica').text(situacao);
+  });
+
+  doc.moveDown(1);
+  doc.fontSize(11).font('Helvetica-Bold').fillColor('#1a252f').text('Declaração de Consentimento (LGPD)');
+  doc.moveDown(0.2);
+  doc.fontSize(9).font('Helvetica').fillColor('#333333').text(
+    `Ao submeter esta ficha em ${formatarDataBr(candidato.criadoEm)}, o(a) candidato(a) ${candidato.nomeCompleto} ` +
+    'declarou estar ciente e de acordo com a coleta, o armazenamento e o tratamento dos seus dados pessoais e ' +
+    'documentos para fins exclusivos deste processo seletivo, nos termos da Lei Geral de Proteção de Dados ' +
+    'Pessoais (Lei nº 13.709/2018 - LGPD).',
+    { align: 'justify' }
+  );
+
+  doc.moveDown(1.5);
+  doc.fontSize(8).font('Helvetica').fillColor('#666666')
+    .text(`Documento gerado pelo Painel do RH em ${formatarDataBr(new Date().toISOString())}.`);
+
+  doc.end();
+
+  stream.on('finish', () => {
+    return res.status(200).json({ mensagem: 'PDF gerado com sucesso!', arquivo: 'uploads/' + nomeArquivo });
+  });
+  stream.on('error', (erro) => {
+    console.error('Falha ao gerar PDF da ficha:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao gerar o PDF da ficha.' });
+  });
 });
 
 // ---------------------------------------------------------------------------

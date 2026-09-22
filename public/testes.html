@@ -695,6 +695,42 @@
         }
       },
 
+      { grupo: 'Geração de PDF Real da Ficha (GET /api/rh/fichas/:id/pdf)' },
+
+      {
+        // Regressão: este botão já voltou a disparar só a caixa de diálogo de
+        // impressão do navegador (window.print()) em vez de abrir um PDF de
+        // verdade - este teste garante que a rota sempre devolve um arquivo
+        // PDF gerado no servidor (%PDF no início do conteúdo).
+        nome: 'Gera um PDF real da ficha (200, começa com %PDF)',
+        run: async () => {
+          const r = await getRh('/rh/fichas/' + window.__idMasculino + '/pdf');
+          const arquivo = r.corpo.arquivo || '';
+          const arquivoOk = /^uploads\/[\w.-]+\.pdf$/i.test(arquivo);
+          let comecaComPdf = false;
+          if (arquivoOk) {
+            const conteudo = await fetch('/' + arquivo).then((resp) => resp.text());
+            comecaComPdf = conteudo.startsWith('%PDF');
+          }
+          const ok = r.status === 200 && arquivoOk && comecaComPdf;
+          return { ok, detalhe: `status ${r.status}, arquivo ${arquivo}, começa com %PDF: ${comecaComPdf}` };
+        }
+      },
+      {
+        nome: 'GET /api/rh/fichas/:id/pdf de candidato inexistente (404)',
+        run: async () => {
+          const r = await getRh('/rh/fichas/nao-existe/pdf');
+          return { ok: r.status === 404, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'GET /api/rh/fichas/:id/pdf sem sessão de RH é recusado (401)',
+        run: async () => {
+          const r = await fetch(API + '/rh/fichas/' + window.__idMasculino + '/pdf');
+          return { ok: r.status === 401, detalhe: `status ${r.status}` };
+        }
+      },
+
       { grupo: 'Automação de Status e Candidato de Testes Fixo' },
 
       {
