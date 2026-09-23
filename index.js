@@ -1325,11 +1325,23 @@ const BORDA_FINA_PLANILHA = {
   top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' }
 };
 
+// Colunas de código, data ou status ficam centralizadas nas linhas de dados
+// (o texto livre - nome, e-mail, endereço, complemento e o sistema de ponto
+// - continua alinhado à esquerda, mais legível para conteúdo longo).
+const COLUNAS_CENTRALIZADAS_PLANILHA = new Set([
+  'CPF', 'Telefone', 'Gênero', 'CEP', 'Número',
+  'Status Atual', 'Data de Submissão', 'Última Atualização',
+  'Consentimento LGPD', 'Timestamp LGPD', 'IP LGPD',
+  'Status Documentos', 'CPF no RG', 'Reservista',
+  'Aceite Contratual', 'Timestamp Aceite Contrato', 'Hash Contrato',
+  'Exportado Ponto'
+]);
+
 // Gera (ou recria por completo) a planilha Mestre a partir do estado atual
 // de candidatos.json - lê sempre do disco, nunca de um parâmetro em memória,
 // para que a última gravação da fila (ver atualizarPlanilhaMestre) sempre
 // reflita o estado mais recente, mesmo sob gravações concorrentes.
-async function gerarPlanilhaMestre() {
+async function gerarOuAtualizarPlanilhaMestre() {
   const candidatos = lerCandidatos();
 
   const workbook = new ExcelJS.Workbook();
@@ -1344,16 +1356,23 @@ async function gerarPlanilhaMestre() {
   });
 
   const indiceColunaStatus = CABECALHO_RELATORIO.indexOf('Status Atual') + 1;
+  const indicesCentralizados = CABECALHO_RELATORIO
+    .map((titulo, indice) => (COLUNAS_CENTRALIZADAS_PLANILHA.has(titulo) ? indice + 1 : null))
+    .filter((indice) => indice !== null);
 
   candidatos.forEach((c) => {
     const linha = planilha.addRow(montarLinhaRelatorio(c));
     linha.eachCell((celula) => { celula.border = BORDA_FINA_PLANILHA; });
+    indicesCentralizados.forEach((indice) => {
+      linha.getCell(indice).alignment = { horizontal: 'center', vertical: 'middle' };
+    });
 
     const estilo = ESTILO_STATUS_PLANILHA[String(linha.getCell(indiceColunaStatus).value || '')];
     if (estilo) {
       const celulaStatus = linha.getCell(indiceColunaStatus);
       celulaStatus.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: estilo.fundo } };
       celulaStatus.font = { color: { argb: estilo.texto }, bold: true };
+      celulaStatus.alignment = { horizontal: 'center', vertical: 'middle' };
     }
   });
 
@@ -1378,7 +1397,7 @@ async function gerarPlanilhaMestre() {
 // requisições disparam atualizações quase ao mesmo tempo.
 let filaPlanilhaMestre = Promise.resolve();
 function atualizarPlanilhaMestre() {
-  filaPlanilhaMestre = filaPlanilhaMestre.then(gerarPlanilhaMestre).catch((erro) => {
+  filaPlanilhaMestre = filaPlanilhaMestre.then(gerarOuAtualizarPlanilhaMestre).catch((erro) => {
     console.error('Falha ao atualizar a planilha mestre:', erro.message);
   });
   return filaPlanilhaMestre;
