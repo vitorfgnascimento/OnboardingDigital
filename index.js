@@ -137,6 +137,7 @@ function lerCandidatos() {
     if (c.usuarioId === undefined) c.usuarioId = null;
     if (c.consentimentoFichaLGPD === undefined) c.consentimentoFichaLGPD = null;
     if (c.consentimentoContratoLGPD === undefined) c.consentimentoContratoLGPD = null;
+    if (c.integracaoPonto === undefined) c.integracaoPonto = criarIntegracaoPontoInicial();
   });
 
   return candidatos;
@@ -294,6 +295,14 @@ function criarDocumentosIniciais(genero) {
   }
 
   return documentos;
+}
+
+// Estrutura inicial do controle de integração com o sistema de ponto/RH
+// externo (Arquitetura B2B) - nasce como "não exportado"; fica marcado
+// manualmente pelo RH (ou por uma futura integração automática) quando os
+// dados do candidato admitido são enviados ao sistema de ponto de destino.
+function criarIntegracaoPontoInicial() {
+  return { exportado: false, timestamp: null, sistemaAlvo: null };
 }
 
 // Reavalia a regra do reservista quando o gênero do candidato muda.
@@ -598,6 +607,7 @@ app.post('/api/candidato', autenticarOpcional, (req, res) => {
       finalidade: FINALIDADE_TERMO_FICHA_LGPD
     },
     consentimentoContratoLGPD: null,
+    integracaoPonto: criarIntegracaoPontoInicial(),
     criadoEm: agora
   };
 
@@ -1222,8 +1232,32 @@ function paraCelulaCsv(valor) {
   return `"${String(valor == null ? '' : valor).replace(/"/g, '""')}"`;
 }
 
+// Rótulo textual do Certificado de Reservista para o relatório CSV: segue a
+// mesma regra de dispensa por gênero usada no resto do sistema.
+function rotuloReservistaCsv(candidato) {
+  if (candidato.genero !== 'Masculino') return 'Não exigido';
+  const status = candidato.documentos.reservista?.status;
+  return ROTULO_STATUS_CSV[status] || status || '';
+}
+
+// Resumo compacto do status dos 6 documentos obrigatórios (quantos já foram
+// enviados e quantos já foram aceitos/aprovados pelo RH) para uma única
+// célula do CSV.
+function resumoStatusDocumentosCsv(candidato) {
+  let enviados = 0;
+  let aceitos = 0;
+  TIPOS_DOCUMENTO.forEach((tipo) => {
+    const documento = candidato.documentos[tipo] || {};
+    if (documento.arquivo || documento.status === 'VERDE') enviados++;
+    if (documento.status === 'VERDE') aceitos++;
+  });
+  return `${enviados}/${TIPOS_DOCUMENTO.length} enviados | ${aceitos}/${TIPOS_DOCUMENTO.length} aceitos`;
+}
+
 // ---------------------------------------------------------------------------
 // ROTA: exportação do relatório de candidatos em CSV (compatível com Excel)
+// - inclui dados cadastrais, trilha de auditoria LGPD, status documental e
+//   controle de integração com o sistema de ponto/RH externo (Arquitetura B2B).
 // ---------------------------------------------------------------------------
 app.get('/api/rh/exportar-csv', exigirRh, (req, res) => {
   const { filtro } = req.query;
@@ -1237,21 +1271,46 @@ app.get('/api/rh/exportar-csv', exigirRh, (req, res) => {
     candidatos = candidatos.filter((c) => c.status === filtro);
   }
 
-  const cabecalho = ['Nome', 'CPF', 'E-mail', 'Telefone', 'CEP', 'Endereço', 'Data de Submissão', 'Status Atual'];
+  const cabecalho = [
+    'Nome Completo', 'CPF', 'E-mail', 'Telefone', 'Gênero', 'CEP', 'Endereço', 'Número', 'Complemento',
+    'Status Atual', 'Data de Submissão', 'Última Atualização',
+    'Consentimento LGPD', 'Timestamp LGPD', 'IP LGPD',
+    'Status Documentos', 'CPF no RG', 'Reservista',
+    'Aceite Contratual', 'Timestamp Aceite Contrato', 'Hash Contrato',
+    'Exportado Ponto', 'Sistema Ponto Alvo'
+  ];
 
   const linhas = candidatos.map((c) => {
-    const endereco = [c.logradouro, c.numero, c.complemento, c.bairro].filter(Boolean).join(', ');
+    const endereco = [c.logradouro, c.bairro].filter(Boolean).join(', ');
     const statusTexto = ROTULO_STATUS_CSV[c.status] || c.status || '';
+    const consentimentoFicha = c.consentimentoFichaLGPD;
+    const assinatura = c.contrato?.assinaturaConcluida;
+    const integracaoPonto = c.integracaoPonto || criarIntegracaoPontoInicial();
 
     return [
       c.nomeCompleto,
       c.cpf,
       c.email,
       c.whatsapp,
+      c.genero,
       c.cep,
       endereco,
-      c.criadoEm ? new Date(c.criadoEm).toLocaleString('pt-BR') : '',
-      statusTexto
+      c.numero,
+      c.complemento,
+      statusTexto,
+      formatarDataBr(c.criadoEm),
+      formatarDataBr(c.atualizadoEm),
+      consentimentoFicha?.aceito ? 'Sim' : 'Não',
+      consentimentoFicha ? formatarDataBr(consentimentoFicha.dataHora) : '',
+      consentimentoFicha?.ip || '',
+      resumoStatusDocumentosCsv(c),
+      c.cpfInclusoNaIdentidade ? 'Sim' : 'Não',
+      rotuloReservistaCsv(c),
+      assinatura ? 'Sim' : 'Não',
+      assinatura ? formatarDataBr(assinatura.timestamp) : '',
+      assinatura?.hash || '',
+      integracaoPonto.exportado ? 'Sim' : 'Não',
+      integracaoPonto.sistemaAlvo || ''
     ].map(paraCelulaCsv).join(';');
   });
 
