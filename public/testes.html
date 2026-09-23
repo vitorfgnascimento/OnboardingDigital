@@ -110,6 +110,7 @@
       color: var(--verde-intelbras-escuro);
     }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 </head>
 <body>
 
@@ -651,18 +652,6 @@
         }
       },
       {
-        nome: 'CSV filtrado por EM_ANALISE não inclui candidato já decidido',
-        run: async () => {
-          await loginRh(); const r = await fetch(API + '/rh/exportar-csv?filtro=EM_ANALISE', { headers: headersRh() });
-          const texto = await r.text();
-          // window.__idMasculino tem CPF único (123.456.789-09) - garante que é
-          // exatamente ele (e não outro "Candidato Teste" ainda em análise) que
-          // está sendo checado.
-          const ok = r.status === 200 && !texto.includes('123.456.789-09');
-          return { ok, detalhe: `status ${r.status}, contém o CPF do decidido: ${texto.includes('123.456.789-09')}` };
-        }
-      },
-      {
         nome: 'Após decisão final, nenhum novo envio de documento é aceito (400)',
         run: async () => {
           const r = await enviarDocumento(window.__idMasculino, 'carteiraTrabalho', pdfDeTeste('ctps2.pdf'));
@@ -670,61 +659,52 @@
         }
       },
 
-      { grupo: 'Exportação de Relatório (GET /api/rh/exportar-csv)' },
+      { grupo: 'Exportação de Relatório (GET /api/rh/exportar-relatorio)' },
 
       {
-        nome: 'Exporta CSV (200, content-type text/csv, cabeçalho correto)',
+        nome: 'Exporta a planilha Mestre em Excel (200, content-type xlsx, assinatura ZIP "PK")',
         run: async () => {
-          await loginRh(); const r = await fetch(API + '/rh/exportar-csv', { headers: headersRh() });
-          const texto = await r.text();
+          await loginRh(); const r = await fetch(API + '/rh/exportar-relatorio', { headers: headersRh() });
           const contentType = r.headers.get('content-type') || '';
-          const primeiraLinha = texto.replace(/^﻿/, '').split('\r\n')[0];
-          const cabecalhoOk = primeiraLinha === '"Nome Completo";"CPF";"E-mail";"Telefone";"Gênero";"CEP";"Endereço";"Número";"Complemento";'
-            + '"Status Atual";"Data de Submissão";"Última Atualização";'
-            + '"Consentimento LGPD";"Timestamp LGPD";"IP LGPD";'
-            + '"Status Documentos";"CPF no RG";"Reservista";'
-            + '"Aceite Contratual";"Timestamp Aceite Contrato";"Hash Contrato";'
-            + '"Exportado Ponto";"Sistema Ponto Alvo"';
-          const ok = r.status === 200 && contentType.includes('text/csv') && cabecalhoOk;
-          return { ok, detalhe: `status ${r.status}, content-type ${contentType}, cabeçalho: ${primeiraLinha}` };
+          const buffer = await r.arrayBuffer();
+          const bytes = new Uint8Array(buffer.slice(0, 2));
+          const comecaComPk = bytes[0] === 0x50 && bytes[1] === 0x4b; // 'P' 'K'
+          const ok = r.status === 200 && contentType.includes('spreadsheetml') && comecaComPk;
+          window.__bufferPlanilhaMestre = buffer;
+          return { ok, detalhe: `status ${r.status}, content-type ${contentType}, assinatura PK: ${comecaComPk}` };
         }
       },
       {
-        nome: 'CSV tem as 23 colunas expandidas (auditoria, documentos e integração de ponto)',
+        nome: 'Planilha Mestre tem a aba "Relatório de Admissões" com as 23 colunas e cabeçalho estilizado',
         run: async () => {
-          await loginRh(); const r = await fetch(API + '/rh/exportar-csv', { headers: headersRh() });
-          const texto = await r.text();
-          const primeiraLinha = texto.replace(/^﻿/, '').split('\r\n')[0];
-          const colunas = primeiraLinha.split(';');
-          return { ok: colunas.length === 23, detalhe: `${colunas.length} coluna(s): ${primeiraLinha}` };
+          const workbook = new ExcelJS.Workbook();
+          await workbook.xlsx.load(window.__bufferPlanilhaMestre);
+          const planilha = workbook.getWorksheet('Relatório de Admissões');
+          if (!planilha) return { ok: false, detalhe: 'aba "Relatório de Admissões" não encontrada' };
+          const cabecalho = planilha.getRow(1).values.slice(1);
+          const cabecalhoOk = cabecalho.length === 23 && cabecalho[0] === 'Nome Completo' && cabecalho[9] === 'Status Atual'
+            && cabecalho[21] === 'Exportado Ponto' && cabecalho[22] === 'Sistema Ponto Alvo';
+          const celula1 = planilha.getRow(1).getCell(1);
+          const estiloOk = celula1.font?.bold === true && celula1.fill?.fgColor?.argb === 'FF005623' && !!planilha.autoFilter;
+          return { ok: cabecalhoOk && estiloOk, detalhe: `${cabecalho.length} coluna(s), fundo ${celula1.fill?.fgColor?.argb}, autoFilter: ${!!planilha.autoFilter}` };
         }
       },
       {
-        nome: 'CSV contém o candidato aprovado nos testes',
+        nome: 'Planilha Mestre contém o candidato aprovado nos testes',
         run: async () => {
-          await loginRh(); const r = await fetch(API + '/rh/exportar-csv', { headers: headersRh() });
-          const texto = await r.text();
-          return { ok: texto.includes('Candidato Teste'), detalhe: `contém "Candidato Teste": ${texto.includes('Candidato Teste')}` };
+          const workbook = new ExcelJS.Workbook();
+          await workbook.xlsx.load(window.__bufferPlanilhaMestre);
+          const planilha = workbook.getWorksheet('Relatório de Admissões');
+          let encontrado = false;
+          planilha.eachRow((linha, numero) => { if (numero > 1 && linha.getCell(1).value === 'Candidato Teste') encontrado = true; });
+          return { ok: encontrado, detalhe: `contém "Candidato Teste": ${encontrado}` };
         }
       },
       {
-        nome: 'CSV respeita o filtro por decisão (?filtro=APROVADO)',
+        nome: 'Exportação da planilha Mestre sem sessão de RH é recusada (401)',
         run: async () => {
-          await loginRh(); const r = await fetch(API + '/rh/exportar-csv?filtro=APROVADO', { headers: headersRh() });
-          const texto = await r.text();
-          const linhas = texto.trim().split('\r\n');
-          const todasAprovadas = linhas.slice(1).every((l) => l.includes('APROVADO') || l.trim() === '');
-          return { ok: r.status === 200 && todasAprovadas, detalhe: `status ${r.status}, ${linhas.length - 1} linha(s) de dados` };
-        }
-      },
-      {
-        nome: 'CSV filtrado por uma decisão não inclui candidatos de outra decisão',
-        run: async () => {
-          await loginRh(); const r = await fetch(API + '/rh/exportar-csv?filtro=REPROVADO', { headers: headersRh() });
-          const texto = await r.text();
-          // O candidato de teste (aprovado acima) nao deve aparecer no filtro de reprovados
-          const semCandidatoAprovado = !texto.includes('Candidato Teste');
-          return { ok: r.status === 200 && semCandidatoAprovado, detalhe: `status ${r.status}, contém "Candidato Teste": ${!semCandidatoAprovado ? 'não' : 'sim'}` };
+          const r = await fetch(API + '/rh/exportar-relatorio');
+          return { ok: r.status === 401, detalhe: `status ${r.status}` };
         }
       },
 
@@ -1044,26 +1024,34 @@
         // Verifica os valores das novas colunas (LGPD, documentos, contrato e
         // integração de ponto) para uma ficha que já passou por todo o fluxo:
         // consentimento da ficha, todos os documentos aceitos e assinatura
-        // digital concluída.
-        nome: 'CSV traz os valores corretos de LGPD/contrato para uma ficha já concluída',
+        // digital concluída. Também confirma a formatação condicional (fundo
+        // verde claro) aplicada à célula de status "CONTRATAÇÃO CONCLUÍDA".
+        nome: 'Planilha Mestre traz os valores corretos de LGPD/contrato para uma ficha já concluída',
         run: async () => {
-          await loginRh(); const r = await fetch(API + '/rh/exportar-csv', { headers: headersRh() });
-          const texto = await r.text();
-          const linhas = texto.replace(/^﻿/, '').split('\r\n');
-          const cabecalho = linhas[0].split(';').map((c) => c.replace(/^"|"$/g, ''));
-          const linhaAlvo = linhas.find((l) => l.includes('"741.963.852-10"')); // CPF do window.__idAuthFicha
-          if (!linhaAlvo) return { ok: false, detalhe: 'linha do candidato não encontrada no CSV' };
+          await loginRh(); const r = await fetch(API + '/rh/exportar-relatorio', { headers: headersRh() });
+          const buffer = await r.arrayBuffer();
+          const workbook = new ExcelJS.Workbook();
+          await workbook.xlsx.load(buffer);
+          const planilha = workbook.getWorksheet('Relatório de Admissões');
+          const cabecalho = planilha.getRow(1).values.slice(1);
 
-          const valores = linhaAlvo.split(';').map((c) => c.replace(/^"|"$/g, '').replace(/""/g, '"'));
-          const porColuna = Object.fromEntries(cabecalho.map((nome, i) => [nome, valores[i]]));
+          let linhaAlvo = null;
+          planilha.eachRow((linha, numero) => {
+            if (numero > 1 && linha.getCell(2).value === '741.963.852-10') linhaAlvo = linha; // CPF do window.__idAuthFicha
+          });
+          if (!linhaAlvo) return { ok: false, detalhe: 'linha do candidato não encontrada na planilha Mestre' };
+
+          const porColuna = Object.fromEntries(cabecalho.map((nome, i) => [nome, linhaAlvo.getCell(i + 1).value]));
+          const celulaStatus = linhaAlvo.getCell(cabecalho.indexOf('Status Atual') + 1);
 
           const ok = porColuna['Consentimento LGPD'] === 'Sim'
             && !!porColuna['Timestamp LGPD'] && !!porColuna['IP LGPD']
             && /^\d\/6 enviados \| \d\/6 aceitos$/.test(porColuna['Status Documentos'])
             && porColuna['Aceite Contratual'] === 'Sim'
             && !!porColuna['Timestamp Aceite Contrato'] && !!porColuna['Hash Contrato']
-            && porColuna['Exportado Ponto'] === 'Não';
-          return { ok, detalhe: JSON.stringify(porColuna) };
+            && porColuna['Exportado Ponto'] === 'Não'
+            && celulaStatus.fill?.fgColor?.argb === 'FFD4EDDA';
+          return { ok, detalhe: `${JSON.stringify(porColuna)}, fundo do status: ${celulaStatus.fill?.fgColor?.argb}` };
         }
       },
 
