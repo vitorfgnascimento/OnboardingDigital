@@ -157,3 +157,7 @@ sessoes.json
 # Documentos PDF enviados pelos candidatos (dados pessoais - LGPD)
 uploads/*
 !uploads/.gitkeep
+
+# Planilha Mestre de admissoes, regenerada automaticamente a cada gravacao
+# (dados pessoais - LGPD, nao versionar)
+relatorio_geral_admissoes.xlsx

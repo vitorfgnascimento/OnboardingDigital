@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
 const PDFDocument = require('pdfkit');
+const ExcelJS = require('exceljs');
 const { OAuth2Client } = require('google-auth-library');
 
 const app = express();
@@ -144,8 +145,12 @@ function lerCandidatos() {
 }
 
 // Grava a lista completa de candidatos no arquivo, formatada para leitura humana.
+// Toda gravação (nova ficha, mudança de status, decisão, contrato etc.)
+// também dispara a atualização da planilha Mestre em Excel, em segundo
+// plano - não bloqueia a resposta da requisição que originou a gravação.
 function salvarCandidatos(lista) {
   fs.writeFileSync(ARQUIVO_CANDIDATOS, JSON.stringify(lista, null, 2), 'utf-8');
+  atualizarPlanilhaMestre();
 }
 
 // Gera um identificador único para cada ficha (baseado em timestamp + sufixo aleatório).
@@ -1227,14 +1232,9 @@ const ROTULO_STATUS_CSV = {
   CONTRATACAO_CONCLUIDA: 'CONTRATAÇÃO CONCLUÍDA'
 };
 
-// Escapa um valor para uma célula de CSV (aspas duplas + delimitador ';').
-function paraCelulaCsv(valor) {
-  return `"${String(valor == null ? '' : valor).replace(/"/g, '""')}"`;
-}
-
-// Rótulo textual do Certificado de Reservista para o relatório CSV: segue a
+// Rótulo textual do Certificado de Reservista para o relatório: segue a
 // mesma regra de dispensa por gênero usada no resto do sistema.
-function rotuloReservistaCsv(candidato) {
+function rotuloReservistaRelatorio(candidato) {
   if (candidato.genero !== 'Masculino') return 'Não exigido';
   const status = candidato.documentos.reservista?.status;
   return ROTULO_STATUS_CSV[status] || status || '';
@@ -1242,8 +1242,8 @@ function rotuloReservistaCsv(candidato) {
 
 // Resumo compacto do status dos 6 documentos obrigatórios (quantos já foram
 // enviados e quantos já foram aceitos/aprovados pelo RH) para uma única
-// célula do CSV.
-function resumoStatusDocumentosCsv(candidato) {
+// célula do relatório.
+function resumoStatusDocumentosRelatorio(candidato) {
   let enviados = 0;
   let aceitos = 0;
   TIPOS_DOCUMENTO.forEach((tipo) => {
@@ -1254,73 +1254,148 @@ function resumoStatusDocumentosCsv(candidato) {
   return `${enviados}/${TIPOS_DOCUMENTO.length} enviados | ${aceitos}/${TIPOS_DOCUMENTO.length} aceitos`;
 }
 
-// ---------------------------------------------------------------------------
-// ROTA: exportação do relatório de candidatos em CSV (compatível com Excel)
-// - inclui dados cadastrais, trilha de auditoria LGPD, status documental e
-//   controle de integração com o sistema de ponto/RH externo (Arquitetura B2B).
-// ---------------------------------------------------------------------------
-app.get('/api/rh/exportar-csv', exigirRh, (req, res) => {
-  const { filtro } = req.query;
-  let candidatos = lerCandidatos();
+// Cabeçalho completo do relatório de admissões (CSV legado e planilha Mestre
+// em Excel compartilham exatamente as mesmas 23 colunas).
+const CABECALHO_RELATORIO = [
+  'Nome Completo', 'CPF', 'E-mail', 'Telefone', 'Gênero', 'CEP', 'Endereço', 'Número', 'Complemento',
+  'Status Atual', 'Data de Submissão', 'Última Atualização',
+  'Consentimento LGPD', 'Timestamp LGPD', 'IP LGPD',
+  'Status Documentos', 'CPF no RG', 'Reservista',
+  'Aceite Contratual', 'Timestamp Aceite Contrato', 'Hash Contrato',
+  'Exportado Ponto', 'Sistema Ponto Alvo'
+];
 
-  if (filtro === 'PENDENTE') {
-    candidatos = candidatos.filter((c) => c.status === 'VERMELHO');
-  } else if (filtro === 'EM_ANALISE') {
-    candidatos = candidatos.filter((c) => c.status === 'AMARELO');
-  } else if (filtro === 'APROVADO' || filtro === 'REPROVADO') {
-    candidatos = candidatos.filter((c) => c.status === filtro);
-  }
+// Monta a linha (array de 23 valores brutos, sem formatação de célula) de um
+// candidato para o relatório de admissões - usada pela planilha Mestre em
+// Excel. Fica centralizada aqui para nunca haver divergência de colunas.
+function montarLinhaRelatorio(c) {
+  const endereco = [c.logradouro, c.bairro].filter(Boolean).join(', ');
+  const statusTexto = ROTULO_STATUS_CSV[c.status] || c.status || '';
+  const consentimentoFicha = c.consentimentoFichaLGPD;
+  const assinatura = c.contrato?.assinaturaConcluida;
+  const integracaoPonto = c.integracaoPonto || criarIntegracaoPontoInicial();
 
-  const cabecalho = [
-    'Nome Completo', 'CPF', 'E-mail', 'Telefone', 'Gênero', 'CEP', 'Endereço', 'Número', 'Complemento',
-    'Status Atual', 'Data de Submissão', 'Última Atualização',
-    'Consentimento LGPD', 'Timestamp LGPD', 'IP LGPD',
-    'Status Documentos', 'CPF no RG', 'Reservista',
-    'Aceite Contratual', 'Timestamp Aceite Contrato', 'Hash Contrato',
-    'Exportado Ponto', 'Sistema Ponto Alvo'
+  return [
+    c.nomeCompleto,
+    c.cpf,
+    c.email,
+    c.whatsapp,
+    c.genero,
+    c.cep,
+    endereco,
+    c.numero,
+    c.complemento,
+    statusTexto,
+    formatarDataBr(c.criadoEm),
+    formatarDataBr(c.atualizadoEm),
+    consentimentoFicha?.aceito ? 'Sim' : 'Não',
+    consentimentoFicha ? formatarDataBr(consentimentoFicha.dataHora) : '',
+    consentimentoFicha?.ip || '',
+    resumoStatusDocumentosRelatorio(c),
+    c.cpfInclusoNaIdentidade ? 'Sim' : 'Não',
+    rotuloReservistaRelatorio(c),
+    assinatura ? 'Sim' : 'Não',
+    assinatura ? formatarDataBr(assinatura.timestamp) : '',
+    assinatura?.hash || '',
+    integracaoPonto.exportado ? 'Sim' : 'Não',
+    integracaoPonto.sistemaAlvo || ''
   ];
+}
 
-  const linhas = candidatos.map((c) => {
-    const endereco = [c.logradouro, c.bairro].filter(Boolean).join(', ');
-    const statusTexto = ROTULO_STATUS_CSV[c.status] || c.status || '';
-    const consentimentoFicha = c.consentimentoFichaLGPD;
-    const assinatura = c.contrato?.assinaturaConcluida;
-    const integracaoPonto = c.integracaoPonto || criarIntegracaoPontoInicial();
+// ---------------------------------------------------------------------------
+// PLANILHA MESTRE (Excel .xlsx) - relatorio_geral_admissoes.xlsx na raiz do
+// projeto, regenerada automaticamente a cada gravação de candidatos.json
+// (nova ficha, mudança de status, decisão, contrato etc. - ver o hook dentro
+// de salvarCandidatos()), sempre refletindo os dados mais recentes do sistema.
+// ---------------------------------------------------------------------------
+const ARQUIVO_PLANILHA_MESTRE = path.join(__dirname, 'relatorio_geral_admissoes.xlsx');
 
-    return [
-      c.nomeCompleto,
-      c.cpf,
-      c.email,
-      c.whatsapp,
-      c.genero,
-      c.cep,
-      endereco,
-      c.numero,
-      c.complemento,
-      statusTexto,
-      formatarDataBr(c.criadoEm),
-      formatarDataBr(c.atualizadoEm),
-      consentimentoFicha?.aceito ? 'Sim' : 'Não',
-      consentimentoFicha ? formatarDataBr(consentimentoFicha.dataHora) : '',
-      consentimentoFicha?.ip || '',
-      resumoStatusDocumentosCsv(c),
-      c.cpfInclusoNaIdentidade ? 'Sim' : 'Não',
-      rotuloReservistaCsv(c),
-      assinatura ? 'Sim' : 'Não',
-      assinatura ? formatarDataBr(assinatura.timestamp) : '',
-      assinatura?.hash || '',
-      integracaoPonto.exportado ? 'Sim' : 'Não',
-      integracaoPonto.sistemaAlvo || ''
-    ].map(paraCelulaCsv).join(';');
+// Cores de destaque (fundo/texto) por status, aplicadas na coluna "Status
+// Atual" de cada linha - o equivalente visual de uma formatação condicional,
+// calculado no momento da geração (o arquivo é sempre recriado do zero, então
+// não há necessidade de uma regra dinâmica do Excel).
+const ESTILO_STATUS_PLANILHA = {
+  'CONTRATAÇÃO CONCLUÍDA': { fundo: 'FFD4EDDA', texto: 'FF155724' },
+  APROVADO: { fundo: 'FFD4EDDA', texto: 'FF155724' },
+  'EM ANÁLISE': { fundo: 'FFFFF3CD', texto: 'FF856404' },
+  REPROVADO: { fundo: 'FFF8D7DA', texto: 'FF721C24' }
+};
+
+const BORDA_FINA_PLANILHA = {
+  top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' }
+};
+
+// Gera (ou recria por completo) a planilha Mestre a partir do estado atual
+// de candidatos.json - lê sempre do disco, nunca de um parâmetro em memória,
+// para que a última gravação da fila (ver atualizarPlanilhaMestre) sempre
+// reflita o estado mais recente, mesmo sob gravações concorrentes.
+async function gerarPlanilhaMestre() {
+  const candidatos = lerCandidatos();
+
+  const workbook = new ExcelJS.Workbook();
+  const planilha = workbook.addWorksheet('Relatório de Admissões');
+
+  const linhaCabecalho = planilha.addRow(CABECALHO_RELATORIO);
+  linhaCabecalho.eachCell((celula) => {
+    celula.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    celula.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF005623' } };
+    celula.alignment = { horizontal: 'center', vertical: 'middle' };
+    celula.border = BORDA_FINA_PLANILHA;
   });
 
-  const csv = [cabecalho.map(paraCelulaCsv).join(';'), ...linhas].join('\r\n');
-  const conteudo = '﻿' + csv; // BOM: garante acentuação correta ao abrir no Excel
+  const indiceColunaStatus = CABECALHO_RELATORIO.indexOf('Status Atual') + 1;
 
-  const dataArquivo = new Date().toISOString().slice(0, 10);
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="candidatos_${dataArquivo}.csv"`);
-  return res.status(200).send(conteudo);
+  candidatos.forEach((c) => {
+    const linha = planilha.addRow(montarLinhaRelatorio(c));
+    linha.eachCell((celula) => { celula.border = BORDA_FINA_PLANILHA; });
+
+    const estilo = ESTILO_STATUS_PLANILHA[String(linha.getCell(indiceColunaStatus).value || '')];
+    if (estilo) {
+      const celulaStatus = linha.getCell(indiceColunaStatus);
+      celulaStatus.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: estilo.fundo } };
+      celulaStatus.font = { color: { argb: estilo.texto }, bold: true };
+    }
+  });
+
+  planilha.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: CABECALHO_RELATORIO.length } };
+
+  // Largura automática por coluna, baseada no maior conteúdo (cabeçalho incluso).
+  CABECALHO_RELATORIO.forEach((titulo, indice) => {
+    const coluna = planilha.getColumn(indice + 1);
+    let maiorTamanho = titulo.length;
+    coluna.eachCell({ includeEmpty: true }, (celula) => {
+      const tamanho = String(celula.value == null ? '' : celula.value).length;
+      if (tamanho > maiorTamanho) maiorTamanho = tamanho;
+    });
+    coluna.width = Math.min(maiorTamanho + 2, 60);
+  });
+
+  await workbook.xlsx.writeFile(ARQUIVO_PLANILHA_MESTRE);
+}
+
+// Fila serializada: garante que nunca haja duas gravações do mesmo arquivo
+// .xlsx em paralelo (o que poderia corromper o arquivo) quando várias
+// requisições disparam atualizações quase ao mesmo tempo.
+let filaPlanilhaMestre = Promise.resolve();
+function atualizarPlanilhaMestre() {
+  filaPlanilhaMestre = filaPlanilhaMestre.then(gerarPlanilhaMestre).catch((erro) => {
+    console.error('Falha ao atualizar a planilha mestre:', erro.message);
+  });
+  return filaPlanilhaMestre;
+}
+
+// ---------------------------------------------------------------------------
+// ROTA: download da planilha Mestre de admissões em Excel (.xlsx), sempre
+// atualizada com os dados mais recentes do sistema antes do envio.
+// ---------------------------------------------------------------------------
+app.get('/api/rh/exportar-relatorio', exigirRh, async (req, res) => {
+  try {
+    await atualizarPlanilhaMestre();
+    return res.download(ARQUIVO_PLANILHA_MESTRE, 'relatorio_geral_admissoes.xlsx');
+  } catch (erro) {
+    console.error('Falha ao exportar a planilha mestre:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao gerar o relatório em Excel.' });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -1778,6 +1853,10 @@ function garantirUsuarioRhTeste() {
 
 garantirUsuarioRhTeste();
 garantirMinutasContrato();
+// Gera a planilha Mestre já no boot, refletindo a carga inicial existente em
+// candidatos.json (ex.: a ficha de testes "Maria Gadu"), sem esperar a
+// próxima gravação para o arquivo existir.
+atualizarPlanilhaMestre();
 
 // Porta configurável via variável de ambiente PORT (padrão do Node/Express e
 // das plataformas de deploy em nuvem, como Render e Railway, que injetam essa

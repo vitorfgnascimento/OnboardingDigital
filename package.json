@@ -20,6 +20,7 @@
   },
   "homepage": "https://github.com/vitorfgnascimento/OnboardingDigital#readme",
   "dependencies": {
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "google-auth-library": "^11.1.0",
     "multer": "^2.3.0",

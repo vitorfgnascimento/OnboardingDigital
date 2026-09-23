@@ -594,7 +594,7 @@
     <div class="barra-topo">
       <h2>Painel do RH - Processos Admissionais</h2>
       <div class="acoes-topo">
-        <button class="btn-exportar" id="btnExportarCsv" type="button">Exportar Relatório (CSV)</button>
+        <button class="btn-exportar" id="btnExportarCsv" type="button">Exportar Relatório (Excel)</button>
         <button class="btn-atualizar" id="btnAtualizar" type="button">Atualizar lista</button>
       </div>
     </div>
@@ -1545,19 +1545,19 @@
 
     document.getElementById('btnAtualizar').addEventListener('click', carregarFichas);
 
-    // Exporta o relatório em CSV, respeitando o filtro por decisão ativo no momento.
-    // A exportação exige o header Authorization, então não dá para usar uma
-    // navegação direta (window.location.href) - baixa via fetch + Blob.
+    // Baixa a planilha Mestre de admissões em Excel (.xlsx) - o servidor a
+    // regenera na hora, sempre com os dados mais recentes. A exportação exige
+    // o header Authorization, então não dá para usar uma navegação direta
+    // (window.location.href) - baixa via fetch + Blob.
     document.getElementById('btnExportarCsv').addEventListener('click', async () => {
-      const params = filtroAtual !== 'TODOS' ? `?filtro=${encodeURIComponent(filtroAtual)}` : '';
       try {
-        const resposta = await fetch('/api/rh/exportar-csv' + params, { headers: cabecalhosRh() });
+        const resposta = await fetch('/api/rh/exportar-relatorio', { headers: cabecalhosRh() });
         if (!resposta.ok) { alert('Não foi possível exportar o relatório.'); return; }
         const blob = await resposta.blob();
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `candidatos_${new Date().toISOString().slice(0, 10)}.csv`;
+        link.download = 'relatorio_geral_admissoes.xlsx';
         document.body.appendChild(link);
         link.click();
         link.remove();
