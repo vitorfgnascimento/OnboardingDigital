@@ -679,9 +679,24 @@
           const texto = await r.text();
           const contentType = r.headers.get('content-type') || '';
           const primeiraLinha = texto.replace(/^﻿/, '').split('\r\n')[0];
-          const cabecalhoOk = primeiraLinha === '"Nome";"CPF";"E-mail";"Telefone";"CEP";"Endereço";"Data de Submissão";"Status Atual"';
+          const cabecalhoOk = primeiraLinha === '"Nome Completo";"CPF";"E-mail";"Telefone";"Gênero";"CEP";"Endereço";"Número";"Complemento";'
+            + '"Status Atual";"Data de Submissão";"Última Atualização";'
+            + '"Consentimento LGPD";"Timestamp LGPD";"IP LGPD";'
+            + '"Status Documentos";"CPF no RG";"Reservista";'
+            + '"Aceite Contratual";"Timestamp Aceite Contrato";"Hash Contrato";'
+            + '"Exportado Ponto";"Sistema Ponto Alvo"';
           const ok = r.status === 200 && contentType.includes('text/csv') && cabecalhoOk;
           return { ok, detalhe: `status ${r.status}, content-type ${contentType}, cabeçalho: ${primeiraLinha}` };
+        }
+      },
+      {
+        nome: 'CSV tem as 23 colunas expandidas (auditoria, documentos e integração de ponto)',
+        run: async () => {
+          await loginRh(); const r = await fetch(API + '/rh/exportar-csv', { headers: headersRh() });
+          const texto = await r.text();
+          const primeiraLinha = texto.replace(/^﻿/, '').split('\r\n')[0];
+          const colunas = primeiraLinha.split(';');
+          return { ok: colunas.length === 23, detalhe: `${colunas.length} coluna(s): ${primeiraLinha}` };
         }
       },
       {
@@ -1023,6 +1038,32 @@
         run: async () => {
           const r = await patchRh('/rh/fichas/' + window.__idAuthFicha + '/contrato/validar');
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        // Verifica os valores das novas colunas (LGPD, documentos, contrato e
+        // integração de ponto) para uma ficha que já passou por todo o fluxo:
+        // consentimento da ficha, todos os documentos aceitos e assinatura
+        // digital concluída.
+        nome: 'CSV traz os valores corretos de LGPD/contrato para uma ficha já concluída',
+        run: async () => {
+          await loginRh(); const r = await fetch(API + '/rh/exportar-csv', { headers: headersRh() });
+          const texto = await r.text();
+          const linhas = texto.replace(/^﻿/, '').split('\r\n');
+          const cabecalho = linhas[0].split(';').map((c) => c.replace(/^"|"$/g, ''));
+          const linhaAlvo = linhas.find((l) => l.includes('"741.963.852-10"')); // CPF do window.__idAuthFicha
+          if (!linhaAlvo) return { ok: false, detalhe: 'linha do candidato não encontrada no CSV' };
+
+          const valores = linhaAlvo.split(';').map((c) => c.replace(/^"|"$/g, '').replace(/""/g, '"'));
+          const porColuna = Object.fromEntries(cabecalho.map((nome, i) => [nome, valores[i]]));
+
+          const ok = porColuna['Consentimento LGPD'] === 'Sim'
+            && !!porColuna['Timestamp LGPD'] && !!porColuna['IP LGPD']
+            && /^\d\/6 enviados \| \d\/6 aceitos$/.test(porColuna['Status Documentos'])
+            && porColuna['Aceite Contratual'] === 'Sim'
+            && !!porColuna['Timestamp Aceite Contrato'] && !!porColuna['Hash Contrato']
+            && porColuna['Exportado Ponto'] === 'Não';
+          return { ok, detalhe: JSON.stringify(porColuna) };
         }
       },
 
