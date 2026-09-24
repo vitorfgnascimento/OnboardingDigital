@@ -139,6 +139,12 @@ function lerCandidatos() {
     if (c.consentimentoFichaLGPD === undefined) c.consentimentoFichaLGPD = null;
     if (c.consentimentoContratoLGPD === undefined) c.consentimentoContratoLGPD = null;
     if (c.integracaoPonto === undefined) c.integracaoPonto = criarIntegracaoPontoInicial();
+
+    // Migração: fichas gravadas antes da consolidação para 4 status ainda têm
+    // os valores antigos (VERMELHO/AMARELO/APROVADO) em disco - normaliza para
+    // o modelo atual assim que lidas, sem precisar recriar a base de dados.
+    if (c.status === 'VERMELHO' || c.status === 'AMARELO') c.status = 'EM_ANALISE';
+    else if (c.status === 'APROVADO') c.status = 'PENDENTE_ASSINATURA';
   });
 
   return candidatos;
@@ -1304,10 +1310,10 @@ const ARQUIVO_PLANILHA_MESTRE = path.join(__dirname, 'relatorio_geral_admissoes.
 // calculado no momento da geração (o arquivo é sempre recriado do zero, então
 // não há necessidade de uma regra dinâmica do Excel).
 const ESTILO_STATUS_PLANILHA = {
-  'CONTRATAÇÃO CONCLUÍDA': { fundo: 'FFD1FAE5', texto: 'FF065F46' },
-  'PENDENTE DE ASSINATURA': { fundo: 'FFFEF3C7', texto: 'FF92400E' },
-  'EM ANÁLISE': { fundo: 'FFDBEAFE', texto: 'FF1E40AF' },
-  REPROVADO: { fundo: 'FFFEE2E2', texto: 'FF991B1B' }
+  'CONTRATAÇÃO CONCLUÍDA': { fundo: 'FF00A335', texto: 'FFFFFFFF' },
+  'PENDENTE DE ASSINATURA': { fundo: 'FFF97316', texto: 'FFFFFFFF' },
+  'EM ANÁLISE': { fundo: 'FFF5E40B', texto: 'FF1A1A1A' },
+  REPROVADO: { fundo: 'FFFF0303', texto: 'FFFFFFFF' }
 };
 
 const BORDA_FINA_PLANILHA = {
@@ -1458,7 +1464,6 @@ function calcularKpisDashboard(candidatos) {
   const pendenteAssinatura = candidatos.filter((c) => c.status === 'PENDENTE_ASSINATURA').length;
   const reprovadas = candidatos.filter((c) => c.status === 'REPROVADO').length;
 
-  const comLgpd = candidatos.filter((c) => c.consentimentoFichaLGPD?.aceito).length;
   const comAceiteContrato = candidatos.filter((c) => c.contrato?.assinaturaConcluida).length;
 
   return {
@@ -1467,10 +1472,28 @@ function calcularKpisDashboard(candidatos) {
     emAnalise, percentualEmAnalise: percentual(emAnalise),
     pendenteAssinatura, percentualPendenteAssinatura: percentual(pendenteAssinatura),
     reprovadas, percentualReprovadas: percentual(reprovadas),
-    etapaFicha: total === 0 ? 0 : 100,
-    etapaLgpd: percentual(comLgpd),
     etapaAceiteContrato: percentual(comAceiteContrato)
   };
+}
+
+// Rótulos e valores de cada filtro aplicado na tela do Dashboard, para exibir
+// de forma explícita no cabeçalho do PDF exportado - o RH precisa ver
+// exatamente qual período/status/busca gerou aquele relatório.
+function descreverFiltrosDashboard(query = {}) {
+  const { dataInicio, dataFim, status, busca } = query;
+  const partes = [];
+
+  if (dataInicio || dataFim) {
+    partes.push(`Período: ${dataInicio ? formatarDataBr(`${dataInicio}T00:00:00`).split(',')[0] : 'início'} até ${dataFim ? formatarDataBr(`${dataFim}T00:00:00`).split(',')[0] : 'hoje'}`);
+  }
+  if (status) {
+    partes.push(`Status: ${ROTULO_STATUS_CSV[status] || status}`);
+  }
+  if (busca) {
+    partes.push(`Busca: "${busca}"`);
+  }
+
+  return partes.length ? partes.join('   |   ') : 'Nenhum filtro aplicado - todos os registros do sistema';
 }
 
 // ---------------------------------------------------------------------------
@@ -1501,15 +1524,25 @@ app.get('/api/relatorio/dashboard-pdf', exigirRh, (req, res) => {
     doc.font('Helvetica').fontSize(9)
       .text(`Registros no filtro: ${kpis.total}`, doc.page.margins.left, doc.page.margins.top + 34, { width: larguraUtil - 15, align: 'right' });
 
-    doc.y = doc.page.margins.top + 70;
+    // Filtros aplicados - mostrado sempre, mesmo sem filtro nenhum (deixa
+    // explícito que o relatório traz TODOS os registros nesse caso), para que
+    // o PDF nunca deixe dúvida sobre qual período/status/busca foi impresso.
+    const yFiltros = doc.page.margins.top + 62;
+    doc.rect(doc.page.margins.left, yFiltros, larguraUtil, 22).fill('#f4f6f9');
+    doc.fillColor('#1a252f').font('Helvetica-Bold').fontSize(8)
+      .text('FILTROS APLICADOS:  ', doc.page.margins.left + 10, yFiltros + 7, { continued: true })
+      .font('Helvetica').fillColor('#333333')
+      .text(descreverFiltrosDashboard(req.query));
+
+    doc.y = yFiltros + 22 + 15;
 
     // Blocos de KPI
     const blocos = [
       { rotulo: 'Total de Admissões', valor: String(kpis.total), destaque: '#1a252f' },
-      { rotulo: 'Contratações Concluídas', valor: `${kpis.contratacoesConcluidas} (${kpis.percentualContratacoesConcluidas}%)`, destaque: '#10B981' },
-      { rotulo: 'Em Análise', valor: `${kpis.emAnalise} (${kpis.percentualEmAnalise}%)`, destaque: '#3B82F6' },
-      { rotulo: 'Pendente de Assinatura', valor: `${kpis.pendenteAssinatura} (${kpis.percentualPendenteAssinatura}%)`, destaque: '#F59E0B' },
-      { rotulo: 'Recusadas / Reprovadas', valor: `${kpis.reprovadas} (${kpis.percentualReprovadas}%)`, destaque: '#EF4444' }
+      { rotulo: 'Contratações Concluídas', valor: `${kpis.contratacoesConcluidas} (${kpis.percentualContratacoesConcluidas}%)`, destaque: '#00A335' },
+      { rotulo: 'Em Análise', valor: `${kpis.emAnalise} (${kpis.percentualEmAnalise}%)`, destaque: '#F5E40B' },
+      { rotulo: 'Pendente de Assinatura', valor: `${kpis.pendenteAssinatura} (${kpis.percentualPendenteAssinatura}%)`, destaque: '#F97316' },
+      { rotulo: 'Recusadas / Reprovadas', valor: `${kpis.reprovadas} (${kpis.percentualReprovadas}%)`, destaque: '#FF0303' }
     ];
 
     const espacamento = 10;
@@ -1529,13 +1562,83 @@ app.get('/api/relatorio/dashboard-pdf', exigirRh, (req, res) => {
 
     doc.y = yBlocos + alturaBloco + 22;
 
-    // Taxa de adesão por etapa
-    doc.fillColor('#1a252f').font('Helvetica-Bold').fontSize(11).text('Taxa de Adesão por Etapa', doc.page.margins.left, doc.y);
-    doc.moveDown(0.3);
-    doc.font('Helvetica').fontSize(9).fillColor('#333333')
-      .text(`Ficha: ${kpis.etapaFicha}%    LGPD: ${kpis.etapaLgpd}%    Aceite de Contrato: ${kpis.etapaAceiteContrato}%`, doc.page.margins.left);
+    // Dois painéis lado a lado, espelhando os mesmos 2 gráficos exibidos na
+    // aba "Estatísticas & Relatórios" do painel (mesmas cores e categorias),
+    // para que o PDF exportado seja fiel ao que o RH vê na tela.
+    const yPaineis = doc.y;
+    const alturaPaineis = 130;
+    const larguraPainel = (larguraUtil - espacamento) / 2;
+    const xPainelEsquerdo = doc.page.margins.left;
+    const xPainelDireito = doc.page.margins.left + larguraPainel + espacamento;
 
-    doc.moveDown(1.2);
+    doc.lineWidth(1).rect(xPainelEsquerdo, yPaineis, larguraPainel, alturaPaineis).stroke('#e6e9ee');
+    doc.lineWidth(1).rect(xPainelDireito, yPaineis, larguraPainel, alturaPaineis).stroke('#e6e9ee');
+
+    // Painel 1: Distribuição por Status - barra segmentada proporcional
+    // (equivalente ao gráfico de rosca da tela) com legenda e percentuais.
+    doc.fillColor('#1a252f').font('Helvetica-Bold').fontSize(10)
+      .text('Distribuição por Status', xPainelEsquerdo + 12, yPaineis + 10);
+
+    const fatias = [
+      { rotulo: 'Contratação Concluída', valor: kpis.contratacoesConcluidas, pct: kpis.percentualContratacoesConcluidas, cor: '#00A335' },
+      { rotulo: 'Em Análise', valor: kpis.emAnalise, pct: kpis.percentualEmAnalise, cor: '#F5E40B' },
+      { rotulo: 'Pendente de Assinatura', valor: kpis.pendenteAssinatura, pct: kpis.percentualPendenteAssinatura, cor: '#F97316' },
+      { rotulo: 'Reprovado', valor: kpis.reprovadas, pct: kpis.percentualReprovadas, cor: '#FF0303' }
+    ];
+
+    const xBarraSegmentada = xPainelEsquerdo + 12;
+    const larguraBarraSegmentada = larguraPainel - 24;
+    const yBarraSegmentada = yPaineis + 32;
+    const alturaBarraSegmentada = 16;
+
+    if (kpis.total === 0) {
+      doc.rect(xBarraSegmentada, yBarraSegmentada, larguraBarraSegmentada, alturaBarraSegmentada).fill('#e6e9ee');
+    } else {
+      let xSegmento = xBarraSegmentada;
+      fatias.forEach((fatia) => {
+        const largura = (fatia.valor / kpis.total) * larguraBarraSegmentada;
+        if (largura > 0) doc.rect(xSegmento, yBarraSegmentada, largura, alturaBarraSegmentada).fill(fatia.cor);
+        xSegmento += largura;
+      });
+    }
+
+    let yLegenda = yBarraSegmentada + alturaBarraSegmentada + 14;
+    fatias.forEach((fatia) => {
+      doc.rect(xPainelEsquerdo + 12, yLegenda, 8, 8).fill(fatia.cor);
+      doc.fillColor('#333333').font('Helvetica').fontSize(8)
+        .text(`${fatia.rotulo}: ${fatia.valor} (${fatia.pct}%)`, xPainelEsquerdo + 26, yLegenda - 1, { width: larguraPainel - 40 });
+      yLegenda += 14;
+    });
+
+    // Painel 2: Taxa de Adesão por Etapa - gráfico de barras verticais
+    // (mesmas 4 categorias e cores do gráfico da tela).
+    doc.fillColor('#1a252f').font('Helvetica-Bold').fontSize(10)
+      .text('Taxa de Adesão por Etapa', xPainelDireito + 12, yPaineis + 10);
+
+    const etapas = [
+      { rotulo: 'Reprovado', pct: kpis.percentualReprovadas, cor: '#FF0303' },
+      { rotulo: 'Em Análise', pct: kpis.percentualEmAnalise, cor: '#F5E40B' },
+      { rotulo: 'Pend. Assinatura', pct: kpis.percentualPendenteAssinatura, cor: '#F97316' },
+      { rotulo: 'Aceite Contrato', pct: kpis.etapaAceiteContrato, cor: '#00A335' }
+    ];
+
+    const alturaMaximaBarra = 60;
+    const yBaseBarras = yPaineis + 32 + alturaMaximaBarra;
+    const larguraBarraVertical = 26;
+    const espacoEntreBarras = (larguraPainel - 24 - larguraBarraVertical * etapas.length) / (etapas.length + 1);
+
+    etapas.forEach((etapa, indice) => {
+      const x = xPainelDireito + 12 + espacoEntreBarras * (indice + 1) + larguraBarraVertical * indice;
+      const alturaBarra = Math.max((etapa.pct / 100) * alturaMaximaBarra, etapa.pct > 0 ? 3 : 0);
+      doc.fillColor('#333333').font('Helvetica-Bold').fontSize(7)
+        .text(`${etapa.pct}%`, x - 5, yBaseBarras - alturaBarra - 11, { width: larguraBarraVertical + 10, align: 'center' });
+      doc.rect(x, yBaseBarras - alturaBarra, larguraBarraVertical, alturaBarra).fill(etapa.cor);
+      doc.fillColor('#333333').font('Helvetica').fontSize(6.5)
+        .text(etapa.rotulo, x - 8, yBaseBarras + 4, { width: larguraBarraVertical + 16, align: 'center' });
+    });
+    doc.moveTo(xPainelDireito + 12, yBaseBarras).lineTo(xPainelDireito + larguraPainel - 12, yBaseBarras).lineWidth(0.5).stroke('#cccccc');
+
+    doc.y = yPaineis + alturaPaineis + 22;
 
     // Tabela analítica dos candidatos filtrados
     doc.fillColor('#1a252f').font('Helvetica-Bold').fontSize(11).text('Candidatos no Filtro Selecionado', doc.page.margins.left);

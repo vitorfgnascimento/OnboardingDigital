@@ -17,10 +17,10 @@
       --cinza-barra: #f8f9fa;
       --texto: #2c3e50;
       /* Paleta dos 4 estados da ficha (status geral do candidato) */
-      --status-em-analise: #3B82F6;
-      --status-pendente-assinatura: #F59E0B;
-      --status-concluida: #10B981;
-      --status-reprovado: #EF4444;
+      --status-em-analise: #F5E40B;
+      --status-pendente-assinatura: #F97316;
+      --status-concluida: #00A335;
+      --status-reprovado: #FF0303;
     }
     * { box-sizing: border-box; }
     body {
@@ -217,7 +217,7 @@
       white-space: nowrap;
     }
     .badge-em-analise          { background-color: var(--status-em-analise); }
-    .badge-pendente-assinatura { background-color: var(--status-pendente-assinatura); color: #212529; }
+    .badge-pendente-assinatura { background-color: var(--status-pendente-assinatura); }
     .badge-concluida           { background-color: var(--status-concluida); }
     .badge-reprovado           { background-color: var(--status-reprovado); }
 
@@ -845,6 +845,19 @@
       CONTRATACAO_CONCLUIDA: 'CONTRATAÇÃO CONCLUÍDA'
     };
 
+    // Normaliza valores legados de status (de antes da consolidação para 4
+    // estados) que ainda possam aparecer em dados já carregados no navegador,
+    // e devolve a classe do badge + o rótulo em português já prontos para
+    // renderizar. Nunca deve exibir o código bruto do status na tela.
+    const STATUS_LEGADO = { VERMELHO: 'EM_ANALISE', AMARELO: 'EM_ANALISE', APROVADO: 'PENDENTE_ASSINATURA' };
+    function getStatusBadge(status) {
+      const statusAtual = STATUS_LEGADO[status] || status;
+      return {
+        classe: CLASSE_BADGE[statusAtual] || 'badge-em-analise',
+        rotulo: ROTULO_STATUS[statusAtual] || ROTULO_STATUS.EM_ANALISE
+      };
+    }
+
     // Documentos obrigatórios da jornada do candidato (mesma lista de public/index.html).
     const DOCUMENTOS = [
       { tipo: 'identidade',              titulo: 'Identidade (RG)' },
@@ -1216,8 +1229,8 @@
     }
 
     const CORES_STATUS_DASHBOARD = {
-      EM_ANALISE: '#3B82F6', PENDENTE_ASSINATURA: '#F59E0B',
-      REPROVADO: '#EF4444', CONTRATACAO_CONCLUIDA: '#10B981'
+      EM_ANALISE: '#F5E40B', PENDENTE_ASSINATURA: '#F97316',
+      REPROVADO: '#FF0303', CONTRATACAO_CONCLUIDA: '#00A335'
     };
 
     let chartStatusDistribuicao = null;
@@ -1250,11 +1263,16 @@
       chartAdesaoEtapas = new Chart(canvas, {
         type: 'bar',
         data: {
-          labels: ['Reprovado', 'Em Análise', 'Aceite de Contrato'],
+          labels: ['Reprovado', 'Em Análise', 'Pendente de Assinatura', 'Aceite de Contrato'],
           datasets: [{
             label: '% de adesão',
-            data: [dados.pctReprovadas, dados.pctEmAnalise, dados.etapaAceiteContrato],
-            backgroundColor: [CORES_STATUS_DASHBOARD.REPROVADO, CORES_STATUS_DASHBOARD.EM_ANALISE, '#10B981'],
+            data: [dados.pctReprovadas, dados.pctEmAnalise, dados.pctPendenteAssinatura, dados.etapaAceiteContrato],
+            backgroundColor: [
+              CORES_STATUS_DASHBOARD.REPROVADO,
+              CORES_STATUS_DASHBOARD.EM_ANALISE,
+              CORES_STATUS_DASHBOARD.PENDENTE_ASSINATURA,
+              CORES_STATUS_DASHBOARD.CONTRATACAO_CONCLUIDA
+            ],
             minBarLength: 4
           }]
         },
@@ -1374,8 +1392,7 @@
       fichas.forEach((f) => {
           const tr = document.createElement('tr');
 
-          const classeBadge = CLASSE_BADGE[f.status] || 'badge-em-analise';
-          const rotulo = ROTULO_STATUS[f.status] || f.status;
+          const { classe: classeBadge, rotulo } = getStatusBadge(f.status);
 
           const expandidoAgora = detalhesExpandidos.has(f.id);
 

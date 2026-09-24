@@ -96,6 +96,10 @@
     }
     .status-amarelo { background-color: var(--amarelo) !important; color: #212529 !important; }
     .status-verde   { background-color: var(--verde) !important; }
+    .status-em-analise         { background-color: #F5E40B !important; color: #1a1a1a !important; }
+    .status-pendente-assinatura { background-color: #F97316 !important; }
+    .status-reprovado          { background-color: #FF0303 !important; }
+    .status-concluida          { background-color: #00A335 !important; }
     #badgeStatus { margin-bottom: 15px; }
 
     /* --- BARRA SUPERIOR DE NAVEGAÇÃO ENTRE TELAS --- */
@@ -874,10 +878,10 @@
       VERMELHO: '',
       AMARELO: 'status-amarelo',
       VERDE: 'status-verde',
-      EM_ANALISE: 'status-amarelo',
-      PENDENTE_ASSINATURA: 'status-verde',
-      REPROVADO: '',
-      CONTRATACAO_CONCLUIDA: 'status-verde'
+      EM_ANALISE: 'status-em-analise',
+      PENDENTE_ASSINATURA: 'status-pendente-assinatura',
+      REPROVADO: 'status-reprovado',
+      CONTRATACAO_CONCLUIDA: 'status-concluida'
     };
 
     // Estado da aplicação
