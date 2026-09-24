@@ -812,27 +812,67 @@
       { grupo: 'Autenticação (registro, login, sessão) e restrição do Painel do RH' },
 
       {
-        nome: 'Registro de conta cria usuário tipo "candidato" e retorna token',
+        // Contrato atualizado: o cadastro manual exige data de nascimento e CPF
+        // e a conta nasce inativa (ativo: false) - não há mais login imediato,
+        // só o link de ativação (simulado por e-mail/console/modal de teste).
+        nome: 'Registro de conta cria usuário "candidato" inativo, sem login imediato',
         run: async () => {
           const email = 'auth' + Date.now() + '@teste.com';
-          const r = await postJson('/auth/registrar', { nome: 'Fulano de Teste', email, senha: 'senha123', aceiteTermos: true });
+          const r = await postJson('/auth/registrar', {
+            nome: 'Fulano de Teste', email, senha: 'senha123', confirmarSenha: 'senha123',
+            dataNascimento: '10/05/1990', cpf: '123.456.789-09', aceiteTermos: true
+          });
           window.__emailAuth = email;
-          window.__tokenAuth = r.corpo.token;
-          const ok = r.status === 201 && !!r.corpo.token && r.corpo.usuario?.tipo === 'candidato';
-          return { ok, detalhe: `status ${r.status}, tipo ${r.corpo.usuario?.tipo}, token? ${!!r.corpo.token}` };
+          window.__senhaAuth = 'senha123';
+          window.__tokenAtivacaoAuth = r.corpo.tokenAtivacao;
+          const ok = r.status === 201 && !r.corpo.token && !!r.corpo.tokenAtivacao && !!r.corpo.linkAtivacao;
+          return { ok, detalhe: `status ${r.status}, token imediato? ${!!r.corpo.token}, tokenAtivacao? ${!!r.corpo.tokenAtivacao}, linkAtivacao ${r.corpo.linkAtivacao}` };
         }
       },
       {
         nome: 'Registro com e-mail já cadastrado é recusado (400)',
         run: async () => {
-          const r = await postJson('/auth/registrar', { nome: 'Duplicado', email: window.__emailAuth, senha: 'senha123', aceiteTermos: true });
+          const r = await postJson('/auth/registrar', {
+            nome: 'Duplicado', email: window.__emailAuth, senha: 'senha123', confirmarSenha: 'senha123',
+            dataNascimento: '10/05/1990', cpf: '123.456.789-09', aceiteTermos: true
+          });
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
       {
         nome: 'Registro com senha curta é recusado (400)',
         run: async () => {
-          const r = await postJson('/auth/registrar', { nome: 'Teste', email: 'curta' + Date.now() + '@teste.com', senha: '123', aceiteTermos: true });
+          const r = await postJson('/auth/registrar', { nome: 'Teste', email: 'curta' + Date.now() + '@teste.com', senha: '123', confirmarSenha: '123', aceiteTermos: true });
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Registro com senhas que não coincidem é recusado (400)',
+        run: async () => {
+          const r = await postJson('/auth/registrar', {
+            nome: 'Senha Diferente', email: 'senhadif' + Date.now() + '@teste.com', senha: 'senha123', confirmarSenha: 'outraSenha',
+            dataNascimento: '10/05/1990', cpf: '123.456.789-09', aceiteTermos: true
+          });
+          return { ok: r.status === 400 && /coincidem/i.test(r.corpo.erro || ''), detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Registro com CPF inválido é recusado (400)',
+        run: async () => {
+          const r = await postJson('/auth/registrar', {
+            nome: 'CPF Invalido', email: 'cpfinvalido' + Date.now() + '@teste.com', senha: 'senha123', confirmarSenha: 'senha123',
+            dataNascimento: '10/05/1990', cpf: '123', aceiteTermos: true
+          });
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Registro com data de nascimento inválida é recusado (400)',
+        run: async () => {
+          const r = await postJson('/auth/registrar', {
+            nome: 'Data Invalida', email: 'datainvalida' + Date.now() + '@teste.com', senha: 'senha123', confirmarSenha: 'senha123',
+            dataNascimento: '31/02/2000', cpf: '123.456.789-09', aceiteTermos: true
+          });
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
@@ -840,8 +880,50 @@
         // LGPD Momento 1: sem o aceite dos Termos de Uso/Política de Privacidade, o cadastro não é criado.
         nome: 'Registro sem aceitar os Termos de Uso/Política de Privacidade é recusado (400)',
         run: async () => {
-          const r = await postJson('/auth/registrar', { nome: 'Sem Aceite', email: 'semaceite' + Date.now() + '@teste.com', senha: 'senha123' });
+          const r = await postJson('/auth/registrar', {
+            nome: 'Sem Aceite', email: 'semaceite' + Date.now() + '@teste.com', senha: 'senha123', confirmarSenha: 'senha123',
+            dataNascimento: '10/05/1990', cpf: '123.456.789-09'
+          });
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Login com conta ainda não ativada é recusado (403)',
+        run: async () => {
+          const r = await postJson('/auth/login', { email: window.__emailAuth, senha: window.__senhaAuth });
+          return { ok: r.status === 403, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'POST /api/auth/ativar com token inválido é recusado (404)',
+        run: async () => {
+          const r = await postJson('/auth/ativar', { token: 'token-inexistente-' + Date.now() });
+          return { ok: r.status === 404, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'POST /api/auth/ativar ativa a conta e retorna sessão com cpf/dataNascimento',
+        run: async () => {
+          const r = await postJson('/auth/ativar', { token: window.__tokenAtivacaoAuth });
+          window.__tokenAuth = r.corpo.token;
+          const u = r.corpo.usuario || {};
+          const ok = r.status === 200 && !!r.corpo.token && u.tipo === 'candidato' && u.cpf === '123.456.789-09' && u.dataNascimento === '10/05/1990';
+          return { ok, detalhe: `status ${r.status}, cpf ${u.cpf}, dataNascimento ${u.dataNascimento}` };
+        }
+      },
+      {
+        nome: 'GET /api/auth/sessao com o token pós-ativação retorna o usuário',
+        run: async () => {
+          const resp = await fetch(API + '/auth/sessao', { headers: { Authorization: 'Bearer ' + window.__tokenAuth } });
+          const corpo = await resp.json();
+          return { ok: resp.status === 200 && corpo.usuario?.email === window.__emailAuth, detalhe: `status ${resp.status}, email ${corpo.usuario?.email}` };
+        }
+      },
+      {
+        nome: 'Login após ativação funciona normalmente (200)',
+        run: async () => {
+          const r = await postJson('/auth/login', { email: window.__emailAuth, senha: window.__senhaAuth });
+          return { ok: r.status === 200 && !!r.corpo.token, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
       {
@@ -849,14 +931,6 @@
         run: async () => {
           const r = await postJson('/auth/login', { email: window.__emailAuth, senha: 'senhaErrada' });
           return { ok: r.status === 401, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
-        }
-      },
-      {
-        nome: 'GET /api/auth/sessao com token válido retorna o usuário',
-        run: async () => {
-          const resp = await fetch(API + '/auth/sessao', { headers: { Authorization: 'Bearer ' + window.__tokenAuth } });
-          const corpo = await resp.json();
-          return { ok: resp.status === 200 && corpo.usuario?.email === window.__emailAuth, detalhe: `status ${resp.status}, email ${corpo.usuario?.email}` };
         }
       },
       {

@@ -863,16 +863,24 @@
       { tipo: 'carteiraTrabalho',        titulo: '6. Carteira de Trabalho' }
     ];
 
-    // VERMELHO/AMARELO/VERDE são usados só nos documentos individuais.
-    // EM_ANALISE/PENDENTE_ASSINATURA/REPROVADO/CONTRATACAO_CONCLUIDA são os 4
-    // valores do status geral da ficha (badge do topo da página).
+    // VERMELHO/AMARELO/VERDE são usados só nos documentos individuais (badge
+    // de cada barra de upload). EM_ANALISE/PENDENTE_ASSINATURA/REPROVADO/
+    // CONTRATACAO_CONCLUIDA são os 4 valores do status geral da ficha (badge
+    // do topo da página). Os rótulos nunca mencionam a cor em texto - a
+    // indicação de cor é só visual, via a classe CSS do badge.
     const ROTULO_STATUS = {
+      VERMELHO: 'PENDENTE',
+      AMARELO: 'EM ANÁLISE',
+      VERDE: 'APROVADO',
       EM_ANALISE: 'EM ANÁLISE',
       PENDENTE_ASSINATURA: 'PENDENTE DE ASSINATURA',
       REPROVADO: 'REPROVADO',
       CONTRATACAO_CONCLUIDA: 'CONTRATAÇÃO CONCLUÍDA'
     };
     const CLASSE_BADGE = {
+      VERMELHO: '',
+      AMARELO: 'status-amarelo',
+      VERDE: 'status-verde',
       EM_ANALISE: 'status-em-analise',
       PENDENTE_ASSINATURA: 'status-pendente-assinatura',
       REPROVADO: 'status-reprovado',
@@ -1667,10 +1675,11 @@
       });
     }
 
-    // Busca a sessão ativa (se houver token salvo) e, para uma ficha NOVA
-    // (ainda não enviada), preenche automaticamente Nome/E-mail a partir do
-    // perfil autenticado - os campos continuam editáveis pelo candidato.
-    async function carregarSessaoEAutopreencher() {
+    // Busca a sessão ativa (se houver token salvo), SEM redirecionar caso não
+    // haja uma - usada no acesso por link direto a uma ficha já existente
+    // (?id=..., ex.: "Copiar link" no Painel do RH), que continua funcionando
+    // mesmo sem login.
+    async function carregarSessaoOpcional() {
       const token = tokenSessao();
       if (!token) { renderizarAreaSessao(); return; }
 
@@ -1682,16 +1691,42 @@
           renderizarAreaSessao();
           return;
         }
+        sessaoUsuario = (await r.json()).usuario;
+        renderizarAreaSessao();
+      } catch (erro) {
+        renderizarAreaSessao();
+      }
+    }
+
+    // Exige sessão válida para abrir uma ficha NOVA (ainda não enviada) - sem
+    // login, volta para /login.html (mesma trava já aplicada ao Painel do
+    // RH). Com sessão válida, preenche automaticamente Nome/E-mail/CPF/Data
+    // de Nascimento a partir do perfil autenticado - os campos continuam
+    // editáveis pelo candidato.
+    async function exigirSessaoCandidato() {
+      const token = tokenSessao();
+      if (!token) { window.location.href = '/login.html'; return false; }
+
+      try {
+        const r = await fetch(API + '/auth/sessao', { headers: cabecalhosAutenticados() });
+        if (!r.ok) {
+          localStorage.removeItem('onboarding_token');
+          localStorage.removeItem('onboarding_usuario');
+          window.location.href = '/login.html';
+          return false;
+        }
         const corpo = await r.json();
         sessaoUsuario = corpo.usuario;
         renderizarAreaSessao();
 
-        if (!candidatoId) {
-          document.getElementById('nomeCompleto').value = sessaoUsuario.nome || '';
-          document.getElementById('email').value = sessaoUsuario.email || '';
-        }
+        document.getElementById('nomeCompleto').value = sessaoUsuario.nome || '';
+        document.getElementById('email').value = sessaoUsuario.email || '';
+        if (sessaoUsuario.cpf) document.getElementById('cpf').value = mascaraCPF(sessaoUsuario.cpf);
+        if (sessaoUsuario.dataNascimento) document.getElementById('dataNascimento').value = mascaraData(sessaoUsuario.dataNascimento);
+        return true;
       } catch (erro) {
-        renderizarAreaSessao();
+        window.location.href = '/login.html';
+        return false;
       }
     }
 
@@ -2077,12 +2112,16 @@
 
       const idNaUrl = new URLSearchParams(window.location.search).get('id');
       if (idNaUrl) {
+        // Acesso direto a uma ficha já existente por link (ex.: "Copiar link"
+        // no Painel do RH) - continua funcionando sem exigir login.
         await carregarFichaExistente(idNaUrl);
+        await carregarSessaoOpcional();
+        return;
       }
 
-      // Autopreenchimento de Nome/E-mail a partir da sessão só faz sentido
-      // para uma ficha nova (candidatoId ainda não definido nesta chamada).
-      await carregarSessaoEAutopreencher();
+      // Ficha nova (sem id na URL): exige login antes de mostrar o
+      // formulário, como já acontece no Painel do RH.
+      await exigirSessaoCandidato();
     }
 
     inicializar();

@@ -156,6 +156,46 @@
       text-decoration: none;
     }
     .link-voltar:hover { text-decoration: underline; }
+    .modal-fundo {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 15px;
+    }
+    .modal-fundo.aberto { display: flex; }
+    .modal-caixa {
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 24px;
+      max-width: 380px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    }
+    .modal-caixa h3 { margin-top: 0; color: #1a252f; }
+    .modal-caixa p { font-size: 14px; color: var(--texto); line-height: 1.4; }
+    .modal-caixa a.link-ativacao {
+      display: inline-block;
+      margin-top: 10px;
+      word-break: break-all;
+      color: var(--verde-intelbras-escuro);
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .modal-caixa button {
+      margin-top: 18px;
+      background: var(--verde-intelbras);
+      color: #ffffff;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 5px;
+      font-weight: 600;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -165,7 +205,7 @@
 
     <div class="abas">
       <button type="button" class="btn-aba ativa" id="btnAbaEntrar">Entrar</button>
-      <button type="button" class="btn-aba" id="btnAbaCriarConta">Criar Conta</button>
+      <button type="button" class="btn-aba" id="btnAbaCriarConta">Cadastro Manual</button>
     </div>
 
     <!-- FORMULÁRIO: ENTRAR -->
@@ -181,11 +221,19 @@
       <button type="submit" class="btn-primario">Entrar</button>
     </form>
 
-    <!-- FORMULÁRIO: CRIAR CONTA -->
+    <!-- FORMULÁRIO: CADASTRO MANUAL -->
     <form class="form" id="formCriarConta" hidden>
       <div class="campo">
         <label for="registroNome">Nome Completo</label>
         <input type="text" id="registroNome" required>
+      </div>
+      <div class="campo">
+        <label for="registroDataNascimento">Data de Nascimento</label>
+        <input type="text" id="registroDataNascimento" placeholder="DD/MM/AAAA" maxlength="10" required>
+      </div>
+      <div class="campo">
+        <label for="registroCpf">CPF</label>
+        <input type="text" id="registroCpf" placeholder="000.000.000-00" maxlength="14" required>
       </div>
       <div class="campo">
         <label for="registroEmail">E-mail</label>
@@ -194,6 +242,10 @@
       <div class="campo">
         <label for="registroSenha">Senha (mínimo 6 caracteres)</label>
         <input type="password" id="registroSenha" required minlength="6">
+      </div>
+      <div class="campo">
+        <label for="registroConfirmarSenha">Confirmação de Senha</label>
+        <input type="password" id="registroConfirmarSenha" required minlength="6" onpaste="return false;" oncopy="return false;">
       </div>
       <div class="aviso-lgpd">
         Declaro que li e aceito os Termos de Uso e a Política de Privacidade para criação de perfil na plataforma.
@@ -218,6 +270,17 @@
     <div class="mensagem-sucesso" id="mensagemSucesso"></div>
 
     <a class="link-voltar" href="/index.html">&larr; Voltar para a Ficha do Candidato</a>
+  </div>
+
+  <!-- MODAL DE TESTE: simula o e-mail de confirmação de cadastro -->
+  <div class="modal-fundo" id="modalAtivacao">
+    <div class="modal-caixa">
+      <h3>Conta criada!</h3>
+      <p>Em um ambiente real isso seria enviado por e-mail.</p>
+      <a class="link-ativacao" id="linkAtivacaoModal" href="#">Link de ativação</a>
+      <br>
+      <button type="button" id="btnFecharModalAtivacao">Fechar</button>
+    </div>
   </div>
 
   <script src="https://accounts.google.com/gsi/client" async defer onerror="document.getElementById('avisoGoogle').style.display='block'"></script>
@@ -247,6 +310,75 @@
       const destino = usuario.tipo === 'rh' ? '/rh.html' : '/index.html';
       setTimeout(() => { window.location.href = destino; }, 600);
     }
+
+    // =========================================================================
+    // MÁSCARAS COM PRESERVAÇÃO DE CURSOR (copiadas de public/index.html)
+    // =========================================================================
+    function aplicarMascaraComCursor(input, funcaoMascara) {
+      const valorOriginal = input.value;
+      const posicaoCursor = input.selectionStart;
+      const digitosAntesCursor = valorOriginal.slice(0, posicaoCursor).replace(/\D/g, '').length;
+
+      const novoValor = funcaoMascara(valorOriginal);
+      input.value = novoValor;
+
+      let novaPosicao = 0;
+      let digitosEncontrados = 0;
+      for (let i = 0; i < novoValor.length; i++) {
+        if (/\d/.test(novoValor[i])) digitosEncontrados++;
+        if (digitosEncontrados === digitosAntesCursor) { novaPosicao = i + 1; break; }
+      }
+      if (digitosAntesCursor === 0) novaPosicao = 0;
+      input.setSelectionRange(novaPosicao, novaPosicao);
+    }
+
+    const mascaraData = (v) => v.replace(/\D/g, '').replace(/(\d{2})(\d)/, '$1/$2').replace(/(\d{2})(\d)/, '$1/$2').replace(/(\d{4})\d+?$/, '$1');
+    const mascaraCPF = (v) => v.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+
+    document.getElementById('registroDataNascimento').addEventListener('input', (e) => aplicarMascaraComCursor(e.target, mascaraData));
+    document.getElementById('registroCpf').addEventListener('input', (e) => aplicarMascaraComCursor(e.target, mascaraCPF));
+
+    // =========================================================================
+    // MODAL DE TESTE (simulação de e-mail de confirmação de cadastro)
+    // =========================================================================
+    const modalAtivacao = document.getElementById('modalAtivacao');
+    const linkAtivacaoModal = document.getElementById('linkAtivacaoModal');
+    document.getElementById('btnFecharModalAtivacao').addEventListener('click', () => {
+      modalAtivacao.classList.remove('aberto');
+    });
+    function abrirModalAtivacao(linkAtivacao) {
+      linkAtivacaoModal.href = linkAtivacao;
+      linkAtivacaoModal.textContent = window.location.origin + linkAtivacao;
+      modalAtivacao.classList.add('aberto');
+    }
+
+    // =========================================================================
+    // ATIVAÇÃO DE CONTA (link de confirmação simulado por e-mail)
+    // =========================================================================
+    async function verificarAtivacaoNaUrl() {
+      const parametros = new URLSearchParams(window.location.search);
+      const token = parametros.get('ativacao');
+      if (!token) return;
+
+      try {
+        const r = await fetch(API + '/auth/ativar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+        const corpo = await r.json();
+        if (!r.ok) {
+          mostrarErro(corpo.erro || 'Não foi possível ativar a conta.');
+          history.replaceState(null, '', window.location.pathname);
+          return;
+        }
+        concluirLogin(corpo.token, corpo.usuario);
+      } catch (erro) {
+        mostrarErro('Falha ao comunicar com o servidor.');
+        history.replaceState(null, '', window.location.pathname);
+      }
+    }
+    verificarAtivacaoNaUrl();
 
     // Alternância entre as abas Entrar / Criar Conta
     const btnAbaEntrar = document.getElementById('btnAbaEntrar');
@@ -302,18 +434,28 @@
       }
 
       const nome = document.getElementById('registroNome').value.trim();
+      const dataNascimento = document.getElementById('registroDataNascimento').value.trim();
+      const cpf = document.getElementById('registroCpf').value.trim();
       const email = document.getElementById('registroEmail').value.trim();
       const senha = document.getElementById('registroSenha').value;
+      const confirmarSenha = document.getElementById('registroConfirmarSenha').value;
+
+      if (senha !== confirmarSenha) {
+        mostrarErro('As senhas não coincidem.');
+        return;
+      }
 
       try {
         const r = await fetch(API + '/auth/registrar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ nome, email, senha, aceiteTermos: true })
+          body: JSON.stringify({ nome, email, senha, confirmarSenha, dataNascimento, cpf, aceiteTermos: true })
         });
         const corpo = await r.json();
         if (!r.ok) { mostrarErro(corpo.erro || 'Não foi possível criar a conta.'); return; }
-        concluirLogin(corpo.token, corpo.usuario);
+        formCriarConta.reset();
+        btnCriarConta.disabled = true;
+        abrirModalAtivacao(corpo.linkAtivacao);
       } catch (erro) {
         mostrarErro('Falha ao comunicar com o servidor.');
       }

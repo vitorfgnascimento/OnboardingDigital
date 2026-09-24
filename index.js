@@ -10,6 +10,11 @@ const { OAuth2Client } = require('google-auth-library');
 const app = express();
 
 app.use(express.json());
+
+// A primeira tela do sistema é o login, não a ficha do candidato - só depois
+// de entrar (ou criar conta) é que o candidato é levado à Ficha de Admissão.
+app.get('/', (req, res) => res.redirect('/login.html'));
+
 app.use(express.static('public'));
 
 // Caminho absoluto do arquivo de persistência local (banco de dados simples em JSON)
@@ -233,7 +238,14 @@ function senhaConfere(senha, salt, hashEsperado) {
 }
 
 function dadosPublicosUsuario(usuario) {
-  return { id: usuario.id, nome: usuario.nome, email: usuario.email, tipo: usuario.tipo };
+  return {
+    id: usuario.id,
+    nome: usuario.nome,
+    email: usuario.email,
+    tipo: usuario.tipo,
+    cpf: usuario.cpf || null,
+    dataNascimento: usuario.dataNascimento || null
+  };
 }
 
 // Cria uma sessão para o usuário e persiste o token (login e registro reutilizam isso).
@@ -398,13 +410,22 @@ const clienteGoogle = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : nu
 const VERSAO_TERMOS_CADASTRO = 'v1.0';
 
 app.post('/api/auth/registrar', (req, res) => {
-  const { nome, email, senha, aceiteTermos } = req.body;
+  const { nome, email, senha, confirmarSenha, dataNascimento, cpf, aceiteTermos } = req.body;
   const nomeAparado = String(nome || '').trim();
   const emailAparado = String(email || '').trim().toLowerCase();
 
   if (!nomeAparado) return res.status(400).json({ erro: 'Informe seu nome.' });
   if (!REGEX_EMAIL_AUTH.test(emailAparado)) return res.status(400).json({ erro: 'E-mail inválido.' });
   if (!senha || String(senha).length < 6) return res.status(400).json({ erro: 'A senha deve ter pelo menos 6 caracteres.' });
+  if (senha !== confirmarSenha) {
+    return res.status(400).json({ erro: 'As senhas não coincidem.' });
+  }
+  if (!dataNascimentoValida(somenteDigitos(dataNascimento))) {
+    return res.status(400).json({ erro: 'Data de nascimento incompleta ou inválida.' });
+  }
+  if (somenteDigitos(cpf).length !== 11) {
+    return res.status(400).json({ erro: 'CPF incompleto ou inválido.' });
+  }
   if (aceiteTermos !== true) {
     return res.status(400).json({ erro: 'É necessário aceitar os Termos de Uso e a Política de Privacidade para criar a conta.' });
   }
@@ -420,10 +441,16 @@ app.post('/api/auth/registrar', (req, res) => {
     id: gerarId(),
     nome: nomeAparado,
     email: emailAparado,
+    dataNascimento,
+    cpf,
     senhaSalt: salt,
     senhaHash: hash,
     tipo: 'candidato',
     googleId: null,
+    // Conta criada mas ainda não confirmada - só é ativada ao clicar no link
+    // de ativação (simulado no console/modal de teste, ver /api/auth/ativar).
+    ativo: false,
+    tokenAtivacao: crypto.randomBytes(24).toString('hex'),
     // Aceite inicial dos Termos de Uso/Política de Privacidade (LGPD -
     // Momento 1 da jornada), com evidência de quando e de onde partiu.
     consentimentoCadastro: { aceito: true, timestamp: agora, ip: req.ip, versaoTermo: VERSAO_TERMOS_CADASTRO },
@@ -443,8 +470,36 @@ app.post('/api/auth/registrar', (req, res) => {
     ip: req.ip
   });
 
-  const token = criarSessao(novoUsuario.id);
-  return res.status(201).json({ mensagem: 'Conta criada com sucesso!', token, usuario: dadosPublicosUsuario(novoUsuario) });
+  console.log('\n=== [SIMULAÇÃO DE E-MAIL] Confirmação de cadastro ===');
+  console.log(`Para: ${emailAparado}`);
+  console.log(`Link de ativação: http://localhost:${PORTA}/login.html?ativacao=${novoUsuario.tokenAtivacao}`);
+  console.log('=======================================================\n');
+
+  return res.status(201).json({
+    mensagem: 'Conta criada! Confirme seu cadastro pelo link de ativação (verifique o console do servidor nesse ambiente de testes).',
+    linkAtivacao: `/login.html?ativacao=${novoUsuario.tokenAtivacao}`,
+    tokenAtivacao: novoUsuario.tokenAtivacao
+  });
+});
+
+// Ativa a conta a partir do token de ativação enviado (simulado) por e-mail,
+// e já cria a sessão em seguida (auto-login pós-confirmação).
+app.post('/api/auth/ativar', (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ erro: 'Token de ativação ausente.' });
+
+  const usuarios = lerUsuarios();
+  const usuario = usuarios.find((u) => u.tokenAtivacao === token);
+  if (!usuario) {
+    return res.status(404).json({ erro: 'Link de ativação inválido ou já utilizado.' });
+  }
+
+  usuario.ativo = true;
+  usuario.tokenAtivacao = null;
+  salvarUsuarios(usuarios);
+
+  const sessaoToken = criarSessao(usuario.id);
+  return res.status(200).json({ mensagem: 'Conta ativada com sucesso!', token: sessaoToken, usuario: dadosPublicosUsuario(usuario) });
 });
 
 app.post('/api/auth/login', (req, res) => {
@@ -456,6 +511,10 @@ app.post('/api/auth/login', (req, res) => {
 
   if (!usuario || !usuario.senhaHash || !senhaConfere(String(senha || ''), usuario.senhaSalt, usuario.senhaHash)) {
     return res.status(401).json({ erro: 'E-mail ou senha incorretos.' });
+  }
+
+  if (usuario.ativo === false) {
+    return res.status(403).json({ erro: 'Conta ainda não ativada. Verifique o link de confirmação enviado no cadastro (ou o console do servidor, neste ambiente de testes).' });
   }
 
   const token = criarSessao(usuario.id);
@@ -498,6 +557,7 @@ app.post('/api/auth/google', async (req, res) => {
       senhaHash: null,
       tipo: 'candidato',
       googleId: payload.sub,
+      ativo: true,
       criadoEm: new Date().toISOString()
     };
     usuarios.push(usuario);
