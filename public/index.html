@@ -681,7 +681,7 @@
     <!-- BANNER DE DECISÃO FINAL (Aprovado/Reprovado) -->
     <div class="banner-decisao" id="bannerDecisao"></div>
 
-    <div class="status-badge" id="badgeStatus">STATUS: PENDENTE (VERMELHO)</div>
+    <div class="status-badge" id="badgeStatus">STATUS: EM ANÁLISE</div>
     <h2>Ficha Única de Admissão</h2>
 
     <!-- CAIXA DE DADOS PESSOAIS (sem botão de salvar próprio) -->
@@ -791,6 +791,7 @@
       <h3>Fale com o RH</h3>
       <button type="button" class="btn-atualizar-ficha" id="btnAtualizarFicha">Atualizar</button>
       <div class="lista-mensagens" id="listaMensagens"></div>
+      <div class="aviso-bloqueio" id="avisoChatEncerrado">Atendimento encerrado. Este processo admissional foi finalizado.</div>
       <form class="form-chat" id="formChat">
         <textarea id="campoMensagem" placeholder="Escreva sua mensagem..." required></textarea>
         <button type="submit" class="btn-enviar-mensagem">Enviar</button>
@@ -866,18 +867,12 @@
     // EM_ANALISE/PENDENTE_ASSINATURA/REPROVADO/CONTRATACAO_CONCLUIDA são os 4
     // valores do status geral da ficha (badge do topo da página).
     const ROTULO_STATUS = {
-      VERMELHO: 'PENDENTE (VERMELHO)',
-      AMARELO: 'EM ANÁLISE (AMARELO)',
-      VERDE: 'APROVADO (VERDE)',
       EM_ANALISE: 'EM ANÁLISE',
       PENDENTE_ASSINATURA: 'PENDENTE DE ASSINATURA',
       REPROVADO: 'REPROVADO',
       CONTRATACAO_CONCLUIDA: 'CONTRATAÇÃO CONCLUÍDA'
     };
     const CLASSE_BADGE = {
-      VERMELHO: '',
-      AMARELO: 'status-amarelo',
-      VERDE: 'status-verde',
       EM_ANALISE: 'status-em-analise',
       PENDENTE_ASSINATURA: 'status-pendente-assinatura',
       REPROVADO: 'status-reprovado',
@@ -1145,7 +1140,7 @@
         const aviso = barra.querySelector('[data-aviso]');
         if (tipo === 'reservista' && generoAtual() !== 'Masculino') {
           aviso.hidden = false;
-          aviso.textContent = 'Certificado de Reservista não é exigido para este candidato. Status definido automaticamente como APROVADO (VERDE).';
+          aviso.textContent = 'Certificado de Reservista não é exigido para este candidato. Status definido automaticamente como Aprovado.';
         } else if (tipo === 'cpf' && cpfInclusoAtual()) {
           aviso.hidden = false;
           aviso.textContent = 'CPF incluso na Identidade: esta barra está desabilitada e herda o status da Identidade.';
@@ -1729,18 +1724,72 @@
         container.innerHTML = '<div class="mensagem-vazia">Nenhuma mensagem ainda.</div>';
         return;
       }
-      container.innerHTML = mensagens.map((m) => `
+      container.innerHTML = mensagens.map((m) => {
+        const rotulo = m.autor === 'Candidato' ? 'Você' : (m.nomeAutor || 'RH');
+        return `
         <div class="mensagem ${m.autor === 'RH' ? 'mensagem-rh' : 'mensagem-candidato'}">
-          <div class="mensagem-cabecalho">${m.autor === 'RH' ? 'RH' : 'Você'} · ${formatarDataHora(m.timestamp)}</div>
+          <div class="mensagem-cabecalho">${escapeHtml(rotulo)} · ${formatarDataHora(m.timestamp)}</div>
           <div class="mensagem-texto">${escapeHtml(m.texto)}</div>
         </div>
-      `).join('');
+      `;
+      }).join('');
       container.scrollTop = container.scrollHeight;
+    }
+
+    // Conexão SSE (Server-Sent Events) para receber mensagens novas em tempo
+    // real, sem recarregar a página. Guardada por candidatoId para nunca abrir
+    // duas conexões para a mesma ficha em re-renderizações repetidas.
+    let chatEventSource = null;
+    let chatEventSourceCandidatoId = null;
+
+    function abrirChatEventSource() {
+      if (!candidatoId) return;
+      if (chatEventSource && chatEventSourceCandidatoId === candidatoId) return;
+      fecharChatEventSource();
+      chatEventSource = new EventSource('/api/candidato/' + candidatoId + '/mensagens/eventos');
+      chatEventSourceCandidatoId = candidatoId;
+      chatEventSource.onmessage = (evento) => {
+        try {
+          const mensagem = JSON.parse(evento.data);
+          adicionarMensagemRecebida(mensagem);
+        } catch (erro) {
+          // ignora eventos que não sejam JSON de mensagem (ex.: comentários/ping)
+        }
+      };
+    }
+
+    function fecharChatEventSource() {
+      if (chatEventSource) {
+        chatEventSource.close();
+        chatEventSource = null;
+        chatEventSourceCandidatoId = null;
+      }
+    }
+
+    function adicionarMensagemRecebida(mensagem) {
+      if (!candidato) return;
+      if (!Array.isArray(candidato.mensagens)) candidato.mensagens = [];
+      if (candidato.mensagens.some((m) => m.id === mensagem.id)) return;
+      candidato.mensagens.push(mensagem);
+      renderizarMensagens(candidato.mensagens);
+    }
+
+    // Bloqueio definitivo do chat quando a ficha foi reprovada.
+    function aplicarBloqueioChatReprovado() {
+      const bloqueado = !!(candidato && candidato.status === 'REPROVADO');
+      const campo = document.getElementById('campoMensagem');
+      const btnEnviar = document.querySelector('#formChat .btn-enviar-mensagem');
+      const aviso = document.getElementById('avisoChatEncerrado');
+      campo.disabled = bloqueado;
+      if (btnEnviar) btnEnviar.disabled = bloqueado;
+      if (aviso) aviso.classList.toggle('visivel', bloqueado);
     }
 
     function exibirPainelChat() {
       document.getElementById('secaoChat').classList.add('visivel');
       renderizarMensagens(candidato.mensagens || []);
+      aplicarBloqueioChatReprovado();
+      abrirChatEventSource();
     }
 
     // Enter envia a mensagem; Shift+Enter continua quebrando linha normalmente.
@@ -1770,8 +1819,11 @@
           alert('Erro: ' + (resultado.erro || 'não foi possível enviar a mensagem.'));
           return;
         }
-        candidato = resultado.candidato;
-        renderizarMensagens(candidato.mensagens || []);
+        // Não renderiza otimisticamente: a própria conexão SSE já recebe de
+        // volta a mensagem recém-enviada (adicionarMensagemRecebida faz a
+        // deduplicação por id), evitando mensagem duplicada na tela.
+        candidato.status = resultado.candidato.status;
+        candidato.atualizadoEm = resultado.candidato.atualizadoEm;
         campo.value = '';
         campo.focus();
       } catch (erro) {

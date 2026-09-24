@@ -958,13 +958,64 @@ app.get('/api/candidato/:id', (req, res) => {
 // Quem pode enviar uma mensagem no chat da ficha.
 const AUTORES_VALIDOS = ['RH', 'Candidato'];
 
+// Registro em memória dos clientes SSE (Server-Sent Events) conectados ao
+// chat de cada ficha: candidatoId -> Set de objetos `res` abertos/streaming.
+const clientesChatSse = new Map();
+
+// Envia a mensagem para todos os clientes SSE conectados ao chat da ficha,
+// removendo qualquer conexão que já tenha morrido (write lança exceção).
+function transmitirMensagemChat(candidatoId, mensagem) {
+  const clientes = clientesChatSse.get(candidatoId);
+  if (!clientes) return;
+  for (const res of clientes) {
+    try {
+      res.write('data: ' + JSON.stringify(mensagem) + '\n\n');
+    } catch (erro) {
+      clientes.delete(res);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ROTA: stream SSE do chat da ficha - mantém a conexão aberta e envia cada
+// mensagem nova em tempo real, sem exigir polling do front-end.
+// ---------------------------------------------------------------------------
+app.get('/api/candidato/:id/mensagens/eventos', (req, res) => {
+  const { id } = req.params;
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive'
+  });
+  if (typeof res.flushHeaders === 'function') {
+    res.flushHeaders();
+  }
+  res.write(':ok\n\n');
+
+  if (!clientesChatSse.has(id)) {
+    clientesChatSse.set(id, new Set());
+  }
+  clientesChatSse.get(id).add(res);
+
+  req.on('close', () => {
+    const clientes = clientesChatSse.get(id);
+    if (clientes) {
+      clientes.delete(res);
+      if (clientes.size === 0) {
+        clientesChatSse.delete(id);
+      }
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // ROTA: envio de mensagem no chat da ficha (RH <-> Candidato), com histórico
 // ordenado por data/hora persistido junto da ficha em candidatos.json
 // ---------------------------------------------------------------------------
 app.post('/api/candidato/:id/mensagens', (req, res) => {
   const { id } = req.params;
-  const { autor, texto } = req.body;
+  const { autor, texto, nomeAutor } = req.body;
 
   if (!AUTORES_VALIDOS.includes(autor)) {
     return res.status(400).json({ erro: "Autor inválido. Use 'RH' ou 'Candidato'." });
@@ -982,13 +1033,27 @@ app.post('/api/candidato/:id/mensagens', (req, res) => {
     return res.status(404).json({ erro: 'Candidato não encontrado.' });
   }
 
+  // Bloqueio definitivo: processo finalizado (reprovado) não recebe mais
+  // mensagens de nenhum dos dois lados.
+  if (candidato.status === 'REPROVADO') {
+    return res.status(400).json({ erro: 'Atendimento encerrado. Este processo admissional foi finalizado.' });
+  }
+
   if (!Array.isArray(candidato.mensagens)) {
     candidato.mensagens = [];
   }
 
+  // Nome exibido junto da mensagem: do candidato sempre vem da própria ficha
+  // (nunca confia no valor enviado pelo cliente); do RH vem do corpo da
+  // requisição, já que esta rota não tem middleware de autenticação.
+  const nomeAutorFinal = autor === 'Candidato'
+    ? candidato.nomeCompleto
+    : (String(nomeAutor || '').trim() || 'RH');
+
   const novaMensagem = {
     id: gerarId(),
     autor,
+    nomeAutor: nomeAutorFinal,
     texto: textoAparado,
     timestamp: new Date().toISOString(),
     ip: req.ip
@@ -996,6 +1061,8 @@ app.post('/api/candidato/:id/mensagens', (req, res) => {
   candidato.mensagens.push(novaMensagem);
   candidato.atualizadoEm = novaMensagem.timestamp;
   salvarCandidatos(candidatos);
+
+  transmitirMensagemChat(id, novaMensagem);
 
   // Trilha de auditoria (LGPD): quem escreveu, quando e de onde.
   registrarEventoAuditoria({
@@ -1724,6 +1791,117 @@ function formatarDataBr(iso) {
   if (!iso) return '-';
   return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 }
+
+// ---------------------------------------------------------------------------
+// API REST v1 - integração com sistemas externos de admissão (protegida por
+// API Key). API_KEY_ADMISSOES deve ser configurada via variável de ambiente
+// em produção; o valor fixo abaixo é apenas um padrão de desenvolvimento.
+// ---------------------------------------------------------------------------
+const CHAVE_API_ADMISSOES = process.env.API_KEY_ADMISSOES || 'onboarding-dev-key-2026';
+
+function exigirApiKeyAdmissoes(req, res, next) {
+  const chaveRecebida = req.headers['x-api-key'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  if (!chaveRecebida || chaveRecebida !== CHAVE_API_ADMISSOES) {
+    return res.status(401).json({ erro: 'API Key inválida ou ausente. Use o header "x-api-key" ou "Authorization: Bearer <TOKEN>".' });
+  }
+  next();
+}
+
+// Remove acentos e normaliza para minúsculas, para comparar rótulos em
+// pt-BR vindos da query string sem depender de acento/caixa exatos.
+function normalizarTextoComparacao(texto) {
+  return String(texto || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+// Aceita tanto o código interno (EM_ANALISE) quanto o rótulo em português
+// (com ou sem acentos/caixa, ex.: "Contratação Concluída") e devolve o
+// código interno correspondente, ou null se não houver correspondência.
+function resolverCodigoStatus(valorConsulta) {
+  if (!valorConsulta) return null;
+  if (Object.prototype.hasOwnProperty.call(ROTULO_STATUS_CSV, valorConsulta)) {
+    return valorConsulta;
+  }
+  const alvo = normalizarTextoComparacao(valorConsulta);
+  const codigo = Object.keys(ROTULO_STATUS_CSV).find(
+    (chave) => normalizarTextoComparacao(ROTULO_STATUS_CSV[chave]) === alvo
+  );
+  return codigo || null;
+}
+
+// Monta o registro estruturado de uma ficha para consumo por sistemas
+// externos de admissão: dados cadastrais, status, documentos, LGPD, aceite
+// contratual e integração de ponto. Não inclui mensagens do chat nem
+// caminhos de arquivo além dos indicadores booleanos.
+function montarRegistroApiAdmissao(c) {
+  const documentos = TIPOS_DOCUMENTO.map((tipo) => {
+    const documento = c.documentos?.[tipo] || {};
+    return {
+      tipo,
+      titulo: TITULOS_DOCUMENTO[tipo],
+      status: documento.status || null,
+      arquivo: !!documento.arquivo,
+      validado: documento.status === 'VERDE'
+    };
+  });
+
+  const assinatura = c.contrato?.assinaturaConcluida;
+  const aceiteContratual = assinatura
+    ? { concluido: true, timestamp: assinatura.timestamp, hash: assinatura.hash, cpf: assinatura.cpf }
+    : { concluido: false };
+
+  return {
+    nomeCompleto: c.nomeCompleto,
+    cpf: c.cpf,
+    email: c.email,
+    whatsapp: c.whatsapp,
+    genero: c.genero,
+    cep: c.cep,
+    logradouro: c.logradouro,
+    bairro: c.bairro,
+    numero: c.numero,
+    complemento: c.complemento,
+    dataNascimento: c.dataNascimento,
+    status: c.status,
+    statusRotulo: ROTULO_STATUS_CSV[c.status] || c.status || '',
+    criadoEm: c.criadoEm,
+    atualizadoEm: c.atualizadoEm,
+    documentos,
+    auditoriaLgpd: {
+      consentimentoFicha: c.consentimentoFichaLGPD,
+      consentimentoContrato: c.consentimentoContratoLGPD
+    },
+    aceiteContratual,
+    integracaoPonto: c.integracaoPonto
+  };
+}
+
+// ---------------------------------------------------------------------------
+// ROTA: API v1 - lista/filtra admissões para integração com sistemas externos
+// ---------------------------------------------------------------------------
+app.get('/api/v1/admissoes', exigirApiKeyAdmissoes, (req, res) => {
+  const statusQuery = req.query.status;
+  let candidatos = lerCandidatos();
+  let filtroAplicado = null;
+
+  if (statusQuery) {
+    const codigo = resolverCodigoStatus(statusQuery);
+    if (!codigo) {
+      return res.status(400).json({
+        erro: 'Status inválido. Use um dos: EM_ANALISE, PENDENTE_ASSINATURA, CONTRATACAO_CONCLUIDA, REPROVADO (ou seu rótulo em português).'
+      });
+    }
+    filtroAplicado = codigo;
+    candidatos = candidatos.filter((c) => c.status === codigo);
+  }
+
+  const admissoes = candidatos.map(montarRegistroApiAdmissao);
+
+  return res.status(200).json({ total: admissoes.length, filtro: filtroAplicado, admissoes });
+});
 
 function situacaoDocumentoPdf(candidato, tipo, documento) {
   if (documento.arquivo) return 'Enviado';

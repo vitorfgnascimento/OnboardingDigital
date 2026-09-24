@@ -1086,6 +1086,151 @@
         }
       },
 
+      { grupo: 'Chat em Tempo Real - nomeAutor e bloqueio definitivo para Reprovados' },
+
+      {
+        nome: 'Cria candidato para os testes de nomeAutor no chat',
+        run: async () => {
+          const r = await postJson('/candidato', fichaValida({ nomeCompleto: 'Candidato Chat Teste', cpf: '222.333.444-55' }));
+          window.__idChatNomeAutor = r.corpo.candidato?.id;
+          window.__nomeChatNomeAutor = r.corpo.candidato?.nomeCompleto;
+          return { ok: r.status === 201 && !!window.__idChatNomeAutor, detalhe: `status ${r.status}, id ${window.__idChatNomeAutor}` };
+        }
+      },
+      {
+        nome: 'Mensagem do Candidato grava nomeAutor = nomeCompleto da ficha',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idChatNomeAutor + '/mensagens', { autor: 'Candidato', texto: 'Olá!' });
+          const msg = r.corpo.candidato?.mensagens?.slice(-1)[0];
+          const ok = r.status === 201 && msg?.nomeAutor === window.__nomeChatNomeAutor;
+          return { ok, detalhe: `status ${r.status}, nomeAutor "${msg?.nomeAutor}", esperado "${window.__nomeChatNomeAutor}"` };
+        }
+      },
+      {
+        nome: 'Mensagem do RH com nomeAutor no corpo devolve o mesmo nome',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idChatNomeAutor + '/mensagens', { autor: 'RH', texto: 'Tudo bem?', nomeAutor: 'Fernanda RH' });
+          const msg = r.corpo.candidato?.mensagens?.slice(-1)[0];
+          const ok = r.status === 201 && msg?.nomeAutor === 'Fernanda RH';
+          return { ok, detalhe: `status ${r.status}, nomeAutor "${msg?.nomeAutor}"` };
+        }
+      },
+      {
+        nome: 'Mensagem do RH sem nomeAutor no corpo cai para "RH"',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idChatNomeAutor + '/mensagens', { autor: 'RH', texto: 'Sem nome informado.' });
+          const msg = r.corpo.candidato?.mensagens?.slice(-1)[0];
+          const ok = r.status === 201 && msg?.nomeAutor === 'RH';
+          return { ok, detalhe: `status ${r.status}, nomeAutor "${msg?.nomeAutor}"` };
+        }
+      },
+      {
+        nome: 'GET .../mensagens/eventos (SSE) não derruba o servidor quando abortado logo em seguida',
+        run: async () => {
+          const controlador = new AbortController();
+          const promessa = fetch(API + '/candidato/' + window.__idChatNomeAutor + '/mensagens/eventos', { signal: controlador.signal }).catch(() => {});
+          controlador.abort();
+          await promessa;
+          // Servidor continua respondendo normalmente após a conexão SSE abortada.
+          const r = await fetch(API + '/candidato/' + window.__idChatNomeAutor);
+          return { ok: r.status === 200, detalhe: `status após abrir/abortar SSE: ${r.status}` };
+        }
+      },
+      {
+        nome: 'Cria e reprova um candidato para testar o bloqueio definitivo do chat',
+        run: async () => {
+          const r = await postJson('/candidato', fichaValida({ nomeCompleto: 'Candidato Reprovado Chat', cpf: '333.444.555-66' }));
+          window.__idChatReprovado = r.corpo.candidato?.id;
+          const rDecisao = await patchJsonRh('/rh/fichas/' + window.__idChatReprovado + '/decisao', { decisao: 'REPROVADO' });
+          const ok = r.status === 201 && rDecisao.status === 200 && rDecisao.corpo.candidato?.status === 'REPROVADO';
+          return { ok, detalhe: `status criação ${r.status}, status decisão ${rDecisao.status}, status geral ${rDecisao.corpo.candidato?.status}` };
+        }
+      },
+      {
+        nome: 'Chat bloqueado definitivamente após reprovação (400, mensagem exata)',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idChatReprovado + '/mensagens', { autor: 'Candidato', texto: 'Ainda posso falar?' });
+          const ok = r.status === 400 && r.corpo.erro === 'Atendimento encerrado. Este processo admissional foi finalizado.';
+          return { ok, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Chat bloqueado também para o lado do RH após reprovação (400)',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idChatReprovado + '/mensagens', { autor: 'RH', texto: 'Oi', nomeAutor: 'Fernanda RH' });
+          const ok = r.status === 400 && r.corpo.erro === 'Atendimento encerrado. Este processo admissional foi finalizado.';
+          return { ok, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+
+      { grupo: 'API REST v1 de Integração Externa (GET /api/v1/admissoes)' },
+
+      {
+        nome: 'Sem API Key é recusado (401)',
+        run: async () => {
+          const r = await fetch(API + '/v1/admissoes');
+          const corpoResposta = await r.json().catch(() => ({}));
+          return { ok: r.status === 401, detalhe: `status ${r.status} — ${corpoResposta.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Com API Key errada é recusado (401)',
+        run: async () => {
+          const r = await fetch(API + '/v1/admissoes', { headers: { 'x-api-key': 'chave-errada' } });
+          const corpoResposta = await r.json().catch(() => ({}));
+          return { ok: r.status === 401, detalhe: `status ${r.status} — ${corpoResposta.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Com API Key correta retorna lista de admissões (200)',
+        run: async () => {
+          const r = await fetch(API + '/v1/admissoes', { headers: { 'x-api-key': 'onboarding-dev-key-2026' } });
+          const corpoResposta = await r.json().catch(() => ({}));
+          const ok = r.status === 200 && Array.isArray(corpoResposta.admissoes) && typeof corpoResposta.total === 'number';
+          return { ok, detalhe: `status ${r.status}, total ${corpoResposta.total}` };
+        }
+      },
+      {
+        nome: 'Filtro por código interno (?status=EM_ANALISE) retorna só fichas com esse status',
+        run: async () => {
+          const r = await fetch(API + '/v1/admissoes?status=EM_ANALISE', { headers: { 'x-api-key': 'onboarding-dev-key-2026' } });
+          const corpoResposta = await r.json().catch(() => ({}));
+          const todosCorretos = (corpoResposta.admissoes || []).every((a) => a.status === 'EM_ANALISE');
+          const ok = r.status === 200 && todosCorretos && corpoResposta.admissoes.length > 0;
+          return { ok, detalhe: `status ${r.status}, total ${corpoResposta.total}, todosCorretos ${todosCorretos}` };
+        }
+      },
+      {
+        nome: 'Filtro por rótulo em português (?status=Em Análise, URL-encoded) retorna só fichas com esse status',
+        run: async () => {
+          const r = await fetch(API + '/v1/admissoes?status=' + encodeURIComponent('Em Análise'), { headers: { 'x-api-key': 'onboarding-dev-key-2026' } });
+          const corpoResposta = await r.json().catch(() => ({}));
+          const todosCorretos = (corpoResposta.admissoes || []).every((a) => a.status === 'EM_ANALISE');
+          const ok = r.status === 200 && todosCorretos && corpoResposta.admissoes.length > 0;
+          return { ok, detalhe: `status ${r.status}, total ${corpoResposta.total}, todosCorretos ${todosCorretos}` };
+        }
+      },
+      {
+        nome: 'Status inválido no filtro é recusado (400)',
+        run: async () => {
+          const r = await fetch(API + '/v1/admissoes?status=NAO_EXISTE', { headers: { 'x-api-key': 'onboarding-dev-key-2026' } });
+          const corpoResposta = await r.json().catch(() => ({}));
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${corpoResposta.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Registro da API v1 traz dados cadastrais, documentos e não traz mensagens',
+        run: async () => {
+          const r = await fetch(API + '/v1/admissoes?status=EM_ANALISE', { headers: { 'x-api-key': 'onboarding-dev-key-2026' } });
+          const corpoResposta = await r.json().catch(() => ({}));
+          const registro = (corpoResposta.admissoes || [])[0];
+          const ok = r.status === 200 && !!registro && !!registro.nomeCompleto && !!registro.cpf &&
+            Array.isArray(registro.documentos) && registro.documentos.length === 6 &&
+            registro.mensagens === undefined && !!registro.auditoriaLgpd;
+          return { ok, detalhe: `campos: ${Object.keys(registro || {}).join(', ')}` };
+        }
+      },
+
       { grupo: 'Geração de PDF Real da Ficha (GET /api/rh/fichas/:id/pdf)' },
 
       {

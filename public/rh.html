@@ -805,6 +805,9 @@
       window.location.href = '/login.html';
     }
 
+    // Nome do operador de RH logado (usado como nomeAutor ao enviar mensagens no chat).
+    let nomeUsuarioRh = 'RH';
+
     async function exigirSessaoRh() {
       const token = tokenSessaoRh();
       if (!token) { window.location.href = '/login.html'; return false; }
@@ -818,6 +821,7 @@
           window.location.href = '/login.html';
           return false;
         }
+        nomeUsuarioRh = corpo.usuario.nome || 'RH';
         document.getElementById('areaSessaoRh').innerHTML =
           `RH: ${escapeHtml(corpo.usuario.nome)} <button type="button" onclick="sairDoPainelRh()">Sair</button>`;
         return true;
@@ -1076,12 +1080,15 @@
       if (!mensagens || !mensagens.length) {
         return '<div class="mensagem-vazia">Nenhuma mensagem ainda.</div>';
       }
-      return mensagens.map((m) => `
+      return mensagens.map((m) => {
+        const rotulo = m.autor === 'RH' ? 'Você' : (m.nomeAutor || 'Candidato');
+        return `
         <div class="mensagem mensagem-${m.autor === 'RH' ? 'rh' : 'candidato'}">
-          <div class="mensagem-cabecalho">${m.autor === 'RH' ? 'RH' : 'Candidato'} · ${formatarData(m.timestamp)}</div>
+          <div class="mensagem-cabecalho">${escapeHtml(rotulo)} · ${formatarData(m.timestamp)}</div>
           <div class="mensagem-texto">${escapeHtml(m.texto)}</div>
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
 
     // Monta a seção de chat (histórico de mensagens + formulário de envio).
@@ -1307,6 +1314,50 @@
     // Ids das fichas com o painel de detalhes aberto, para restaurar após cada recarga.
     const detalhesExpandidos = new Set();
 
+    // Conexões SSE (Server-Sent Events) do chat, uma por ficha com o painel
+    // expandido - candidatoId -> EventSource. Mantidas só enquanto o painel
+    // daquela ficha estiver visível, para não vazar conexões abertas.
+    const chatEventSourcesRh = new Map();
+
+    function abrirChatEventSourceRh(id) {
+      if (chatEventSourcesRh.has(id)) return;
+      const es = new EventSource(`/api/candidato/${id}/mensagens/eventos`);
+      es.onmessage = (evento) => {
+        try {
+          const mensagem = JSON.parse(evento.data);
+          const mensagens = adicionarMensagemAoCache(id, mensagem);
+          if (mensagens) atualizarChatInline(id, mensagens);
+        } catch (erro) {
+          // ignora eventos que não sejam JSON de mensagem (ex.: comentários/ping)
+        }
+      };
+      chatEventSourcesRh.set(id, es);
+    }
+
+    function fecharChatEventSourceRh(id) {
+      const es = chatEventSourcesRh.get(id);
+      if (es) {
+        es.close();
+        chatEventSourcesRh.delete(id);
+      }
+    }
+
+    function fecharTodosChatEventSourcesRh() {
+      chatEventSourcesRh.forEach((es) => es.close());
+      chatEventSourcesRh.clear();
+    }
+
+    // Adiciona (com deduplicação por id) uma mensagem recebida via SSE ao
+    // cache local da ficha, e devolve a lista atualizada de mensagens.
+    function adicionarMensagemAoCache(id, mensagem) {
+      const ficha = ultimasFichasCarregadas.find((f) => f.id === id);
+      if (!ficha) return null;
+      if (!Array.isArray(ficha.mensagens)) ficha.mensagens = [];
+      if (ficha.mensagens.some((m) => m.id === mensagem.id)) return ficha.mensagens;
+      ficha.mensagens.push(mensagem);
+      return ficha.mensagens;
+    }
+
     // Filtro ativo: 'TODOS' | 'EM_ANALISE' | 'PENDENTE_ASSINATURA' | 'REPROVADO' | 'CONTRATACAO_CONCLUIDA'.
     let filtroAtual = 'TODOS';
 
@@ -1380,6 +1431,11 @@
     function renderizarTabela() {
       const corpo = document.getElementById('corpoTabela');
 
+      // A tabela é reconstruída do zero a cada chamada - fecha todas as
+      // conexões SSE existentes e reabre apenas para as fichas que continuam
+      // com o painel de detalhes expandido, evitando conexões vazadas.
+      fecharTodosChatEventSourcesRh();
+
       const fichas = ordenarFichas(aplicarFiltro(aplicarBusca(ultimasFichasCarregadas)));
 
       if (fichas.length === 0) {
@@ -1430,6 +1486,8 @@
             </td>
           `;
           corpo.appendChild(trDetalhes);
+
+          if (expandidoAgora) abrirChatEventSourceRh(f.id);
         });
     }
 
@@ -1446,6 +1504,7 @@
       botao.setAttribute('aria-expanded', String(!trDetalhes.hidden));
       if (trDetalhes.hidden) {
         detalhesExpandidos.delete(id);
+        fecharChatEventSourceRh(id);
       } else {
         detalhesExpandidos.add(id);
       }
@@ -1621,7 +1680,7 @@
         const resposta = await fetch(`/api/candidato/${id}/mensagens`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ autor: 'RH', texto })
+          body: JSON.stringify({ autor: 'RH', texto, nomeAutor: nomeUsuarioRh })
         });
         const resultado = await resposta.json();
 
@@ -1630,6 +1689,7 @@
           return;
         }
 
+        atualizarFichaEmCache(resultado.candidato);
         atualizarChatInline(id, resultado.candidato.mensagens || []);
       } catch (erro) {
         alert('Falha ao comunicar com o servidor.');
