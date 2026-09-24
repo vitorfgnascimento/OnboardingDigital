@@ -285,12 +285,12 @@
         }
       },
       {
-        nome: 'Cria candidato Masculino (201, status VERMELHO, 6 documentos)',
+        nome: 'Cria candidato Masculino (201, status EM_ANALISE, 6 documentos)',
         run: async () => {
           const r = await postJson('/candidato', fichaValida());
           const c = r.corpo.candidato || {};
           const docs = c.documentos ? Object.keys(c.documentos).length : 0;
-          const ok = r.status === 201 && c.status === 'VERMELHO' && docs === 6 && !!c.id;
+          const ok = r.status === 201 && c.status === 'EM_ANALISE' && docs === 6 && !!c.id;
           window.__idMasculino = c.id;
           return { ok, detalhe: `status ${r.status}, geral ${c.status}, documentos ${docs}, id ${c.id}` };
         }
@@ -465,10 +465,10 @@
         }
       },
       {
-        nome: 'RH aprova candidato: status geral vira VERDE',
+        nome: 'RH aprova candidato: status geral vira PENDENTE_ASSINATURA',
         run: async () => {
-          const r = await patchJson('/candidato/' + window.__idMasculino + '/status', { status: 'VERDE' });
-          return { ok: r.status === 200 && r.corpo.candidato?.status === 'VERDE', detalhe: `status ${r.status}, geral = ${r.corpo.candidato?.status}` };
+          const r = await patchJson('/candidato/' + window.__idMasculino + '/status', { status: 'PENDENTE_ASSINATURA' });
+          return { ok: r.status === 200 && r.corpo.candidato?.status === 'PENDENTE_ASSINATURA', detalhe: `status ${r.status}, geral = ${r.corpo.candidato?.status}` };
         }
       },
       {
@@ -481,7 +481,7 @@
       {
         nome: 'Alterar status de candidato inexistente (404)',
         run: async () => {
-          const r = await patchJson('/candidato/id-que-nao-existe/status', { status: 'VERDE' });
+          const r = await patchJson('/candidato/id-que-nao-existe/status', { status: 'PENDENTE_ASSINATURA' });
           return { ok: r.status === 404, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
@@ -497,25 +497,25 @@
         }
       },
       {
-        nome: 'RH move ficha para Em Análise (AMARELO) e registra na auditoria',
+        nome: 'RH move ficha para Em Análise (EM_ANALISE) e registra na auditoria',
         run: async () => {
-          const r = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/status', { status: 'AMARELO' });
-          const temEvento = r.corpo.evento && r.corpo.evento.statusNovo === 'AMARELO' && !!r.corpo.evento.timestamp && 'ip' in r.corpo.evento;
-          return { ok: r.status === 200 && r.corpo.candidato?.status === 'AMARELO' && temEvento, detalhe: `status ${r.status}, geral = ${r.corpo.candidato?.status}, evento = ${JSON.stringify(r.corpo.evento || {})}` };
+          const r = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/status', { status: 'EM_ANALISE' });
+          const temEvento = r.corpo.evento && r.corpo.evento.statusNovo === 'EM_ANALISE' && !!r.corpo.evento.timestamp && 'ip' in r.corpo.evento;
+          return { ok: r.status === 200 && r.corpo.candidato?.status === 'EM_ANALISE' && temEvento, detalhe: `status ${r.status}, geral = ${r.corpo.candidato?.status}, evento = ${JSON.stringify(r.corpo.evento || {})}` };
         }
       },
       {
-        nome: 'RH aprova ficha (VERDE) via /api/rh/fichas',
+        nome: 'RH aprova ficha (PENDENTE_ASSINATURA) via /api/rh/fichas',
         run: async () => {
-          const r = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/status', { status: 'VERDE' });
-          return { ok: r.status === 200 && r.corpo.candidato?.status === 'VERDE', detalhe: `status ${r.status}, geral = ${r.corpo.candidato?.status}` };
+          const r = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/status', { status: 'PENDENTE_ASSINATURA' });
+          return { ok: r.status === 200 && r.corpo.candidato?.status === 'PENDENTE_ASSINATURA', detalhe: `status ${r.status}, geral = ${r.corpo.candidato?.status}` };
         }
       },
       {
-        nome: 'RH pode devolver ficha para Pendente (VERMELHO)',
+        nome: 'RH pode devolver ficha para Em Análise (EM_ANALISE)',
         run: async () => {
-          const r = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/status', { status: 'VERMELHO' });
-          return { ok: r.status === 200 && r.corpo.candidato?.status === 'VERMELHO', detalhe: `status ${r.status}, geral = ${r.corpo.candidato?.status}` };
+          const r = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/status', { status: 'EM_ANALISE' });
+          return { ok: r.status === 200 && r.corpo.candidato?.status === 'EM_ANALISE', detalhe: `status ${r.status}, geral = ${r.corpo.candidato?.status}` };
         }
       },
       {
@@ -528,7 +528,7 @@
       {
         nome: 'Alterar status de ficha inexistente em /api/rh/fichas (404)',
         run: async () => {
-          const r = await patchJsonRh('/rh/fichas/id-que-nao-existe/status', { status: 'VERDE' });
+          const r = await patchJsonRh('/rh/fichas/id-que-nao-existe/status', { status: 'PENDENTE_ASSINATURA' });
           return { ok: r.status === 404, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
@@ -642,12 +642,12 @@
         }
       },
       {
-        nome: 'Decisão final é exclusiva: status geral também vira APROVADO (sai de Em Análise)',
+        nome: 'Decisão final é exclusiva: status geral vira PENDENTE_ASSINATURA (sai de Em Análise)',
         run: async () => {
           const r = await getRh('/rh/fichas');
           const fichas = r.corpo;
           const ficha = fichas.find((f) => f.id === window.__idMasculino);
-          const ok = !!ficha && ficha.status === 'APROVADO';
+          const ok = !!ficha && ficha.status === 'PENDENTE_ASSINATURA';
           return { ok, detalhe: `status geral: ${ficha?.status}` };
         }
       },
@@ -708,6 +708,37 @@
         }
       },
 
+      { grupo: 'Dashboard de Admissões (GET /api/relatorio/dashboard-pdf)' },
+
+      {
+        nome: 'Exporta o PDF do Dashboard (200, content-type application/pdf, começa com %PDF)',
+        run: async () => {
+          await loginRh(); const r = await fetch(API + '/relatorio/dashboard-pdf', { headers: headersRh() });
+          const contentType = r.headers.get('content-type') || '';
+          const texto = await r.text();
+          const ok = r.status === 200 && contentType.includes('application/pdf') && texto.startsWith('%PDF');
+          return { ok, detalhe: `status ${r.status}, content-type ${contentType}, começa com %PDF: ${texto.startsWith('%PDF')}` };
+        }
+      },
+      {
+        nome: 'PDF do Dashboard filtrado por status inexistente entre as fichas atuais fica pequeno (sem candidatos)',
+        run: async () => {
+          await loginRh(); const r = await fetch(API + '/relatorio/dashboard-pdf?status=REPROVADO&busca=zzz-nao-existe-zzz', { headers: headersRh() });
+          const texto = await r.text();
+          // Sem candidatos no filtro, o PDF ainda é gerado (200) só que bem mais
+          // enxuto - checamos que continua sendo um PDF válido.
+          const ok = r.status === 200 && texto.startsWith('%PDF');
+          return { ok, detalhe: `status ${r.status}, começa com %PDF: ${texto.startsWith('%PDF')}` };
+        }
+      },
+      {
+        nome: 'PDF do Dashboard sem sessão de RH é recusado (401)',
+        run: async () => {
+          const r = await fetch(API + '/relatorio/dashboard-pdf');
+          return { ok: r.status === 401, detalhe: `status ${r.status}` };
+        }
+      },
+
       { grupo: 'Automação de Status e Candidato de Testes Fixo' },
 
       {
@@ -721,34 +752,34 @@
         }
       },
       {
-        nome: 'Nova ficha nasce com status VERMELHO (Não avaliado)',
+        nome: 'Nova ficha nasce com status EM_ANALISE',
         run: async () => {
           const r = await postJson('/candidato', fichaValida({ cpf: '390.533.447-05' }));
           window.__idAutomacao = r.corpo.candidato?.id;
-          return { ok: r.status === 201 && r.corpo.candidato?.status === 'VERMELHO', detalhe: `status ${r.status}, status geral ${r.corpo.candidato?.status}` };
+          return { ok: r.status === 201 && r.corpo.candidato?.status === 'EM_ANALISE', detalhe: `status ${r.status}, status geral ${r.corpo.candidato?.status}` };
         }
       },
       {
-        nome: 'Mensagem do Candidato não altera o status (continua VERMELHO)',
+        nome: 'Mensagem do Candidato não altera o status (continua EM_ANALISE)',
         run: async () => {
           const r = await postJson('/candidato/' + window.__idAutomacao + '/mensagens', { autor: 'Candidato', texto: 'Oi, enviei minha ficha.' });
-          return { ok: r.status === 201 && r.corpo.candidato?.status === 'VERMELHO', detalhe: `status geral após msg do candidato: ${r.corpo.candidato?.status}` };
+          return { ok: r.status === 201 && r.corpo.candidato?.status === 'EM_ANALISE', detalhe: `status geral após msg do candidato: ${r.corpo.candidato?.status}` };
         }
       },
       {
-        nome: 'Mensagem do RH move o status para AMARELO (Em Análise)',
+        nome: 'Mensagem do RH não altera o status (continua EM_ANALISE)',
         run: async () => {
           const r = await postJson('/candidato/' + window.__idAutomacao + '/mensagens', { autor: 'RH', texto: 'Recebemos sua ficha!' });
-          return { ok: r.status === 201 && r.corpo.candidato?.status === 'AMARELO', detalhe: `status geral após msg do RH: ${r.corpo.candidato?.status}` };
+          return { ok: r.status === 201 && r.corpo.candidato?.status === 'EM_ANALISE', detalhe: `status geral após msg do RH: ${r.corpo.candidato?.status}` };
         }
       },
       {
-        nome: 'PATCH .../visualizado move VERMELHO -> AMARELO (documento novo)',
+        nome: 'PATCH .../visualizado mantém o status em EM_ANALISE (documento novo)',
         run: async () => {
           const r2 = await postJson('/candidato', fichaValida({ cpf: '111.222.333-44' }));
           window.__idVisualizado = r2.corpo.candidato?.id;
           const r = await patchJsonRh('/rh/fichas/' + window.__idVisualizado + '/documento/identidade/visualizado', {});
-          return { ok: r.status === 200 && r.corpo.candidato?.status === 'AMARELO', detalhe: `status ${r.status}, status geral ${r.corpo.candidato?.status}` };
+          return { ok: r.status === 200 && r.corpo.candidato?.status === 'EM_ANALISE', detalhe: `status ${r.status}, status geral ${r.corpo.candidato?.status}` };
         }
       },
       {
@@ -759,22 +790,22 @@
         }
       },
       {
-        nome: 'PATCH .../aceitar aprova o documento e mantém/gera AMARELO geral',
+        nome: 'PATCH .../aceitar aprova o documento e mantém o geral em EM_ANALISE',
         run: async () => {
           await enviarDocumento(window.__idAutomacao, 'identidade', pdfDeTeste('doc-aceitar.pdf'));
           const r = await patchJsonRh('/rh/fichas/' + window.__idAutomacao + '/documento/identidade/aceitar', {});
           const docOk = r.corpo.candidato?.documentos?.identidade?.status === 'VERDE';
-          return { ok: r.status === 200 && docOk && r.corpo.candidato?.status === 'AMARELO', detalhe: `status ${r.status}, documento.status ${r.corpo.candidato?.documentos?.identidade?.status}, geral ${r.corpo.candidato?.status}` };
+          return { ok: r.status === 200 && docOk && r.corpo.candidato?.status === 'EM_ANALISE', detalhe: `status ${r.status}, documento.status ${r.corpo.candidato?.documentos?.identidade?.status}, geral ${r.corpo.candidato?.status}` };
         }
       },
       {
-        nome: 'PATCH .../pendencia também move VERMELHO -> AMARELO',
+        nome: 'PATCH .../pendencia também mantém o geral em EM_ANALISE',
         run: async () => {
           const r3 = await postJson('/candidato', fichaValida({ cpf: '529.982.247-25' }));
           const idPendencia = r3.corpo.candidato?.id;
           await enviarDocumento(idPendencia, 'identidade', pdfDeTeste('doc-pendencia.pdf'));
           const r = await patchJsonRh('/rh/fichas/' + idPendencia + '/documento/identidade/pendencia', { justificativa: 'Teste automatizado' });
-          return { ok: r.status === 200 && r.corpo.candidato?.status === 'AMARELO', detalhe: `status ${r.status}, status geral ${r.corpo.candidato?.status}` };
+          return { ok: r.status === 200 && r.corpo.candidato?.status === 'EM_ANALISE', detalhe: `status ${r.status}, status geral ${r.corpo.candidato?.status}` };
         }
       },
 
@@ -902,7 +933,7 @@
         nome: 'RH aprova a ficha - libera a etapa de aceite dos contratos',
         run: async () => {
           const r = await patchJsonRh('/rh/fichas/' + window.__idAuthFicha + '/decisao', { decisao: 'APROVADO' });
-          return { ok: r.status === 200 && r.corpo.candidato?.status === 'APROVADO', detalhe: `status ${r.status}, geral ${r.corpo.candidato?.status}` };
+          return { ok: r.status === 200 && r.corpo.candidato?.status === 'PENDENTE_ASSINATURA', detalhe: `status ${r.status}, geral ${r.corpo.candidato?.status}` };
         }
       },
       {
@@ -1050,7 +1081,7 @@
             && porColuna['Aceite Contratual'] === 'Sim'
             && !!porColuna['Timestamp Aceite Contrato'] && !!porColuna['Hash Contrato']
             && porColuna['Exportado Ponto'] === 'Não'
-            && celulaStatus.fill?.fgColor?.argb === 'FFD4EDDA';
+            && celulaStatus.fill?.fgColor?.argb === 'FFD1FAE5';
           return { ok, detalhe: `${JSON.stringify(porColuna)}, fundo do status: ${celulaStatus.fill?.fgColor?.argb}` };
         }
       },

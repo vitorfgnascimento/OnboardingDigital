@@ -858,14 +858,15 @@
       { tipo: 'carteiraTrabalho',        titulo: '6. Carteira de Trabalho' }
     ];
 
-    // VERMELHO/AMARELO/VERDE são usados nos documentos individuais e no status
-    // geral antes da decisão; APROVADO/REPROVADO passam a ser o status geral
-    // da ficha (badge do topo da página) assim que o RH decide o processo.
+    // VERMELHO/AMARELO/VERDE são usados só nos documentos individuais.
+    // EM_ANALISE/PENDENTE_ASSINATURA/REPROVADO/CONTRATACAO_CONCLUIDA são os 4
+    // valores do status geral da ficha (badge do topo da página).
     const ROTULO_STATUS = {
       VERMELHO: 'PENDENTE (VERMELHO)',
       AMARELO: 'EM ANÁLISE (AMARELO)',
       VERDE: 'APROVADO (VERDE)',
-      APROVADO: 'APROVADO',
+      EM_ANALISE: 'EM ANÁLISE',
+      PENDENTE_ASSINATURA: 'PENDENTE DE ASSINATURA',
       REPROVADO: 'REPROVADO',
       CONTRATACAO_CONCLUIDA: 'CONTRATAÇÃO CONCLUÍDA'
     };
@@ -873,7 +874,8 @@
       VERMELHO: '',
       AMARELO: 'status-amarelo',
       VERDE: 'status-verde',
-      APROVADO: 'status-verde',
+      EM_ANALISE: 'status-amarelo',
+      PENDENTE_ASSINATURA: 'status-verde',
       REPROVADO: '',
       CONTRATACAO_CONCLUIDA: 'status-verde'
     };
@@ -1560,9 +1562,8 @@
           await uploadArquivo(doc.tipo, arquivosPendentes[doc.tipo]);
         }
 
-        // 6) bloqueia a ficha e habilita o chat com o RH. O status geral
-        // permanece VERMELHO (Não avaliado) - só migra para Em Análise na
-        // primeira interação do RH (ver marcarPrimeiraInteracaoRh no backend).
+        // 6) bloqueia a ficha e habilita o chat com o RH. O status geral já
+        // nasce EM_ANALISE no backend.
         bloquearFicha();
         window.history.replaceState(null, '', '?id=' + candidatoId);
         exibirPainelChat();
@@ -1595,9 +1596,9 @@
 
     function bloquearFicha() {
       // Chamada logo após o envio bem-sucedido da ficha nesta mesma sessão.
-      // O status GERAL da ficha não é alterado aqui: permanece VERMELHO (Não
-      // avaliado) até a primeira interação do RH - só os documentos já
-      // enviados aparecem como "Em Análise" a nível individual.
+      // O status GERAL da ficha não é alterado aqui: já nasceu EM_ANALISE no
+      // backend - só os documentos já enviados aparecem como "Em Análise" a
+      // nível individual.
       DOCUMENTOS.forEach((doc) => {
         const atual = candidato.documentos[doc.tipo];
         if (atual.status === 'VERDE') return; // reservista dispensado permanece VERDE
@@ -1612,7 +1613,7 @@
     // =========================================================================
     function atualizarBadgeGeral() {
       const badge = document.getElementById('badgeStatus');
-      const st = candidato ? candidato.status : 'VERMELHO';
+      const st = candidato ? candidato.status : 'EM_ANALISE';
       badge.textContent = 'STATUS: ' + ROTULO_STATUS[st];
       badge.className = 'status-badge ' + CLASSE_BADGE[st];
     }
@@ -1811,7 +1812,7 @@
 
     function renderizarSecaoContrato() {
       const secao = document.getElementById('secaoContrato');
-      if (!candidato || (candidato.status !== 'APROVADO' && candidato.status !== 'CONTRATACAO_CONCLUIDA')) {
+      if (!candidato || (candidato.status !== 'PENDENTE_ASSINATURA' && candidato.status !== 'CONTRATACAO_CONCLUIDA')) {
         secao.classList.remove('visivel');
         return;
       }

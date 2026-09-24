@@ -335,17 +335,6 @@ function aplicarRegraCpfIncluso(candidato) {
   }
 }
 
-// Move a ficha de "Não avaliado" (VERMELHO) para "Em Análise" (AMARELO) na
-// primeira interação do RH (visualizar PDF, aceitar/marcar pendência num
-// documento, ou responder no chat). Não faz nada se a ficha já saiu do
-// estado inicial - é uma transição de mão única, automática.
-function marcarPrimeiraInteracaoRh(candidato) {
-  if (candidato.status === 'VERMELHO') {
-    candidato.status = 'AMARELO';
-    return true;
-  }
-  return false;
-}
 
 // ---------------------------------------------------------------------------
 // UPLOAD DE PDF (multer)
@@ -593,7 +582,7 @@ app.post('/api/candidato', autenticarOpcional, (req, res) => {
     email,
     whatsapp,
     genero: genero || null,
-    status: 'VERMELHO',
+    status: 'EM_ANALISE',
     cpfInclusoNaIdentidade: false,
     documentos: criarDocumentosIniciais(genero),
     decisaoFinal: null,
@@ -855,15 +844,16 @@ app.get('/api/candidatos', (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// ROTA: alteração do status geral do candidato pelo RH (AMARELO ou VERDE)
+// ROTA: alteração do status geral do candidato pelo RH (EM_ANALISE ou
+// PENDENTE_ASSINATURA)
 // ---------------------------------------------------------------------------
 app.patch('/api/candidato/:id/status', (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
 
-  if (status !== 'AMARELO' && status !== 'VERDE') {
+  if (status !== 'EM_ANALISE' && status !== 'PENDENTE_ASSINATURA') {
     return res.status(400).json({
-      erro: "Status inválido. Use 'AMARELO' (Em Análise) ou 'VERDE' (Aprovado)."
+      erro: "Status inválido. Use 'EM_ANALISE' (Em Análise) ou 'PENDENTE_ASSINATURA' (Pendente de Assinatura)."
     });
   }
 
@@ -895,7 +885,7 @@ app.get('/api/rh/fichas', exigirRh, (req, res) => {
 });
 
 // Status que o RH pode atribuir a uma ficha pelo Painel de Gestão.
-const STATUS_VALIDOS_RH = ['VERMELHO', 'AMARELO', 'VERDE'];
+const STATUS_VALIDOS_RH = ['EM_ANALISE', 'PENDENTE_ASSINATURA'];
 
 // ---------------------------------------------------------------------------
 // ROTA: alteração de status de uma ficha pelo RH, com registro na trilha de
@@ -907,7 +897,7 @@ app.patch('/api/rh/fichas/:id/status', exigirRh, (req, res) => {
 
   if (!STATUS_VALIDOS_RH.includes(status)) {
     return res.status(400).json({
-      erro: "Status inválido. Use 'VERMELHO' (Pendente), 'AMARELO' (Em Análise) ou 'VERDE' (Aprovado)."
+      erro: "Status inválido. Use 'EM_ANALISE' (Em Análise) ou 'PENDENTE_ASSINATURA' (Pendente de Assinatura)."
     });
   }
 
@@ -998,8 +988,6 @@ app.post('/api/candidato/:id/mensagens', (req, res) => {
     ip: req.ip
   };
   candidato.mensagens.push(novaMensagem);
-  // Mensagem do RH conta como primeira interação; do candidato, não.
-  if (autor === 'RH') marcarPrimeiraInteracaoRh(candidato);
   candidato.atualizadoEm = novaMensagem.timestamp;
   salvarCandidatos(candidatos);
 
@@ -1057,7 +1045,6 @@ app.patch('/api/rh/fichas/:id/documento/:tipo/pendencia', exigirRh, (req, res) =
     candidato.documentos.cpf.atualizadoEm = agora;
   }
 
-  marcarPrimeiraInteracaoRh(candidato);
   candidato.atualizadoEm = agora;
   salvarCandidatos(candidatos);
 
@@ -1115,7 +1102,6 @@ app.patch('/api/rh/fichas/:id/documento/:tipo/aceitar', exigirRh, (req, res) => 
     candidato.documentos.cpf.atualizadoEm = agora;
   }
 
-  marcarPrimeiraInteracaoRh(candidato);
   candidato.atualizadoEm = agora;
   salvarCandidatos(candidatos);
 
@@ -1135,7 +1121,7 @@ app.patch('/api/rh/fichas/:id/documento/:tipo/aceitar', exigirRh, (req, res) => 
 
 // ---------------------------------------------------------------------------
 // ROTA: RH abriu/visualizou um documento (clique em "Visualizar/Baixar PDF").
-// Conta como primeira interação, mas não altera nada no documento em si.
+// Não altera nada no documento em si; apenas registra o evento na auditoria.
 // ---------------------------------------------------------------------------
 app.patch('/api/rh/fichas/:id/documento/:tipo/visualizado', exigirRh, (req, res) => {
   const { id, tipo } = req.params;
@@ -1151,22 +1137,16 @@ app.patch('/api/rh/fichas/:id/documento/:tipo/visualizado', exigirRh, (req, res)
     return res.status(404).json({ erro: 'Candidato não encontrado.' });
   }
 
-  const mudou = marcarPrimeiraInteracaoRh(candidato);
+  const agora = new Date().toISOString();
 
-  if (mudou) {
-    const agora = new Date().toISOString();
-    candidato.atualizadoEm = agora;
-    salvarCandidatos(candidatos);
-
-    registrarEventoAuditoria({
-      id: gerarId(),
-      tipoEvento: 'documento_visualizado',
-      candidatoId: id,
-      documentoTipo: tipo,
-      timestamp: agora,
-      ip: req.ip
-    });
-  }
+  registrarEventoAuditoria({
+    id: gerarId(),
+    tipoEvento: 'documento_visualizado',
+    candidatoId: id,
+    documentoTipo: tipo,
+    timestamp: agora,
+    ip: req.ip
+  });
 
   return res.status(200).json({ mensagem: 'ok', candidato });
 });
@@ -1199,9 +1179,10 @@ app.patch('/api/rh/fichas/:id/decisao', exigirRh, (req, res) => {
   candidato.decisaoFinal = decisao;
   candidato.decisaoFinalEm = agora;
   // O status geral da ficha passa a refletir definitivamente a decisão: a
-  // partir daqui ela sai da aba "Em Análise" e passa a existir exclusivamente
-  // em "Aprovados" ou "Reprovados".
-  candidato.status = decisao;
+  // partir daqui ela sai de "Em Análise" e passa a existir exclusivamente em
+  // "Pendente de Assinatura" (aprovado, aguardando aceite/assinatura do
+  // contrato) ou "Reprovado".
+  candidato.status = decisao === 'APROVADO' ? 'PENDENTE_ASSINATURA' : 'REPROVADO';
   candidato.atualizadoEm = agora;
   salvarCandidatos(candidatos);
 
@@ -1225,11 +1206,19 @@ app.patch('/api/rh/fichas/:id/decisao', exigirRh, (req, res) => {
 
 // Rótulos do status (documento/ficha em análise) usados no relatório exportado.
 const ROTULO_STATUS_CSV = {
-  VERMELHO: 'NÃO AVALIADO',
-  AMARELO: 'EM ANÁLISE',
-  APROVADO: 'APROVADO',
+  EM_ANALISE: 'EM ANÁLISE',
+  PENDENTE_ASSINATURA: 'PENDENTE DE ASSINATURA',
   REPROVADO: 'REPROVADO',
   CONTRATACAO_CONCLUIDA: 'CONTRATAÇÃO CONCLUÍDA'
+};
+
+// Rótulos do status a nível de documento individual (VERMELHO/AMARELO/VERDE
+// - independente do status geral da ficha), usados apenas para o Certificado
+// de Reservista no relatório.
+const ROTULO_STATUS_DOCUMENTO = {
+  VERMELHO: 'PENDENTE',
+  AMARELO: 'EM ANÁLISE',
+  VERDE: 'APROVADO'
 };
 
 // Rótulo textual do Certificado de Reservista para o relatório: segue a
@@ -1237,7 +1226,7 @@ const ROTULO_STATUS_CSV = {
 function rotuloReservistaRelatorio(candidato) {
   if (candidato.genero !== 'Masculino') return 'Não exigido';
   const status = candidato.documentos.reservista?.status;
-  return ROTULO_STATUS_CSV[status] || status || '';
+  return ROTULO_STATUS_DOCUMENTO[status] || status || '';
 }
 
 // Resumo compacto do status dos 6 documentos obrigatórios (quantos já foram
@@ -1315,10 +1304,10 @@ const ARQUIVO_PLANILHA_MESTRE = path.join(__dirname, 'relatorio_geral_admissoes.
 // calculado no momento da geração (o arquivo é sempre recriado do zero, então
 // não há necessidade de uma regra dinâmica do Excel).
 const ESTILO_STATUS_PLANILHA = {
-  'CONTRATAÇÃO CONCLUÍDA': { fundo: 'FFD4EDDA', texto: 'FF155724' },
-  APROVADO: { fundo: 'FFD4EDDA', texto: 'FF155724' },
-  'EM ANÁLISE': { fundo: 'FFFFF3CD', texto: 'FF856404' },
-  REPROVADO: { fundo: 'FFF8D7DA', texto: 'FF721C24' }
+  'CONTRATAÇÃO CONCLUÍDA': { fundo: 'FFD1FAE5', texto: 'FF065F46' },
+  'PENDENTE DE ASSINATURA': { fundo: 'FFFEF3C7', texto: 'FF92400E' },
+  'EM ANÁLISE': { fundo: 'FFDBEAFE', texto: 'FF1E40AF' },
+  REPROVADO: { fundo: 'FFFEE2E2', texto: 'FF991B1B' }
 };
 
 const BORDA_FINA_PLANILHA = {
@@ -1414,6 +1403,202 @@ app.get('/api/rh/exportar-relatorio', exigirRh, async (req, res) => {
   } catch (erro) {
     console.error('Falha ao exportar a planilha mestre:', erro.message);
     return res.status(500).json({ erro: 'Falha ao gerar o relatório em Excel.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DASHBOARD DE ADMISSÕES - filtros compartilhados entre o painel visual
+// (public/rh.html) e o relatório em PDF gerado abaixo, para que o PDF
+// exportado sempre reflita exatamente o que o RH está vendo na tela.
+// ---------------------------------------------------------------------------
+
+// Aplica os mesmos filtros do painel (período de submissão, status e busca
+// por nome/CPF) sobre a lista de candidatos.
+function filtrarCandidatosParaDashboard(candidatos, query = {}) {
+  let resultado = candidatos;
+  const { dataInicio, dataFim, status, busca } = query;
+
+  if (status) {
+    resultado = resultado.filter((c) => c.status === status);
+  }
+
+  if (dataInicio) {
+    const inicio = new Date(`${dataInicio}T00:00:00`);
+    resultado = resultado.filter((c) => new Date(c.criadoEm) >= inicio);
+  }
+
+  if (dataFim) {
+    const fim = new Date(`${dataFim}T23:59:59`);
+    resultado = resultado.filter((c) => new Date(c.criadoEm) <= fim);
+  }
+
+  if (busca) {
+    const termo = String(busca).trim().toLowerCase();
+    const termoDigitos = termo.replace(/\D/g, '');
+    resultado = resultado.filter((c) => {
+      const nome = (c.nomeCompleto || '').toLowerCase();
+      const cpfDigitos = (c.cpf || '').replace(/\D/g, '');
+      return nome.includes(termo) || (termoDigitos.length > 0 && cpfDigitos.includes(termoDigitos));
+    });
+  }
+
+  return resultado;
+}
+
+// Calcula os KPIs consolidados (contagens, percentuais e taxa de adesão por
+// etapa da jornada) sobre um conjunto de candidatos já filtrado. Os quatro
+// buckets de status (em análise/pendente de assinatura/reprovadas/concluídas)
+// são mutuamente exclusivos e somam o total.
+function calcularKpisDashboard(candidatos) {
+  const total = candidatos.length;
+  const percentual = (valor) => (total === 0 ? 0 : Math.round((valor / total) * 1000) / 10);
+
+  const contratacoesConcluidas = candidatos.filter((c) => c.status === 'CONTRATACAO_CONCLUIDA').length;
+  const emAnalise = candidatos.filter((c) => c.status === 'EM_ANALISE').length;
+  const pendenteAssinatura = candidatos.filter((c) => c.status === 'PENDENTE_ASSINATURA').length;
+  const reprovadas = candidatos.filter((c) => c.status === 'REPROVADO').length;
+
+  const comLgpd = candidatos.filter((c) => c.consentimentoFichaLGPD?.aceito).length;
+  const comAceiteContrato = candidatos.filter((c) => c.contrato?.assinaturaConcluida).length;
+
+  return {
+    total,
+    contratacoesConcluidas, percentualContratacoesConcluidas: percentual(contratacoesConcluidas),
+    emAnalise, percentualEmAnalise: percentual(emAnalise),
+    pendenteAssinatura, percentualPendenteAssinatura: percentual(pendenteAssinatura),
+    reprovadas, percentualReprovadas: percentual(reprovadas),
+    etapaFicha: total === 0 ? 0 : 100,
+    etapaLgpd: percentual(comLgpd),
+    etapaAceiteContrato: percentual(comAceiteContrato)
+  };
+}
+
+// ---------------------------------------------------------------------------
+// ROTA: relatório visual do Dashboard de Admissões em PDF (A4 paisagem),
+// respeitando os mesmos filtros (período/status/busca) aplicados na tela.
+// ---------------------------------------------------------------------------
+app.get('/api/relatorio/dashboard-pdf', exigirRh, (req, res) => {
+  try {
+    const candidatosFiltrados = filtrarCandidatosParaDashboard(lerCandidatos(), req.query);
+    const kpis = calcularKpisDashboard(candidatosFiltrados);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="dashboard_admissoes.pdf"');
+
+    const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape' });
+    doc.pipe(res);
+
+    const larguraUtil = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+
+    // Cabeçalho corporativo
+    doc.rect(doc.page.margins.left, doc.page.margins.top, larguraUtil, 55).fill('#005623');
+    doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(18)
+      .text('Dashboard de Admissões', doc.page.margins.left + 15, doc.page.margins.top + 10);
+    doc.font('Helvetica').fontSize(9)
+      .text('Sistema de Onboarding Digital & Conformidade Trabalhista', doc.page.margins.left + 15, doc.page.margins.top + 34);
+    doc.font('Helvetica-Bold').fontSize(9)
+      .text(`Gerado em: ${formatarDataBr(new Date().toISOString())}`, doc.page.margins.left, doc.page.margins.top + 10, { width: larguraUtil - 15, align: 'right' });
+    doc.font('Helvetica').fontSize(9)
+      .text(`Registros no filtro: ${kpis.total}`, doc.page.margins.left, doc.page.margins.top + 34, { width: larguraUtil - 15, align: 'right' });
+
+    doc.y = doc.page.margins.top + 70;
+
+    // Blocos de KPI
+    const blocos = [
+      { rotulo: 'Total de Admissões', valor: String(kpis.total), destaque: '#1a252f' },
+      { rotulo: 'Contratações Concluídas', valor: `${kpis.contratacoesConcluidas} (${kpis.percentualContratacoesConcluidas}%)`, destaque: '#10B981' },
+      { rotulo: 'Em Análise', valor: `${kpis.emAnalise} (${kpis.percentualEmAnalise}%)`, destaque: '#3B82F6' },
+      { rotulo: 'Pendente de Assinatura', valor: `${kpis.pendenteAssinatura} (${kpis.percentualPendenteAssinatura}%)`, destaque: '#F59E0B' },
+      { rotulo: 'Recusadas / Reprovadas', valor: `${kpis.reprovadas} (${kpis.percentualReprovadas}%)`, destaque: '#EF4444' }
+    ];
+
+    const espacamento = 10;
+    const larguraBloco = (larguraUtil - espacamento * (blocos.length - 1)) / blocos.length;
+    const yBlocos = doc.y;
+    const alturaBloco = 55;
+
+    blocos.forEach((bloco, indice) => {
+      const x = doc.page.margins.left + indice * (larguraBloco + espacamento);
+      doc.lineWidth(1).rect(x, yBlocos, larguraBloco, alturaBloco).stroke('#cccccc');
+      doc.rect(x, yBlocos, 4, alturaBloco).fill(bloco.destaque);
+      doc.fillColor('#6c757d').font('Helvetica-Bold').fontSize(8)
+        .text(bloco.rotulo.toUpperCase(), x + 10, yBlocos + 8, { width: larguraBloco - 16 });
+      doc.fillColor('#2c3e50').font('Helvetica-Bold').fontSize(14)
+        .text(bloco.valor, x + 10, yBlocos + 26, { width: larguraBloco - 16 });
+    });
+
+    doc.y = yBlocos + alturaBloco + 22;
+
+    // Taxa de adesão por etapa
+    doc.fillColor('#1a252f').font('Helvetica-Bold').fontSize(11).text('Taxa de Adesão por Etapa', doc.page.margins.left, doc.y);
+    doc.moveDown(0.3);
+    doc.font('Helvetica').fontSize(9).fillColor('#333333')
+      .text(`Ficha: ${kpis.etapaFicha}%    LGPD: ${kpis.etapaLgpd}%    Aceite de Contrato: ${kpis.etapaAceiteContrato}%`, doc.page.margins.left);
+
+    doc.moveDown(1.2);
+
+    // Tabela analítica dos candidatos filtrados
+    doc.fillColor('#1a252f').font('Helvetica-Bold').fontSize(11).text('Candidatos no Filtro Selecionado', doc.page.margins.left);
+    doc.moveDown(0.4);
+
+    const colunas = [
+      { titulo: 'Nome Completo', largura: 0.24 },
+      { titulo: 'CPF', largura: 0.14 },
+      { titulo: 'Status Atual', largura: 0.20 },
+      { titulo: 'Data de Submissão', largura: 0.16 },
+      { titulo: 'Aceite Contrato', largura: 0.13 },
+      { titulo: 'Exportado Ponto', largura: 0.13 }
+    ];
+    const xColunas = [];
+    let acumulado = doc.page.margins.left;
+    colunas.forEach((coluna) => { xColunas.push(acumulado); acumulado += larguraUtil * coluna.largura; });
+
+    function desenharCabecalhoTabela() {
+      const yCabecalho = doc.y;
+      doc.rect(doc.page.margins.left, yCabecalho, larguraUtil, 20).fill('#005623');
+      doc.fillColor('#ffffff').font('Helvetica-Bold').fontSize(8);
+      colunas.forEach((coluna, indice) => {
+        doc.text(coluna.titulo, xColunas[indice] + 4, yCabecalho + 6, { width: larguraUtil * coluna.largura - 8 });
+      });
+      doc.y = yCabecalho + 20;
+    }
+
+    desenharCabecalhoTabela();
+    doc.font('Helvetica').fontSize(8).fillColor('#000000');
+
+    candidatosFiltrados.forEach((c, indice) => {
+      if (doc.y > doc.page.height - doc.page.margins.bottom - 20) {
+        doc.addPage();
+        desenharCabecalhoTabela();
+        doc.font('Helvetica').fontSize(8).fillColor('#000000');
+      }
+
+      const yLinha = doc.y;
+      if (indice % 2 === 1) {
+        doc.rect(doc.page.margins.left, yLinha, larguraUtil, 18).fill('#f4f6f9');
+      }
+
+      const statusTexto = ROTULO_STATUS_CSV[c.status] || c.status || '';
+      const aceiteTexto = c.contrato?.assinaturaConcluida ? 'Sim' : 'Não';
+      const pontoTexto = c.integracaoPonto?.exportado ? 'Sim' : 'Não';
+      const valores = [c.nomeCompleto, c.cpf, statusTexto, formatarDataBr(c.criadoEm), aceiteTexto, pontoTexto];
+
+      doc.fillColor('#000000').font('Helvetica').fontSize(8);
+      valores.forEach((valor, indiceColuna) => {
+        doc.text(String(valor || '-'), xColunas[indiceColuna] + 4, yLinha + 5, { width: larguraUtil * colunas[indiceColuna].largura - 8 });
+      });
+      doc.y = yLinha + 18;
+    });
+
+    if (candidatosFiltrados.length === 0) {
+      doc.font('Helvetica-Oblique').fontSize(9).fillColor('#6c757d')
+        .text('Nenhum candidato encontrado para os filtros selecionados.', doc.page.margins.left, doc.y + 6);
+    }
+
+    doc.end();
+  } catch (erro) {
+    console.error('Falha ao gerar o PDF do dashboard:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao gerar o relatório em PDF.' });
   }
 });
 
@@ -1683,7 +1868,7 @@ app.post('/api/candidato/:id/contrato/:tipo/aceite', async (req, res) => {
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
-  if (candidato.status !== 'APROVADO') {
+  if (candidato.status !== 'PENDENTE_ASSINATURA') {
     return res.status(400).json({ erro: 'O aceite dos documentos só está disponível para fichas aprovadas e ainda não contratadas.' });
   }
 
@@ -1723,7 +1908,7 @@ app.patch('/api/rh/fichas/:id/contrato/:tipo/aceitar', exigirRh, async (req, res
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
-  if (candidato.status !== 'APROVADO') {
+  if (candidato.status !== 'PENDENTE_ASSINATURA') {
     return res.status(400).json({ erro: 'O aceite dos documentos só está disponível para fichas aprovadas e ainda não contratadas.' });
   }
 
@@ -1767,7 +1952,7 @@ app.post('/api/candidato/:id/contrato/concluir', (req, res) => {
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
-  if (candidato.status !== 'APROVADO') {
+  if (candidato.status !== 'PENDENTE_ASSINATURA') {
     return res.status(400).json({ erro: 'A assinatura digital só está disponível para fichas aprovadas e ainda não contratadas.' });
   }
 
@@ -1819,7 +2004,7 @@ app.patch('/api/rh/fichas/:id/contrato/validar', exigirRh, (req, res) => {
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
-  if (candidato.status !== 'APROVADO') {
+  if (candidato.status !== 'PENDENTE_ASSINATURA') {
     return res.status(400).json({ erro: 'Só é possível validar a contratação de uma ficha aprovada.' });
   }
   if (!candidato.contrato.assinaturaConcluida) {

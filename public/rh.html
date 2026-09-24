@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Onboarding Digital - Painel do RH</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
     :root {
       /* Identidade visual: Verde Intelbras como cor principal da jornada */
@@ -15,6 +16,11 @@
       --cinza-borda: #cccccc;
       --cinza-barra: #f8f9fa;
       --texto: #2c3e50;
+      /* Paleta dos 4 estados da ficha (status geral do candidato) */
+      --status-em-analise: #3B82F6;
+      --status-pendente-assinatura: #F59E0B;
+      --status-concluida: #10B981;
+      --status-reprovado: #EF4444;
     }
     * { box-sizing: border-box; }
     body {
@@ -71,34 +77,112 @@
     }
     .btn-exportar:hover { background-color: rgba(0, 163, 53, 0.08); }
 
-    /* --- CARDS DE RESUMO ESTATÍSTICO --- */
-    .cards-resumo {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 15px;
-      margin: 25px 0;
+    /* --- ABAS DO PAINEL (Gestão de Candidatos / Estatísticas & Relatórios) --- */
+    .abas-painel {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
     }
-    .card {
+    .btn-aba {
+      background: #ffffff;
       border: 1px solid var(--cinza-borda);
-      border-left: 5px solid var(--verde-intelbras);
+      color: var(--texto);
+      padding: 10px 18px;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+    }
+    .btn-aba:hover { border-color: var(--verde-intelbras); }
+    .btn-aba.ativo {
+      background-color: var(--verde-intelbras);
+      border-color: var(--verde-intelbras);
+      color: #ffffff;
+    }
+    .secao-aba[hidden] { display: none; }
+
+    /* --- DASHBOARD DE ADMISSÕES --- */
+    .dashboard-admissoes {
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #e6e9ee;
+    }
+    .dash-filtros {
+      display: flex;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin: 14px 0 20px;
+    }
+    .dash-filtros label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #6c757d;
+    }
+    .dash-filtros input,
+    .dash-filtros select {
+      padding: 8px 10px;
+      border: 1px solid var(--cinza-borda);
+      border-radius: 5px;
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .dash-kpis {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+    .dash-kpi-card {
+      border: 1px solid var(--cinza-borda);
+      border-left: 5px solid #1a252f;
       border-radius: 8px;
-      padding: 16px 18px;
+      padding: 14px 16px;
       background: var(--cinza-barra);
     }
-    .card-total { border-left-color: #1a252f; }
-    .card-pendente { border-left-color: var(--vermelho); }
-    .card-analise { border-left-color: var(--amarelo); }
-    .card-aprovado { border-left-color: var(--verde); }
-    .card-rotulo {
-      font-size: 13px;
+    .dash-kpi-concluidas { border-left-color: var(--status-concluida); }
+    .dash-kpi-em-analise { border-left-color: var(--status-em-analise); }
+    .dash-kpi-pendente-assinatura { border-left-color: var(--status-pendente-assinatura); }
+    .dash-kpi-reprovadas { border-left-color: var(--status-reprovado); }
+    .dash-kpi-rotulo {
+      font-size: 12px;
       color: #6c757d;
       font-weight: 600;
       margin-bottom: 6px;
     }
-    .card-valor {
-      font-size: 28px;
+    .dash-kpi-valor {
+      font-size: 24px;
       font-weight: bold;
       color: var(--texto);
+    }
+    .dash-kpi-percentual {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--verde-intelbras-escuro);
+      margin-top: 2px;
+    }
+    .dash-graficos {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .dash-grafico-wrap {
+      border: 1px solid var(--cinza-borda);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .dash-grafico-wrap h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      color: #1a252f;
+    }
+    @media (max-width: 860px) {
+      .dash-kpis { grid-template-columns: repeat(2, 1fr); }
+      .dash-graficos { grid-template-columns: 1fr; }
     }
 
     /* --- TABELA DE GESTÃO --- */
@@ -132,9 +216,10 @@
       color: #ffffff;
       white-space: nowrap;
     }
-    .badge-vermelho { background-color: var(--vermelho); }
-    .badge-amarelo  { background-color: var(--amarelo); color: #212529; }
-    .badge-verde    { background-color: var(--verde); }
+    .badge-em-analise          { background-color: var(--status-em-analise); }
+    .badge-pendente-assinatura { background-color: var(--status-pendente-assinatura); color: #212529; }
+    .badge-concluida           { background-color: var(--status-concluida); }
+    .badge-reprovado           { background-color: var(--status-reprovado); }
 
     .acoes {
       display: flex;
@@ -541,18 +626,6 @@
       color: #ffffff;
     }
 
-    /* --- SEPARADOR DE GRUPO (novos/não avaliados x já avaliados) --- */
-    .linha-grupo td {
-      padding: 14px 10px 6px;
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-      color: #6c757d;
-      border-bottom: 2px solid var(--cinza-borda);
-    }
-    .linha-grupo-novos td { color: var(--verde-intelbras-escuro); }
-
     /* --- SETA INDICADORA DE EXPANSÃO --- */
     .seta-expandir {
       display: inline-block;
@@ -560,10 +633,6 @@
       transition: transform 0.2s ease;
     }
     .btn-documentos[aria-expanded="true"] .seta-expandir { transform: rotate(180deg); }
-
-    @media (max-width: 700px) {
-      .cards-resumo { grid-template-columns: repeat(2, 1fr); }
-    }
 
     /* --- IMPRESSÃO / PDF DA FICHA INDIVIDUAL --- */
     .secao-impressao {
@@ -591,67 +660,127 @@
       <span class="area-sessao" id="areaSessaoRh"></span>
       <a class="link-navegacao" href="/index.html">&larr; Ficha do Candidato</a>
     </div>
-    <div class="barra-topo">
-      <h2>Painel do RH - Processos Admissionais</h2>
-      <div class="acoes-topo">
-        <button class="btn-exportar" id="btnExportarCsv" type="button">Exportar Relatório (Excel)</button>
-        <button class="btn-atualizar" id="btnAtualizar" type="button">Atualizar lista</button>
-      </div>
+
+    <!-- ABAS DO PAINEL -->
+    <div class="abas-painel" role="tablist" aria-label="Seções do painel do RH">
+      <button type="button" class="btn-aba ativo" data-aba="gestao" role="tab" aria-selected="true">Gestão de Candidatos</button>
+      <button type="button" class="btn-aba" data-aba="estatisticas" role="tab" aria-selected="false">Estatísticas &amp; Relatórios</button>
     </div>
 
-    <!-- CARDS DE RESUMO ESTATÍSTICO -->
-    <div class="cards-resumo" role="group" aria-label="Resumo estatístico das fichas">
-      <div class="card card-total">
-        <div class="card-rotulo">Total de Fichas</div>
-        <div class="card-valor" id="cardTotal">0</div>
+    <!-- ABA: GESTÃO DE CANDIDATOS -->
+    <section class="secao-aba" id="abaGestao" aria-label="Gestão de Candidatos">
+      <div class="barra-topo">
+        <h2>Painel do RH - Processos Admissionais</h2>
+        <div class="acoes-topo">
+          <button class="btn-atualizar" id="btnAtualizar" type="button">Atualizar lista</button>
+        </div>
       </div>
-      <div class="card card-pendente">
-        <div class="card-rotulo">Não avaliados</div>
-        <div class="card-valor" id="cardPendentes">0</div>
-      </div>
-      <div class="card card-analise">
-        <div class="card-rotulo">Em Análise</div>
-        <div class="card-valor" id="cardAnalise">0</div>
-      </div>
-      <div class="card card-aprovado">
-        <div class="card-rotulo">Aprovados</div>
-        <div class="card-valor" id="cardAprovados">0</div>
-      </div>
-    </div>
 
-    <!-- BUSCA POR NOME OU CPF -->
-    <div class="barra-busca">
-      <input type="search" id="campoBusca" class="campo-busca" placeholder="Buscar por nome ou CPF..." aria-label="Buscar candidato por nome ou CPF">
-    </div>
+      <!-- BUSCA POR NOME OU CPF -->
+      <div class="barra-busca">
+        <input type="search" id="campoBusca" class="campo-busca" placeholder="Buscar por nome ou CPF..." aria-label="Buscar candidato por nome ou CPF">
+      </div>
 
-    <!-- FILTROS POR DECISÃO -->
-    <div class="barra-filtros" role="group" aria-label="Filtrar fichas por status/decisão">
-      <button type="button" class="btn-filtro ativo" data-filtro="TODOS">Todos</button>
-      <button type="button" class="btn-filtro" data-filtro="PENDENTE">Não avaliados</button>
-      <button type="button" class="btn-filtro" data-filtro="EM_ANALISE">Em Análise</button>
-      <button type="button" class="btn-filtro" data-filtro="APROVADO">Aprovados</button>
-      <button type="button" class="btn-filtro" data-filtro="REPROVADO">Reprovados</button>
-      <button type="button" class="btn-filtro" data-filtro="CONTRATACAO_CONCLUIDA">Contratação Concluída</button>
-    </div>
+      <!-- FILTROS POR STATUS -->
+      <div class="barra-filtros" role="group" aria-label="Filtrar fichas por status">
+        <button type="button" class="btn-filtro ativo" data-filtro="TODOS">Todos</button>
+        <button type="button" class="btn-filtro" data-filtro="EM_ANALISE">Em Análise</button>
+        <button type="button" class="btn-filtro" data-filtro="PENDENTE_ASSINATURA">Pendente de Assinatura</button>
+        <button type="button" class="btn-filtro" data-filtro="REPROVADO">Reprovados</button>
+        <button type="button" class="btn-filtro" data-filtro="CONTRATACAO_CONCLUIDA">Contratação Concluída</button>
+      </div>
 
-    <!-- TABELA DE GESTÃO DAS FICHAS -->
-    <table>
-      <caption class="visually-hidden" style="text-align:left; padding-bottom:8px; font-weight:600;">
-        Fichas de candidatos recebidas
-      </caption>
-      <thead>
-        <tr>
-          <th scope="col">Nome do Candidato</th>
-          <th scope="col">CPF</th>
-          <th scope="col">Data de Envio</th>
-          <th scope="col">Status Atual</th>
-          <th scope="col">Ações</th>
-        </tr>
-      </thead>
-      <tbody id="corpoTabela">
-        <tr><td colspan="5" class="vazio">Carregando fichas...</td></tr>
-      </tbody>
-    </table>
+      <!-- TABELA DE GESTÃO DAS FICHAS -->
+      <table>
+        <caption class="visually-hidden" style="text-align:left; padding-bottom:8px; font-weight:600;">
+          Fichas de candidatos recebidas
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Nome do Candidato</th>
+            <th scope="col">CPF</th>
+            <th scope="col">Data de Envio</th>
+            <th scope="col">Status Atual</th>
+            <th scope="col">Ações</th>
+          </tr>
+        </thead>
+        <tbody id="corpoTabela">
+          <tr><td colspan="5" class="vazio">Carregando fichas...</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ABA: ESTATÍSTICAS & RELATÓRIOS -->
+    <section class="secao-aba" id="abaEstatisticas" aria-label="Estatísticas e Relatórios" hidden>
+      <div class="dashboard-admissoes" aria-label="Dashboard de Admissões">
+        <div class="barra-topo">
+          <h2>Dashboard de Admissões</h2>
+          <div class="acoes-topo">
+            <button class="btn-exportar" id="btnExportarCsv" type="button">Exportar Relatório (Excel)</button>
+            <button class="btn-exportar" id="btnExportarDashboardPdf" type="button">Exportar Dashboard (PDF)</button>
+          </div>
+        </div>
+
+        <div class="dash-filtros" role="group" aria-label="Filtros do dashboard">
+          <label for="dashDataInicio">Data Início
+            <input type="date" id="dashDataInicio">
+          </label>
+          <label for="dashDataFim">Data Fim
+            <input type="date" id="dashDataFim">
+          </label>
+          <label for="dashStatus">Status
+            <select id="dashStatus">
+              <option value="">Todas</option>
+              <option value="EM_ANALISE">Em Análise (EM_ANALISE)</option>
+              <option value="PENDENTE_ASSINATURA">Pendente de Assinatura (PENDENTE_ASSINATURA)</option>
+              <option value="CONTRATACAO_CONCLUIDA">Contratação Concluída</option>
+              <option value="REPROVADO">Reprovado</option>
+            </select>
+          </label>
+          <label for="dashBusca">Buscar por Nome/CPF
+            <input type="search" id="dashBusca" placeholder="Nome ou CPF...">
+          </label>
+        </div>
+
+        <div class="dash-kpis">
+          <div class="dash-kpi-card">
+            <div class="dash-kpi-rotulo">Total de Admissões</div>
+            <div class="dash-kpi-valor" id="dashKpiTotal">0</div>
+          </div>
+          <div class="dash-kpi-card dash-kpi-concluidas">
+            <div class="dash-kpi-rotulo">Contratações Concluídas</div>
+            <div class="dash-kpi-valor" id="dashKpiConcluidas">0</div>
+            <div class="dash-kpi-percentual" id="dashKpiConcluidasPct">0%</div>
+          </div>
+          <div class="dash-kpi-card dash-kpi-em-analise">
+            <div class="dash-kpi-rotulo">Em Análise</div>
+            <div class="dash-kpi-valor" id="dashKpiEmAnalise">0</div>
+            <div class="dash-kpi-percentual" id="dashKpiEmAnalisePct">0%</div>
+          </div>
+          <div class="dash-kpi-card dash-kpi-pendente-assinatura">
+            <div class="dash-kpi-rotulo">Pendente de Assinatura</div>
+            <div class="dash-kpi-valor" id="dashKpiPendenteAssinatura">0</div>
+            <div class="dash-kpi-percentual" id="dashKpiPendenteAssinaturaPct">0%</div>
+          </div>
+          <div class="dash-kpi-card dash-kpi-reprovadas">
+            <div class="dash-kpi-rotulo">Recusadas / Reprovadas</div>
+            <div class="dash-kpi-valor" id="dashKpiReprovadas">0</div>
+            <div class="dash-kpi-percentual" id="dashKpiReprovadasPct">0%</div>
+          </div>
+        </div>
+
+        <div class="dash-graficos">
+          <div class="dash-grafico-wrap">
+            <h3>Distribuição por Status</h3>
+            <canvas id="chartStatusDistribuicao" height="220"></canvas>
+          </div>
+          <div class="dash-grafico-wrap">
+            <h3>Taxa de Adesão por Etapa</h3>
+            <canvas id="chartAdesaoEtapas" height="220"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 
   <script>
@@ -698,22 +827,20 @@
       }
     }
 
-    // Mapa de status para a classe visual do badge/botão correspondente.
-    // VERMELHO/AMARELO são estados intermediários da ficha (Não avaliado/Em
-    // Análise); APROVADO/REPROVADO são os estados finais e definitivos,
+    // Mapa de status para a classe visual do badge correspondente. EM_ANALISE
+    // é o estado inicial/intermediário da ficha; PENDENTE_ASSINATURA,
+    // REPROVADO e CONTRATACAO_CONCLUIDA são estados finais e definitivos,
     // atribuídos ao status geral da ficha assim que o RH decide o processo.
     const CLASSE_BADGE = {
-      VERMELHO: 'badge-vermelho',
-      AMARELO: 'badge-amarelo',
-      APROVADO: 'badge-verde',
-      REPROVADO: 'badge-vermelho',
-      CONTRATACAO_CONCLUIDA: 'badge-verde'
+      EM_ANALISE: 'badge-em-analise',
+      PENDENTE_ASSINATURA: 'badge-pendente-assinatura',
+      REPROVADO: 'badge-reprovado',
+      CONTRATACAO_CONCLUIDA: 'badge-concluida'
     };
 
     const ROTULO_STATUS = {
-      VERMELHO: 'NÃO AVALIADO',
-      AMARELO: 'EM ANÁLISE',
-      APROVADO: 'APROVADO',
+      EM_ANALISE: 'EM ANÁLISE',
+      PENDENTE_ASSINATURA: 'PENDENTE DE ASSINATURA',
       REPROVADO: 'REPROVADO',
       CONTRATACAO_CONCLUIDA: 'CONTRATAÇÃO CONCLUÍDA'
     };
@@ -851,7 +978,7 @@
     // Baixar PDF", "Aceitar Documento" e o indicador "Assinado via Aceite
     // Digital", um por documento da lista.
     function montarSecaoContrato(ficha) {
-      if (ficha.status !== 'APROVADO' && ficha.status !== 'CONTRATACAO_CONCLUIDA') return '';
+      if (ficha.status !== 'PENDENTE_ASSINATURA' && ficha.status !== 'CONTRATACAO_CONCLUIDA') return '';
 
       const contrato = ficha.contrato || {};
 
@@ -1030,31 +1157,143 @@
       }
     }
 
-    // Atualiza os cards de resumo estatístico a partir da lista de fichas.
-    function atualizarCardsResumo(fichas) {
-      const total = fichas.length;
-      const pendentes = fichas.filter((f) => f.status === 'VERMELHO').length;
-      const emAnalise = fichas.filter((f) => f.status === 'AMARELO').length;
-      const aprovados = fichas.filter((f) => f.status === 'APROVADO').length;
+    // =========================================================================
+    // DASHBOARD DE ADMISSÕES: filtros próprios (período, status, busca),
+    // independentes do filtro/busca da tabela de gestão abaixo - controlam só
+    // os cards de KPI e os gráficos.
+    // =========================================================================
+    const filtrosDashboard = { dataInicio: '', dataFim: '', status: '', busca: '' };
 
-      document.getElementById('cardTotal').textContent = total;
-      document.getElementById('cardPendentes').textContent = pendentes;
-      document.getElementById('cardAnalise').textContent = emAnalise;
-      document.getElementById('cardAprovados').textContent = aprovados;
+    function aplicarFiltrosDashboard(fichas) {
+      let resultado = fichas;
+
+      if (filtrosDashboard.status) {
+        resultado = resultado.filter((f) => f.status === filtrosDashboard.status);
+      }
+      if (filtrosDashboard.dataInicio) {
+        const inicio = new Date(`${filtrosDashboard.dataInicio}T00:00:00`);
+        resultado = resultado.filter((f) => new Date(f.criadoEm) >= inicio);
+      }
+      if (filtrosDashboard.dataFim) {
+        const fim = new Date(`${filtrosDashboard.dataFim}T23:59:59`);
+        resultado = resultado.filter((f) => new Date(f.criadoEm) <= fim);
+      }
+      if (filtrosDashboard.busca) {
+        const termo = filtrosDashboard.busca.trim().toLowerCase();
+        const termoDigitos = termo.replace(/\D/g, '');
+        resultado = resultado.filter((f) => {
+          const nome = (f.nomeCompleto || '').toLowerCase();
+          const cpfDigitos = (f.cpf || '').replace(/\D/g, '');
+          return nome.includes(termo) || (termoDigitos.length > 0 && cpfDigitos.includes(termoDigitos));
+        });
+      }
+
+      return resultado;
+    }
+
+    // KPIs consolidados (contagens, percentuais e taxa de adesão por etapa da
+    // jornada) - os quatro buckets de status (em análise/pendente de
+    // assinatura/reprovadas/concluídas) são mutuamente exclusivos e somam o total.
+    function calcularKpisDashboard(fichas) {
+      const total = fichas.length;
+      const percentual = (valor) => (total === 0 ? 0 : Math.round((valor / total) * 1000) / 10);
+
+      const concluidas = fichas.filter((f) => f.status === 'CONTRATACAO_CONCLUIDA').length;
+      const emAnalise = fichas.filter((f) => f.status === 'EM_ANALISE').length;
+      const pendenteAssinatura = fichas.filter((f) => f.status === 'PENDENTE_ASSINATURA').length;
+      const reprovadas = fichas.filter((f) => f.status === 'REPROVADO').length;
+
+      const comAceite = fichas.filter((f) => f.contrato?.assinaturaConcluida).length;
+
+      return {
+        total,
+        concluidas, pctConcluidas: percentual(concluidas),
+        emAnalise, pctEmAnalise: percentual(emAnalise),
+        pendenteAssinatura, pctPendenteAssinatura: percentual(pendenteAssinatura),
+        reprovadas, pctReprovadas: percentual(reprovadas),
+        etapaAceiteContrato: percentual(comAceite)
+      };
+    }
+
+    const CORES_STATUS_DASHBOARD = {
+      EM_ANALISE: '#3B82F6', PENDENTE_ASSINATURA: '#F59E0B',
+      REPROVADO: '#EF4444', CONTRATACAO_CONCLUIDA: '#10B981'
+    };
+
+    let chartStatusDistribuicao = null;
+    let chartAdesaoEtapas = null;
+
+    function renderizarGraficoStatus(fichas) {
+      const contagem = { EM_ANALISE: 0, PENDENTE_ASSINATURA: 0, REPROVADO: 0, CONTRATACAO_CONCLUIDA: 0 };
+      fichas.forEach((f) => { if (contagem[f.status] !== undefined) contagem[f.status]++; });
+
+      const chaves = Object.keys(contagem);
+      const canvas = document.getElementById('chartStatusDistribuicao');
+      if (typeof Chart === 'undefined' || !canvas) return;
+
+      if (chartStatusDistribuicao) chartStatusDistribuicao.destroy();
+      chartStatusDistribuicao = new Chart(canvas, {
+        type: 'doughnut',
+        data: {
+          labels: chaves.map((s) => ROTULO_STATUS[s]),
+          datasets: [{ data: chaves.map((s) => contagem[s]), backgroundColor: chaves.map((s) => CORES_STATUS_DASHBOARD[s]) }]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } } }
+      });
+    }
+
+    function renderizarGraficoEtapas(dados) {
+      const canvas = document.getElementById('chartAdesaoEtapas');
+      if (typeof Chart === 'undefined' || !canvas) return;
+
+      if (chartAdesaoEtapas) chartAdesaoEtapas.destroy();
+      chartAdesaoEtapas = new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: ['Reprovado', 'Em Análise', 'Aceite de Contrato'],
+          datasets: [{
+            label: '% de adesão',
+            data: [dados.pctReprovadas, dados.pctEmAnalise, dados.etapaAceiteContrato],
+            backgroundColor: [CORES_STATUS_DASHBOARD.REPROVADO, CORES_STATUS_DASHBOARD.EM_ANALISE, '#10B981'],
+            minBarLength: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: { y: { beginAtZero: true, max: 100, ticks: { callback: (v) => `${v}%` } } },
+          plugins: { legend: { display: false } }
+        }
+      });
+    }
+
+    // Recalcula KPIs e redesenha os gráficos a partir do cache local de
+    // fichas, aplicando os filtros do dashboard - não faz nenhuma requisição.
+    function renderizarDashboard() {
+      const fichas = aplicarFiltrosDashboard(ultimasFichasCarregadas);
+      const dados = calcularKpisDashboard(fichas);
+
+      document.getElementById('dashKpiTotal').textContent = dados.total;
+      document.getElementById('dashKpiConcluidas').textContent = dados.concluidas;
+      document.getElementById('dashKpiConcluidasPct').textContent = `${dados.pctConcluidas}%`;
+      document.getElementById('dashKpiEmAnalise').textContent = dados.emAnalise;
+      document.getElementById('dashKpiEmAnalisePct').textContent = `${dados.pctEmAnalise}%`;
+      document.getElementById('dashKpiPendenteAssinatura').textContent = dados.pendenteAssinatura;
+      document.getElementById('dashKpiPendenteAssinaturaPct').textContent = `${dados.pctPendenteAssinatura}%`;
+      document.getElementById('dashKpiReprovadas').textContent = dados.reprovadas;
+      document.getElementById('dashKpiReprovadasPct').textContent = `${dados.pctReprovadas}%`;
+
+      renderizarGraficoStatus(fichas);
+      renderizarGraficoEtapas(dados);
     }
 
     // Ids das fichas com o painel de detalhes aberto, para restaurar após cada recarga.
     const detalhesExpandidos = new Set();
 
-    // Filtro ativo: 'TODOS' | 'PENDENTE' (não avaliado) | 'EM_ANALISE' | 'APROVADO' | 'REPROVADO'.
+    // Filtro ativo: 'TODOS' | 'EM_ANALISE' | 'PENDENTE_ASSINATURA' | 'REPROVADO' | 'CONTRATACAO_CONCLUIDA'.
     let filtroAtual = 'TODOS';
 
     function aplicarFiltro(fichas) {
       if (filtroAtual === 'TODOS') return fichas;
-      if (filtroAtual === 'PENDENTE') return fichas.filter((f) => f.status === 'VERMELHO');
-      if (filtroAtual === 'EM_ANALISE') return fichas.filter((f) => f.status === 'AMARELO');
-      // APROVADO / REPROVADO: decisão final exclusiva - a ficha só existe
-      // nesta aba, nunca mais aparece em Não avaliados/Em Análise.
       return fichas.filter((f) => f.status === filtroAtual);
     }
 
@@ -1077,15 +1316,15 @@
       });
     }
 
-    // Não avaliados (status VERMELHO - nenhuma interação do RH) sempre no
-    // topo; dentro de cada grupo, mais recentes primeiro.
+    // Fichas em análise (ainda sem decisão do RH) sempre no topo; dentro de
+    // cada grupo, mais recentes primeiro.
     function ordenarFichas(fichas) {
       const dataOrdenacao = (f) => new Date(f.atualizadoEm || f.criadoEm).getTime();
 
       return [...fichas].sort((a, b) => {
-        const aAvaliado = a.status === 'VERMELHO' ? 0 : 1;
-        const bAvaliado = b.status === 'VERMELHO' ? 0 : 1;
-        if (aAvaliado !== bAvaliado) return aAvaliado - bAvaliado; // não avaliados (0) primeiro
+        const aEmAnalise = a.status === 'EM_ANALISE' ? 0 : 1;
+        const bEmAnalise = b.status === 'EM_ANALISE' ? 0 : 1;
+        if (aEmAnalise !== bEmAnalise) return aEmAnalise - bEmAnalise; // em análise (0) primeiro
         return dataOrdenacao(b) - dataOrdenacao(a); // mais recente primeiro
       });
     }
@@ -1112,17 +1351,16 @@
 
         ultimasFichasCarregadas = todasAsFichas;
         renderizarTabela();
+        renderizarDashboard();
       } catch (erro) {
         corpo.innerHTML = '<tr><td colspan="5" class="vazio">Falha ao carregar fichas.</td></tr>';
       }
     }
 
-    // Redesenha cards + tabela a partir do cache local, aplicando busca e filtro
-    // de decisão vigentes. Não faz nenhuma requisição ao backend.
+    // Redesenha a tabela a partir do cache local, aplicando busca e filtro de
+    // status vigentes. Não faz nenhuma requisição ao backend.
     function renderizarTabela() {
       const corpo = document.getElementById('corpoTabela');
-
-      atualizarCardsResumo(ultimasFichasCarregadas);
 
       const fichas = ordenarFichas(aplicarFiltro(aplicarBusca(ultimasFichasCarregadas)));
 
@@ -1132,21 +1370,11 @@
       }
 
       corpo.innerHTML = '';
-      let grupoAtualRenderizado = null; // null | 'naoAvaliados' | 'emAndamento'
 
       fichas.forEach((f) => {
-          const grupoDaFicha = f.status === 'VERMELHO' ? 'naoAvaliados' : 'emAndamento';
-          if (grupoDaFicha !== grupoAtualRenderizado) {
-            grupoAtualRenderizado = grupoDaFicha;
-            const trGrupo = document.createElement('tr');
-            trGrupo.className = grupoDaFicha === 'naoAvaliados' ? 'linha-grupo linha-grupo-novos' : 'linha-grupo';
-            trGrupo.innerHTML = `<td colspan="5">${grupoDaFicha === 'naoAvaliados' ? 'Não avaliados' : 'Em andamento / Avaliadas'}</td>`;
-            corpo.appendChild(trGrupo);
-          }
-
           const tr = document.createElement('tr');
 
-          const classeBadge = CLASSE_BADGE[f.status] || 'badge-vermelho';
+          const classeBadge = CLASSE_BADGE[f.status] || 'badge-em-analise';
           const rotulo = ROTULO_STATUS[f.status] || f.status;
 
           const expandidoAgora = detalhesExpandidos.has(f.id);
@@ -1526,9 +1754,7 @@
       }
     });
 
-    // Filtro por status/decisão: alterna o botão ativo e recarrega a lista do
-    // backend - trocar de aba é um dos momentos em que a migração visual
-    // entre "Não avaliados" e "Em Análise" deve aparecer.
+    // Filtro por status: alterna o botão ativo e recarrega a lista do backend.
     document.querySelector('.barra-filtros').addEventListener('click', (e) => {
       const botao = e.target.closest('[data-filtro]');
       if (!botao) return;
@@ -1565,6 +1791,72 @@
       } catch (erro) {
         alert('Falha ao comunicar com o servidor.');
       }
+    });
+
+    // Filtros do Dashboard: recalcula KPIs e redesenha os gráficos localmente
+    // (sem recarregar do backend) a cada alteração de período, status ou busca.
+    document.getElementById('dashDataInicio').addEventListener('change', (e) => {
+      filtrosDashboard.dataInicio = e.target.value;
+      renderizarDashboard();
+    });
+    document.getElementById('dashDataFim').addEventListener('change', (e) => {
+      filtrosDashboard.dataFim = e.target.value;
+      renderizarDashboard();
+    });
+    document.getElementById('dashStatus').addEventListener('change', (e) => {
+      filtrosDashboard.status = e.target.value;
+      renderizarDashboard();
+    });
+    document.getElementById('dashBusca').addEventListener('input', (e) => {
+      filtrosDashboard.busca = e.target.value;
+      renderizarDashboard();
+    });
+
+    // Baixa o relatório visual do Dashboard em PDF, aplicando exatamente os
+    // mesmos filtros (período/status/busca) vigentes na tela.
+    document.getElementById('btnExportarDashboardPdf').addEventListener('click', async () => {
+      try {
+        const params = new URLSearchParams();
+        if (filtrosDashboard.dataInicio) params.set('dataInicio', filtrosDashboard.dataInicio);
+        if (filtrosDashboard.dataFim) params.set('dataFim', filtrosDashboard.dataFim);
+        if (filtrosDashboard.status) params.set('status', filtrosDashboard.status);
+        if (filtrosDashboard.busca) params.set('busca', filtrosDashboard.busca);
+
+        const resposta = await fetch('/api/relatorio/dashboard-pdf?' + params.toString(), { headers: cabecalhosRh() });
+        if (!resposta.ok) { alert('Não foi possível exportar o dashboard.'); return; }
+        const blob = await resposta.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'dashboard_admissoes.pdf';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } catch (erro) {
+        alert('Falha ao comunicar com o servidor.');
+      }
+    });
+
+    // Alterna entre as abas "Gestão de Candidatos" e "Estatísticas & Relatórios".
+    // Os gráficos (Chart.js) ficam com altura 0 se forem criados dentro de um
+    // contêiner display:none, então sempre redesenha o dashboard depois de
+    // exibir a aba de Estatísticas - garante que os gráficos apareçam
+    // corretamente já na primeira vez que a aba é aberta.
+    document.querySelector('.abas-painel').addEventListener('click', (e) => {
+      const botao = e.target.closest('[data-aba]');
+      if (!botao) return;
+      const aba = botao.dataset.aba;
+
+      document.querySelectorAll('.btn-aba').forEach((b) => {
+        const ativa = b === botao;
+        b.classList.toggle('ativo', ativa);
+        b.setAttribute('aria-selected', String(ativa));
+      });
+      document.getElementById('abaGestao').hidden = aba !== 'gestao';
+      document.getElementById('abaEstatisticas').hidden = aba !== 'estatisticas';
+
+      if (aba === 'estatisticas') renderizarDashboard();
     });
 
     // Carrega o painel assim que a página abre (só depois de confirmar a sessão de RH).
