@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node index.js"
+    "start": "node index.js",
+    "build": "echo \"Nenhum build necessario - aplicacao servida diretamente pelo Express (local) ou pela funcao serverless da Vercel.\""
   },
   "repository": {
     "type": "git",
@@ -20,6 +21,9 @@
   },
   "homepage": "https://github.com/vitorfgnascimento/OnboardingDigital#readme",
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^18.0.4",
     "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "google-auth-library": "^11.1.0",

@@ -161,3 +161,4 @@ uploads/*
 # Planilha Mestre de admissoes, regenerada automaticamente a cada gravacao
 # (dados pessoais - LGPD, nao versionar)
 relatorio_geral_admissoes.xlsx
+.vercel

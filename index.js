@@ -1,11 +1,18 @@
+// Carrega variáveis de ambiente de um .env local (desenvolvimento) antes de
+// qualquer outro módulo ser inicializado - na Vercel isso é um no-op, pois a
+// plataforma já injeta as variáveis de ambiente nativamente.
+require('dotenv').config();
+
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const multer = require('multer');
+const bcrypt = require('bcryptjs');
 const PDFDocument = require('pdfkit');
 const ExcelJS = require('exceljs');
 const { OAuth2Client } = require('google-auth-library');
+const supabase = require('./db/supabase');
 
 const app = express();
 
@@ -15,22 +22,40 @@ app.use(express.json());
 // de entrar (ou criar conta) é que o candidato é levado à Ficha de Admissão.
 app.get('/', (req, res) => res.redirect('/login.html'));
 
-app.use(express.static('public'));
+// Caminho absoluto (não relativo ao cwd) - na Vercel (serverless), o
+// diretório de trabalho durante a execução da função não é garantidamente a
+// raiz do projeto, então 'public' relativo pode não resolver para a pasta
+// certa e todo pedido de página estática (login.html, rh.html etc.) falha
+// com "Cannot GET" mesmo com os arquivos presentes no projeto.
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Diretório gravável dos arquivos de dados (JSON, PDFs, planilha Mestre).
+// Na Vercel (serverless) o diretório do projeto é somente leitura - só /tmp
+// aceita gravação - então lá os arquivos são redirecionados para /tmp.
+// AVISO IMPORTANTE: /tmp é efêmero (apagado a cada cold start/nova
+// instância, e não é compartilhado entre instâncias concorrentes). Isso
+// evita que a aplicação quebre com erro de disco somente-leitura em
+// produção na Vercel, mas NÃO resolve persistência de dados - candidatos,
+// usuários e sessões cadastrados em produção podem ser perdidos a qualquer
+// momento. Para persistência real na Vercel, é necessário migrar para um
+// banco de dados gerenciado (Vercel Postgres/KV, Supabase etc.) - fora do
+// escopo desta adaptação, que só garante compatibilidade estrutural.
+const DIRETORIO_DADOS = process.env.VERCEL ? '/tmp' : __dirname;
 
 // Caminho absoluto do arquivo de persistência local (banco de dados simples em JSON)
-const ARQUIVO_CANDIDATOS = path.join(__dirname, 'candidatos.json');
+const ARQUIVO_CANDIDATOS = path.join(DIRETORIO_DADOS, 'candidatos.json');
 
 // Caminho absoluto da trilha de auditoria (registro imutável de eventos do RH)
-const ARQUIVO_AUDITORIA = path.join(__dirname, 'auditoria.json');
+const ARQUIVO_AUDITORIA = path.join(DIRETORIO_DADOS, 'auditoria.json');
 
 // Caminho absoluto da base de contas de usuário (login/registro/Google)
-const ARQUIVO_USUARIOS = path.join(__dirname, 'usuarios.json');
+const ARQUIVO_USUARIOS = path.join(DIRETORIO_DADOS, 'usuarios.json');
 
 // Caminho absoluto dos tokens de sessão ativos (login persiste entre reinícios)
-const ARQUIVO_SESSOES = path.join(__dirname, 'sessoes.json');
+const ARQUIVO_SESSOES = path.join(DIRETORIO_DADOS, 'sessoes.json');
 
 // Pasta onde os documentos PDF dos candidatos são armazenados
-const PASTA_UPLOADS = path.join(__dirname, 'uploads');
+const PASTA_UPLOADS = path.join(DIRETORIO_DADOS, 'uploads');
 
 // Garante que a pasta de uploads exista antes de qualquer envio
 if (!fs.existsSync(PASTA_UPLOADS)) {
@@ -118,21 +143,117 @@ function validarDadosPessoais(dados) {
 // PERSISTÊNCIA
 // ---------------------------------------------------------------------------
 
-// Lê a lista de candidatos do arquivo. Se o arquivo ainda não existir, retorna lista vazia.
-function lerCandidatos() {
-  if (!fs.existsSync(ARQUIVO_CANDIDATOS)) {
-    return [];
-  }
+// Mapeia uma linha da tabela "candidatos" (snake_case, Postgres) + as
+// mensagens de chat já carregadas para o objeto camelCase que o resto deste
+// arquivo e os dois frontends (public/index.html, public/rh.html) esperam.
+function candidatoParaCamelCase(row, mensagens) {
+  return {
+    id: row.id,
+    nomeCompleto: row.nome_completo,
+    cpf: row.cpf,
+    email: row.email,
+    whatsapp: row.whatsapp,
+    genero: row.genero,
+    cep: row.cep,
+    logradouro: row.logradouro,
+    bairro: row.bairro,
+    numero: row.numero,
+    complemento: row.complemento,
+    dataNascimento: row.data_nascimento,
+    status: row.status,
+    cpfInclusoNaIdentidade: row.cpf_incluso_na_identidade,
+    documentos: row.documentos,
+    decisaoFinal: row.decisao_final,
+    decisaoFinalEm: row.decisao_final_em,
+    usuarioId: row.usuario_id,
+    contrato: row.contrato,
+    consentimentoFichaLGPD: row.consentimento_ficha_lgpd,
+    consentimentoContratoLGPD: row.consentimento_contrato_lgpd,
+    integracaoPonto: row.integracao_ponto,
+    fichaPdf: row.ficha_pdf,
+    criadoEm: row.criado_em,
+    atualizadoEm: row.atualizado_em,
+    mensagens: mensagens || []
+  };
+}
 
-  const conteudo = fs.readFileSync(ARQUIVO_CANDIDATOS, 'utf-8').trim();
-  if (!conteudo) {
-    return [];
-  }
+// Mapeia um candidato (camelCase, formato do app) para a linha snake_case da
+// tabela "candidatos" - "mensagens" fica de fora de propósito, pois tem
+// caminho de gravação próprio (tabela "mensagens_chat", ver rota POST
+// /api/candidato/:id/mensagens) e não deve ser reescrito num upsert genérico.
+function candidatoParaSnakeCase(c) {
+  return {
+    id: c.id,
+    nome_completo: c.nomeCompleto,
+    cpf: c.cpf,
+    email: c.email,
+    whatsapp: c.whatsapp,
+    genero: c.genero,
+    cep: c.cep,
+    logradouro: c.logradouro,
+    bairro: c.bairro,
+    numero: c.numero,
+    complemento: c.complemento,
+    data_nascimento: c.dataNascimento,
+    status: c.status,
+    cpf_incluso_na_identidade: !!c.cpfInclusoNaIdentidade,
+    documentos: c.documentos,
+    decisao_final: c.decisaoFinal || null,
+    decisao_final_em: c.decisaoFinalEm || null,
+    usuario_id: c.usuarioId || null,
+    contrato: c.contrato,
+    consentimento_ficha_lgpd: c.consentimentoFichaLGPD,
+    consentimento_contrato_lgpd: c.consentimentoContratoLGPD,
+    integracao_ponto: c.integracaoPonto,
+    ficha_pdf: c.fichaPdf || null,
+    criado_em: c.criadoEm,
+    // Sempre com um valor explícito (nunca undefined): um candidato recém
+    // criado ainda não tem atualizadoEm - cai para criadoEm. Isso evita um
+    // problema real do PostgREST em upserts em lote: se um objeto do lote
+    // não tem a chave (undefined) enquanto outros têm, o PostgREST manda
+    // NULL para essa linha, violando a coluna NOT NULL da tabela.
+    atualizado_em: c.atualizadoEm || c.criadoEm || new Date().toISOString()
+  };
+}
 
-  const candidatos = JSON.parse(conteudo);
+// Mapeia uma linha da tabela "mensagens_chat" para o formato camelCase já
+// usado pelo chat (candidato_id fica de fora - é implícito, o array já está
+// aninhado dentro do candidato correspondente).
+function mensagemParaCamelCase(row) {
+  return {
+    id: row.id,
+    autor: row.autor,
+    nomeAutor: row.nome_autor,
+    texto: row.texto,
+    timestamp: row.timestamp,
+    ip: row.ip
+  };
+}
+
+// Lê a lista de candidatos do Supabase (tabela "candidatos" + mensagens de
+// chat embutidas a partir de "mensagens_chat"). Mantém exatamente o mesmo
+// formato (camelCase, array) que o restante do arquivo sempre esperou.
+async function lerCandidatos() {
+  const { data: linhas, error: erroCandidatos } = await supabase.from('candidatos').select('*');
+  if (erroCandidatos) throw erroCandidatos;
+
+  const { data: mensagensLinhas, error: erroMensagens } = await supabase
+    .from('mensagens_chat')
+    .select('*')
+    .order('timestamp', { ascending: true });
+  if (erroMensagens) throw erroMensagens;
+
+  const mensagensPorCandidato = {};
+  (mensagensLinhas || []).forEach((m) => {
+    if (!mensagensPorCandidato[m.candidato_id]) mensagensPorCandidato[m.candidato_id] = [];
+    mensagensPorCandidato[m.candidato_id].push(mensagemParaCamelCase(m));
+  });
+
+  const candidatos = (linhas || []).map((row) => candidatoParaCamelCase(row, mensagensPorCandidato[row.id] || []));
+
   // Migração leve: fichas criadas antes do módulo de contratação/autenticação
-  // não têm os campos "contrato"/"usuarioId" - preenche com o valor padrão
-  // para que as novas rotas funcionem sem precisar recriar a base de dados.
+  // não têm os campos "contrato"/"usuarioId" preenchidos - aplica o mesmo
+  // valor padrão que já existia na época dos arquivos JSON.
   candidatos.forEach((c) => {
     if (!c.contrato || !c.contrato.documentos) c.contrato = criarContratoInicial();
     TIPOS_CONTRATO.forEach((tipo) => {
@@ -146,8 +267,8 @@ function lerCandidatos() {
     if (c.integracaoPonto === undefined) c.integracaoPonto = criarIntegracaoPontoInicial();
 
     // Migração: fichas gravadas antes da consolidação para 4 status ainda têm
-    // os valores antigos (VERMELHO/AMARELO/APROVADO) em disco - normaliza para
-    // o modelo atual assim que lidas, sem precisar recriar a base de dados.
+    // os valores antigos (VERMELHO/AMARELO/APROVADO) - normaliza para o
+    // modelo atual assim que lidas, sem precisar recriar a base de dados.
     if (c.status === 'VERMELHO' || c.status === 'AMARELO') c.status = 'EM_ANALISE';
     else if (c.status === 'APROVADO') c.status = 'PENDENTE_ASSINATURA';
   });
@@ -155,12 +276,15 @@ function lerCandidatos() {
   return candidatos;
 }
 
-// Grava a lista completa de candidatos no arquivo, formatada para leitura humana.
-// Toda gravação (nova ficha, mudança de status, decisão, contrato etc.)
-// também dispara a atualização da planilha Mestre em Excel, em segundo
-// plano - não bloqueia a resposta da requisição que originou a gravação.
-function salvarCandidatos(lista) {
-  fs.writeFileSync(ARQUIVO_CANDIDATOS, JSON.stringify(lista, null, 2), 'utf-8');
+// Grava (upsert) a lista completa de candidatos no Supabase - "mensagens" é
+// excluído do upsert de propósito (ver candidatoParaSnakeCase). Toda gravação
+// (nova ficha, mudança de status, decisão, contrato etc.) também dispara a
+// atualização da planilha Mestre em Excel, em segundo plano - não bloqueia a
+// resposta da requisição que originou a gravação.
+async function salvarCandidatos(lista) {
+  const linhas = lista.map(candidatoParaSnakeCase);
+  const { error } = await supabase.from('candidatos').upsert(linhas, { onConflict: 'id' });
+  if (error) throw error;
   atualizarPlanilhaMestre();
 }
 
@@ -198,43 +322,121 @@ function registrarEventoAuditoria(evento) {
 // AUTENTICAÇÃO: PERSISTÊNCIA DE USUÁRIOS E SESSÕES
 // ---------------------------------------------------------------------------
 
-function lerUsuarios() {
-  if (!fs.existsSync(ARQUIVO_USUARIOS)) return [];
-  const conteudo = fs.readFileSync(ARQUIVO_USUARIOS, 'utf-8').trim();
-  return conteudo ? JSON.parse(conteudo) : [];
+// Mapeia uma linha da tabela "usuarios" (snake_case) para o objeto camelCase
+// que o restante do arquivo espera.
+function usuarioParaCamelCase(row) {
+  return {
+    id: row.id,
+    nome: row.nome,
+    email: row.email,
+    senhaSalt: row.senha_salt,
+    senhaHash: row.senha_hash,
+    tipo: row.tipo,
+    googleId: row.google_id,
+    cpf: row.cpf,
+    dataNascimento: row.data_nascimento,
+    ativo: row.ativo,
+    tokenAtivacao: row.token_ativacao,
+    consentimentoCadastro: row.consentimento_cadastro,
+    criadoEm: row.criado_em
+  };
 }
 
-function salvarUsuarios(lista) {
-  fs.writeFileSync(ARQUIVO_USUARIOS, JSON.stringify(lista, null, 2), 'utf-8');
+// Mapeia um usuário (camelCase) para a linha snake_case da tabela "usuarios".
+function usuarioParaSnakeCase(u) {
+  return {
+    id: u.id,
+    nome: u.nome,
+    email: u.email,
+    senha_salt: u.senhaSalt || null,
+    senha_hash: u.senhaHash || null,
+    tipo: u.tipo,
+    google_id: u.googleId || null,
+    cpf: u.cpf || null,
+    data_nascimento: u.dataNascimento || null,
+    ativo: u.ativo !== false,
+    token_ativacao: u.tokenAtivacao || null,
+    consentimento_cadastro: u.consentimentoCadastro || null,
+    criado_em: u.criadoEm
+  };
 }
 
-function lerSessoes() {
-  if (!fs.existsSync(ARQUIVO_SESSOES)) return [];
-  const conteudo = fs.readFileSync(ARQUIVO_SESSOES, 'utf-8').trim();
-  return conteudo ? JSON.parse(conteudo) : [];
+async function lerUsuarios() {
+  const { data, error } = await supabase.from('usuarios').select('*');
+  if (error) throw error;
+  return (data || []).map(usuarioParaCamelCase);
 }
 
-function salvarSessoes(lista) {
-  fs.writeFileSync(ARQUIVO_SESSOES, JSON.stringify(lista, null, 2), 'utf-8');
+async function salvarUsuarios(lista) {
+  const linhas = lista.map(usuarioParaSnakeCase);
+  const { error } = await supabase.from('usuarios').upsert(linhas, { onConflict: 'id' });
+  if (error) throw error;
+}
+
+// Mapeia uma linha da tabela "sessoes" (snake_case) para o objeto camelCase
+// que o restante do arquivo espera. criadoEm/expiraEm continuam números
+// (epoch ms), como sempre foram - a coluna é "bigint" justamente para isso.
+function sessaoParaCamelCase(row) {
+  return {
+    token: row.token,
+    usuarioId: row.usuario_id,
+    criadoEm: Number(row.criado_em),
+    expiraEm: Number(row.expira_em)
+  };
+}
+
+function sessaoParaSnakeCase(s) {
+  return {
+    token: s.token,
+    usuario_id: s.usuarioId,
+    criado_em: s.criadoEm,
+    expira_em: s.expiraEm
+  };
+}
+
+async function lerSessoes() {
+  const { data, error } = await supabase.from('sessoes').select('*');
+  if (error) throw error;
+  return (data || []).map(sessaoParaCamelCase);
+}
+
+// "lista" representa o estado completo desejado das sessões - mesmo padrão
+// do antigo arquivo JSON, que era sobrescrito por inteiro (ex.: no logout, o
+// token removido não pode "sobrar" no banco) - por isso a tabela é
+// substituída por completo a cada gravação, em vez de um upsert simples.
+async function salvarSessoes(lista) {
+  const { error: erroDelete } = await supabase.from('sessoes').delete().neq('token', '');
+  if (erroDelete) throw erroDelete;
+  if (!lista.length) return;
+  const linhas = lista.map(sessaoParaSnakeCase);
+  const { error } = await supabase.from('sessoes').insert(linhas);
+  if (error) throw error;
 }
 
 // Tempo de validade de um token de sessão: 7 dias.
 const DURACAO_SESSAO_MS = 7 * 24 * 60 * 60 * 1000;
 
-// Gera hash de senha com scrypt (nativo do Node, sem dependências externas).
-// Cada usuário tem um salt próprio; senha nunca é armazenada em texto puro.
+// Gera hash de senha com bcrypt. O salt fica embutido no próprio hash (não
+// precisa de um campo separado) - senha nunca é armazenada em texto puro.
 function gerarHashSenha(senha) {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.scryptSync(senha, salt, 64).toString('hex');
-  return { salt, hash };
+  const hash = bcrypt.hashSync(String(senha), 10);
+  return { salt: null, hash };
 }
 
-function senhaConfere(senha, salt, hashEsperado) {
+// Contas criadas antes da migração para bcrypt ainda têm senhaSalt preenchido
+// (hash gerado com scrypt, nativo do Node) - continuam funcionando via essa
+// verificação legada, sem exigir que o usuário redefina a senha.
+function senhaConfereScryptLegado(senha, salt, hashEsperado) {
   const hash = crypto.scryptSync(senha, salt, 64).toString('hex');
   // Comparação em tempo constante para evitar timing attacks.
   const bufA = Buffer.from(hash, 'hex');
   const bufB = Buffer.from(hashEsperado, 'hex');
   return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
+}
+
+function senhaConfere(senha, salt, hashEsperado) {
+  if (salt) return senhaConfereScryptLegado(String(senha), salt, hashEsperado);
+  return bcrypt.compareSync(String(senha), hashEsperado);
 }
 
 function dadosPublicosUsuario(usuario) {
@@ -249,53 +451,68 @@ function dadosPublicosUsuario(usuario) {
 }
 
 // Cria uma sessão para o usuário e persiste o token (login e registro reutilizam isso).
-function criarSessao(usuarioId) {
-  const sessoes = lerSessoes();
+async function criarSessao(usuarioId) {
+  const sessoes = await lerSessoes();
   const token = crypto.randomBytes(32).toString('hex');
   const agora = Date.now();
   sessoes.push({ token, usuarioId, criadoEm: agora, expiraEm: agora + DURACAO_SESSAO_MS });
-  salvarSessoes(sessoes);
+  await salvarSessoes(sessoes);
   return token;
 }
 
 // Resolve o usuário autenticado a partir do header Authorization: Bearer <token>.
 // Retorna null se o token estiver ausente, inválido ou expirado.
-function resolverUsuarioPorToken(req) {
+async function resolverUsuarioPorToken(req) {
   const cabecalho = req.headers.authorization || '';
   const token = cabecalho.startsWith('Bearer ') ? cabecalho.slice(7) : null;
   if (!token) return null;
 
-  const sessoes = lerSessoes();
+  const sessoes = await lerSessoes();
   const sessao = sessoes.find((s) => s.token === token && s.expiraEm > Date.now());
   if (!sessao) return null;
 
-  const usuarios = lerUsuarios();
+  const usuarios = await lerUsuarios();
   return usuarios.find((u) => u.id === sessao.usuarioId) || null;
 }
 
 // Middleware: exige sessão válida (qualquer papel) e anexa req.usuario.
-function autenticar(req, res, next) {
-  const usuario = resolverUsuarioPorToken(req);
-  if (!usuario) return res.status(401).json({ erro: 'Sessão inválida ou expirada. Faça login novamente.' });
-  req.usuario = usuario;
-  next();
+async function autenticar(req, res, next) {
+  try {
+    const usuario = await resolverUsuarioPorToken(req);
+    if (!usuario) return res.status(401).json({ erro: 'Sessão inválida ou expirada. Faça login novamente.' });
+    req.usuario = usuario;
+    next();
+  } catch (erro) {
+    console.error('Falha ao resolver sessão:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao validar a sessão.' });
+  }
 }
 
 // Middleware: anexa req.usuario se houver um token válido, mas não bloqueia a
 // requisição caso não haja sessão (usado no cadastro da ficha, que continua
 // funcionando de forma anônima por compatibilidade).
-function autenticarOpcional(req, res, next) {
-  req.usuario = resolverUsuarioPorToken(req);
+async function autenticarOpcional(req, res, next) {
+  try {
+    req.usuario = await resolverUsuarioPorToken(req);
+  } catch (erro) {
+    console.error('Falha ao resolver sessão (opcional):', erro.message);
+    req.usuario = null;
+  }
   next();
 }
 
 // Middleware: exige sessão válida do papel 'rh' - protege o Painel do RH.
-function exigirRh(req, res, next) {
-  const usuario = resolverUsuarioPorToken(req);
-  if (!usuario) return res.status(401).json({ erro: 'Sessão inválida ou expirada. Faça login novamente.' });
-  if (usuario.tipo !== 'rh') return res.status(403).json({ erro: 'Acesso restrito à equipe de RH.' });
-  req.usuario = usuario;
-  next();
+async function exigirRh(req, res, next) {
+  try {
+    const usuario = await resolverUsuarioPorToken(req);
+    if (!usuario) return res.status(401).json({ erro: 'Sessão inválida ou expirada. Faça login novamente.' });
+    if (usuario.tipo !== 'rh') return res.status(403).json({ erro: 'Acesso restrito à equipe de RH.' });
+    req.usuario = usuario;
+    next();
+  } catch (erro) {
+    console.error('Falha ao resolver sessão RH:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao validar a sessão.' });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -409,7 +626,8 @@ const clienteGoogle = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : nu
 // caso o texto dos termos mude no futuro.
 const VERSAO_TERMOS_CADASTRO = 'v1.0';
 
-app.post('/api/auth/registrar', (req, res) => {
+app.post('/api/auth/registrar', async (req, res) => {
+  try {
   const { nome, email, senha, confirmarSenha, dataNascimento, cpf, aceiteTermos } = req.body;
   const nomeAparado = String(nome || '').trim();
   const emailAparado = String(email || '').trim().toLowerCase();
@@ -430,7 +648,7 @@ app.post('/api/auth/registrar', (req, res) => {
     return res.status(400).json({ erro: 'É necessário aceitar os Termos de Uso e a Política de Privacidade para criar a conta.' });
   }
 
-  const usuarios = lerUsuarios();
+  const usuarios = await lerUsuarios();
   if (usuarios.some((u) => u.email === emailAparado)) {
     return res.status(400).json({ erro: 'Já existe uma conta com este e-mail.' });
   }
@@ -458,7 +676,7 @@ app.post('/api/auth/registrar', (req, res) => {
   };
 
   usuarios.push(novoUsuario);
-  salvarUsuarios(usuarios);
+  await salvarUsuarios(usuarios);
 
   registrarEventoAuditoria({
     id: gerarId(),
@@ -480,15 +698,20 @@ app.post('/api/auth/registrar', (req, res) => {
     linkAtivacao: `/login.html?ativacao=${novoUsuario.tokenAtivacao}`,
     tokenAtivacao: novoUsuario.tokenAtivacao
   });
+  } catch (erro) {
+    console.error('Falha ao registrar usuário:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao criar a conta.' });
+  }
 });
 
 // Ativa a conta a partir do token de ativação enviado (simulado) por e-mail,
 // e já cria a sessão em seguida (auto-login pós-confirmação).
-app.post('/api/auth/ativar', (req, res) => {
+app.post('/api/auth/ativar', async (req, res) => {
+  try {
   const { token } = req.body;
   if (!token) return res.status(400).json({ erro: 'Token de ativação ausente.' });
 
-  const usuarios = lerUsuarios();
+  const usuarios = await lerUsuarios();
   const usuario = usuarios.find((u) => u.tokenAtivacao === token);
   if (!usuario) {
     return res.status(404).json({ erro: 'Link de ativação inválido ou já utilizado.' });
@@ -496,17 +719,22 @@ app.post('/api/auth/ativar', (req, res) => {
 
   usuario.ativo = true;
   usuario.tokenAtivacao = null;
-  salvarUsuarios(usuarios);
+  await salvarUsuarios(usuarios);
 
-  const sessaoToken = criarSessao(usuario.id);
+  const sessaoToken = await criarSessao(usuario.id);
   return res.status(200).json({ mensagem: 'Conta ativada com sucesso!', token: sessaoToken, usuario: dadosPublicosUsuario(usuario) });
+  } catch (erro) {
+    console.error('Falha ao ativar conta:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao ativar a conta.' });
+  }
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
+  try {
   const { email, senha } = req.body;
   const emailAparado = String(email || '').trim().toLowerCase();
 
-  const usuarios = lerUsuarios();
+  const usuarios = await lerUsuarios();
   const usuario = usuarios.find((u) => u.email === emailAparado);
 
   if (!usuario || !usuario.senhaHash || !senhaConfere(String(senha || ''), usuario.senhaSalt, usuario.senhaHash)) {
@@ -517,8 +745,25 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(403).json({ erro: 'Conta ainda não ativada. Verifique o link de confirmação enviado no cadastro (ou o console do servidor, neste ambiente de testes).' });
   }
 
-  const token = criarSessao(usuario.id);
+  const token = await criarSessao(usuario.id);
+
+  // Trilha de auditoria (LGPD): registra quem entrou, quando e de onde -
+  // mesmo padrão já usado para o consentimento de cadastro e o chat.
+  registrarEventoAuditoria({
+    id: gerarId(),
+    tipoEvento: 'login',
+    usuarioId: usuario.id,
+    email: usuario.email,
+    tipo: usuario.tipo,
+    timestamp: new Date().toISOString(),
+    ip: req.ip
+  });
+
   return res.status(200).json({ mensagem: 'Login realizado com sucesso!', token, usuario: dadosPublicosUsuario(usuario) });
+  } catch (erro) {
+    console.error('Falha ao fazer login:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao fazer login.' });
+  }
 });
 
 // Login/registro via Google Sign-In (Google Identity Services). O frontend
@@ -545,30 +790,37 @@ app.post('/api/auth/google', async (req, res) => {
   const emailGoogle = String(payload.email || '').trim().toLowerCase();
   if (!emailGoogle) return res.status(400).json({ erro: 'A conta Google não possui e-mail associado.' });
 
-  const usuarios = lerUsuarios();
-  let usuario = usuarios.find((u) => u.email === emailGoogle);
+  let usuarios;
+  let usuario;
+  try {
+    usuarios = await lerUsuarios();
+    usuario = usuarios.find((u) => u.email === emailGoogle);
 
-  if (!usuario) {
-    usuario = {
-      id: gerarId(),
-      nome: payload.name || emailGoogle,
-      email: emailGoogle,
-      senhaSalt: null,
-      senhaHash: null,
-      tipo: 'candidato',
-      googleId: payload.sub,
-      ativo: true,
-      criadoEm: new Date().toISOString()
-    };
-    usuarios.push(usuario);
-    salvarUsuarios(usuarios);
-  } else if (!usuario.googleId) {
-    usuario.googleId = payload.sub;
-    salvarUsuarios(usuarios);
+    if (!usuario) {
+      usuario = {
+        id: gerarId(),
+        nome: payload.name || emailGoogle,
+        email: emailGoogle,
+        senhaSalt: null,
+        senhaHash: null,
+        tipo: 'candidato',
+        googleId: payload.sub,
+        ativo: true,
+        criadoEm: new Date().toISOString()
+      };
+      usuarios.push(usuario);
+      await salvarUsuarios(usuarios);
+    } else if (!usuario.googleId) {
+      usuario.googleId = payload.sub;
+      await salvarUsuarios(usuarios);
+    }
+
+    const token = await criarSessao(usuario.id);
+    return res.status(200).json({ mensagem: 'Login com Google realizado com sucesso!', token, usuario: dadosPublicosUsuario(usuario) });
+  } catch (erro) {
+    console.error('Falha no login com Google:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao autenticar com o Google.' });
   }
-
-  const token = criarSessao(usuario.id);
-  return res.status(200).json({ mensagem: 'Login com Google realizado com sucesso!', token, usuario: dadosPublicosUsuario(usuario) });
 });
 
 // Informa ao frontend se o Google Sign-In está configurado neste ambiente
@@ -581,21 +833,31 @@ app.get('/api/auth/sessao', autenticar, (req, res) => {
   return res.status(200).json({ usuario: dadosPublicosUsuario(req.usuario) });
 });
 
-app.post('/api/auth/logout', (req, res) => {
-  const cabecalho = req.headers.authorization || '';
-  const token = cabecalho.startsWith('Bearer ') ? cabecalho.slice(7) : null;
-  if (token) {
-    const sessoes = lerSessoes().filter((s) => s.token !== token);
-    salvarSessoes(sessoes);
+app.post('/api/auth/logout', async (req, res) => {
+  try {
+    const cabecalho = req.headers.authorization || '';
+    const token = cabecalho.startsWith('Bearer ') ? cabecalho.slice(7) : null;
+    if (token) {
+      const sessoes = (await lerSessoes()).filter((s) => s.token !== token);
+      await salvarSessoes(sessoes);
+    }
+    return res.status(200).json({ mensagem: 'Sessão encerrada.' });
+  } catch (erro) {
+    console.error('Falha ao encerrar sessão:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao encerrar a sessão.' });
   }
-  return res.status(200).json({ mensagem: 'Sessão encerrada.' });
 });
 
 // Fichas vinculadas ao usuário autenticado (vínculo estrito ficha <-> perfil).
-app.get('/api/auth/minhas-fichas', autenticar, (req, res) => {
-  const candidatos = lerCandidatos();
+app.get('/api/auth/minhas-fichas', autenticar, async (req, res) => {
+  try {
+  const candidatos = await lerCandidatos();
   const minhasFichas = candidatos.filter((c) => c.usuarioId === req.usuario.id);
   return res.status(200).json(minhasFichas);
+  } catch (erro) {
+    console.error('Falha ao buscar minhas fichas:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao buscar suas fichas.' });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -606,7 +868,8 @@ app.get('/api/auth/minhas-fichas', autenticar, (req, res) => {
 const VERSAO_TERMO_FICHA_LGPD = '1.0';
 const FINALIDADE_TERMO_FICHA_LGPD = 'Processo Admissional e Validação de Documentos';
 
-app.post('/api/candidato', autenticarOpcional, (req, res) => {
+app.post('/api/candidato', autenticarOpcional, async (req, res) => {
+  try {
   const {
     nomeCompleto,
     dataNascimento,
@@ -671,9 +934,9 @@ app.post('/api/candidato', autenticarOpcional, (req, res) => {
     criadoEm: agora
   };
 
-  const candidatos = lerCandidatos();
+  const candidatos = await lerCandidatos();
   candidatos.push(novoCandidato);
-  salvarCandidatos(candidatos);
+  await salvarCandidatos(candidatos);
 
   registrarEventoAuditoria({
     id: gerarId(),
@@ -696,16 +959,21 @@ app.post('/api/candidato', autenticarOpcional, (req, res) => {
     mensagem: 'Ficha do candidato cadastrada com sucesso!',
     candidato: novoCandidato
   });
+  } catch (erro) {
+    console.error('Falha ao cadastrar candidato:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao cadastrar a ficha.' });
+  }
 });
 
 // ---------------------------------------------------------------------------
 // ROTA: atualização dos dados pessoais / regras (gênero e CPF incluso)
 // ---------------------------------------------------------------------------
-app.patch('/api/candidato/:id/dados', (req, res) => {
+app.patch('/api/candidato/:id/dados', async (req, res) => {
+  try {
   const { id } = req.params;
   const { genero, cpfInclusoNaIdentidade } = req.body;
 
-  const candidatos = lerCandidatos();
+  const candidatos = await lerCandidatos();
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) {
@@ -726,19 +994,23 @@ app.patch('/api/candidato/:id/dados', (req, res) => {
   }
 
   candidato.atualizadoEm = new Date().toISOString();
-  salvarCandidatos(candidatos);
+  await salvarCandidatos(candidatos);
 
   return res.status(200).json({
     mensagem: 'Dados do candidato atualizados com sucesso!',
     candidato
   });
+  } catch (erro) {
+    console.error('Falha ao atualizar dados do candidato:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao atualizar os dados do candidato.' });
+  }
 });
 
 // ---------------------------------------------------------------------------
 // ROTA: envio de um documento PDF para uma das abas
 // ---------------------------------------------------------------------------
 app.post('/api/candidato/:id/documento', (req, res) => {
-  upload.single('arquivo')(req, res, (erroUpload) => {
+  upload.single('arquivo')(req, res, async (erroUpload) => {
     if (erroUpload) {
       if (erroUpload.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({ erro: 'Arquivo excedeu o tamanho limite de 10 MB' });
@@ -766,7 +1038,8 @@ app.post('/api/candidato/:id/documento', (req, res) => {
       return res.status(400).json({ erro: 'Nenhum arquivo PDF foi enviado.' });
     }
 
-    const candidatos = lerCandidatos();
+    try {
+    const candidatos = await lerCandidatos();
     const candidato = candidatos.find((c) => c.id === id);
 
     if (!candidato) {
@@ -834,7 +1107,7 @@ app.post('/api/candidato/:id/documento', (req, res) => {
       aplicarRegraCpfIncluso(candidato);
     }
 
-    salvarCandidatos(candidatos);
+    await salvarCandidatos(candidatos);
 
     console.log(`--- Documento recebido --- ID: ${id} | Tipo: ${tipo} | Arquivo: ${req.file.filename}`);
 
@@ -842,20 +1115,25 @@ app.post('/api/candidato/:id/documento', (req, res) => {
       mensagem: 'Documento enviado com sucesso!',
       candidato
     });
+    } catch (erro) {
+      console.error('Falha ao salvar documento:', erro.message);
+      return res.status(500).json({ erro: 'Falha ao salvar o documento.' });
+    }
   });
 });
 
 // ---------------------------------------------------------------------------
 // ROTA: exclusão de um documento PDF já anexado
 // ---------------------------------------------------------------------------
-app.delete('/api/candidato/:id/documento/:tipo', (req, res) => {
+app.delete('/api/candidato/:id/documento/:tipo', async (req, res) => {
+  try {
   const { id, tipo } = req.params;
 
   if (!TIPOS_DOCUMENTO.includes(tipo)) {
     return res.status(400).json({ erro: 'Tipo de documento inválido.' });
   }
 
-  const candidatos = lerCandidatos();
+  const candidatos = await lerCandidatos();
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) {
@@ -891,7 +1169,7 @@ app.delete('/api/candidato/:id/documento/:tipo', (req, res) => {
   if (tipo === 'reservista') aplicarRegraReservista(candidato);
   if (tipo === 'identidade') aplicarRegraCpfIncluso(candidato);
 
-  salvarCandidatos(candidatos);
+  await salvarCandidatos(candidatos);
 
   console.log(`--- Documento excluído --- ID: ${id} | Tipo: ${tipo}`);
 
@@ -899,21 +1177,31 @@ app.delete('/api/candidato/:id/documento/:tipo', (req, res) => {
     mensagem: 'Documento excluído com sucesso!',
     candidato
   });
+  } catch (erro) {
+    console.error('Falha ao excluir documento:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao excluir o documento.' });
+  }
 });
 
 // ---------------------------------------------------------------------------
 // ROTA: listagem completa de candidatos (consumida pelo painel do RH)
 // ---------------------------------------------------------------------------
-app.get('/api/candidatos', (req, res) => {
-  const candidatos = lerCandidatos();
-  return res.status(200).json(candidatos);
+app.get('/api/candidatos', async (req, res) => {
+  try {
+    const candidatos = await lerCandidatos();
+    return res.status(200).json(candidatos);
+  } catch (erro) {
+    console.error('Falha ao listar candidatos:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao listar candidatos.' });
+  }
 });
 
 // ---------------------------------------------------------------------------
 // ROTA: alteração do status geral do candidato pelo RH (EM_ANALISE ou
 // PENDENTE_ASSINATURA)
 // ---------------------------------------------------------------------------
-app.patch('/api/candidato/:id/status', (req, res) => {
+app.patch('/api/candidato/:id/status', async (req, res) => {
+  try {
   const { id } = req.params;
   const { status } = req.body;
 
@@ -923,7 +1211,7 @@ app.patch('/api/candidato/:id/status', (req, res) => {
     });
   }
 
-  const candidatos = lerCandidatos();
+  const candidatos = await lerCandidatos();
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) {
@@ -932,7 +1220,7 @@ app.patch('/api/candidato/:id/status', (req, res) => {
 
   candidato.status = status;
   candidato.atualizadoEm = new Date().toISOString();
-  salvarCandidatos(candidatos);
+  await salvarCandidatos(candidatos);
 
   console.log(`--- Status atualizado --- ID: ${id} | Novo status: ${status}`);
 
@@ -940,14 +1228,23 @@ app.patch('/api/candidato/:id/status', (req, res) => {
     mensagem: 'Status do candidato atualizado com sucesso!',
     candidato
   });
+  } catch (erro) {
+    console.error('Falha ao atualizar status:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao atualizar o status.' });
+  }
 });
 
 // ---------------------------------------------------------------------------
 // ROTA: listagem de fichas para o Painel de Gestão do RH (Etapa 2)
 // ---------------------------------------------------------------------------
-app.get('/api/rh/fichas', exigirRh, (req, res) => {
-  const candidatos = lerCandidatos();
-  return res.status(200).json(candidatos);
+app.get('/api/rh/fichas', exigirRh, async (req, res) => {
+  try {
+    const candidatos = await lerCandidatos();
+    return res.status(200).json(candidatos);
+  } catch (erro) {
+    console.error('Falha ao listar fichas do RH:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao listar as fichas.' });
+  }
 });
 
 // Status que o RH pode atribuir a uma ficha pelo Painel de Gestão.
@@ -957,7 +1254,8 @@ const STATUS_VALIDOS_RH = ['EM_ANALISE', 'PENDENTE_ASSINATURA'];
 // ROTA: alteração de status de uma ficha pelo RH, com registro na trilha de
 // auditoria (LGPD): quem, quando (timestamp) e de onde (IP) a alteração partiu.
 // ---------------------------------------------------------------------------
-app.patch('/api/rh/fichas/:id/status', exigirRh, (req, res) => {
+app.patch('/api/rh/fichas/:id/status', exigirRh, async (req, res) => {
+  try {
   const { id } = req.params;
   const { status } = req.body;
 
@@ -967,7 +1265,7 @@ app.patch('/api/rh/fichas/:id/status', exigirRh, (req, res) => {
     });
   }
 
-  const candidatos = lerCandidatos();
+  const candidatos = await lerCandidatos();
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) {
@@ -979,7 +1277,7 @@ app.patch('/api/rh/fichas/:id/status', exigirRh, (req, res) => {
 
   candidato.status = status;
   candidato.atualizadoEm = agora;
-  salvarCandidatos(candidatos);
+  await salvarCandidatos(candidatos);
 
   const evento = {
     id: gerarId(),
@@ -998,143 +1296,186 @@ app.patch('/api/rh/fichas/:id/status', exigirRh, (req, res) => {
     candidato,
     evento
   });
+  } catch (erro) {
+    console.error('Falha ao atualizar status (RH):', erro.message);
+    return res.status(500).json({ erro: 'Falha ao atualizar o status da ficha.' });
+  }
 });
 
 // ---------------------------------------------------------------------------
 // ROTA: busca de uma única ficha por id (usada pelo candidato para retornar
 // à própria ficha - via link com ?id= - e ver pendências, mensagens e decisão)
 // ---------------------------------------------------------------------------
-app.get('/api/candidato/:id', (req, res) => {
-  const candidatos = lerCandidatos();
-  const candidato = candidatos.find((c) => c.id === req.params.id);
+app.get('/api/candidato/:id', async (req, res) => {
+  try {
+    const candidatos = await lerCandidatos();
+    const candidato = candidatos.find((c) => c.id === req.params.id);
 
-  if (!candidato) {
-    return res.status(404).json({ erro: 'Candidato não encontrado.' });
+    if (!candidato) {
+      return res.status(404).json({ erro: 'Candidato não encontrado.' });
+    }
+
+    return res.status(200).json(candidato);
+  } catch (erro) {
+    console.error('Falha ao buscar candidato:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao buscar o candidato.' });
   }
-
-  return res.status(200).json(candidato);
 });
 
 // Quem pode enviar uma mensagem no chat da ficha.
 const AUTORES_VALIDOS = ['RH', 'Candidato'];
 
-// Registro em memória dos clientes SSE (Server-Sent Events) conectados ao
-// chat de cada ficha: candidatoId -> Set de objetos `res` abertos/streaming.
-const clientesChatSse = new Map();
-
-// Envia a mensagem para todos os clientes SSE conectados ao chat da ficha,
-// removendo qualquer conexão que já tenha morrido (write lança exceção).
-function transmitirMensagemChat(candidatoId, mensagem) {
-  const clientes = clientesChatSse.get(candidatoId);
-  if (!clientes) return;
-  for (const res of clientes) {
-    try {
-      res.write('data: ' + JSON.stringify(mensagem) + '\n\n');
-    } catch (erro) {
-      clientes.delete(res);
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------
-// ROTA: stream SSE do chat da ficha - mantém a conexão aberta e envia cada
-// mensagem nova em tempo real, sem exigir polling do front-end.
+// ROTA: consulta das mensagens do chat via HTTP Polling - o front-end chama
+// isto periodicamente (a cada poucos segundos) enquanto o chat está visível.
+// Escolhido no lugar de um stream SSE mantido aberto porque funciona de
+// forma segura em ambiente serverless (Vercel): cada chamada é uma
+// requisição curta e independente, sem depender de uma conexão HTTP
+// mantida aberta (que seria encerrada pelo limite de execução da função) nem
+// de estado em memória compartilhado entre instâncias/invocações diferentes.
+// Aceita ?apos=<timestamp ISO> para retornar só as mensagens novas desde a
+// última consulta do front-end, evitando reenviar o histórico inteiro a
+// cada poll.
 // ---------------------------------------------------------------------------
-app.get('/api/candidato/:id/mensagens/eventos', (req, res) => {
-  const { id } = req.params;
+app.get('/api/candidato/:id/mensagens', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { apos } = req.query;
 
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive'
-  });
-  if (typeof res.flushHeaders === 'function') {
-    res.flushHeaders();
-  }
-  res.write(':ok\n\n');
+    // Consulta direta em mensagens_chat (tabela própria, normalizada) - mais
+    // eficiente do que carregar a lista inteira de candidatos só para filtrar
+    // o array embutido de mensagens de um único candidato.
+    const { data: candidatoRow, error: erroCandidato } = await supabase
+      .from('candidatos')
+      .select('id')
+      .eq('id', id)
+      .maybeSingle();
+    if (erroCandidato) throw erroCandidato;
+    if (!candidatoRow) return res.status(404).json({ erro: 'Candidato não encontrado.' });
 
-  if (!clientesChatSse.has(id)) {
-    clientesChatSse.set(id, new Set());
-  }
-  clientesChatSse.get(id).add(res);
-
-  req.on('close', () => {
-    const clientes = clientesChatSse.get(id);
-    if (clientes) {
-      clientes.delete(res);
-      if (clientes.size === 0) {
-        clientesChatSse.delete(id);
-      }
+    let consulta = supabase
+      .from('mensagens_chat')
+      .select('*')
+      .eq('candidato_id', id)
+      .order('timestamp', { ascending: true });
+    if (apos) {
+      consulta = consulta.gt('timestamp', new Date(apos).toISOString());
     }
-  });
+
+    const { data: linhas, error: erroMensagens } = await consulta;
+    if (erroMensagens) throw erroMensagens;
+
+    const mensagens = (linhas || []).map(mensagemParaCamelCase);
+    return res.status(200).json({ mensagens });
+  } catch (erro) {
+    console.error('Falha ao buscar mensagens:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao buscar as mensagens.' });
+  }
 });
 
 // ---------------------------------------------------------------------------
 // ROTA: envio de mensagem no chat da ficha (RH <-> Candidato), com histórico
 // ordenado por data/hora persistido junto da ficha em candidatos.json
 // ---------------------------------------------------------------------------
-app.post('/api/candidato/:id/mensagens', (req, res) => {
-  const { id } = req.params;
-  const { autor, texto, nomeAutor } = req.body;
+app.post('/api/candidato/:id/mensagens', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { autor, texto, nomeAutor } = req.body;
 
-  if (!AUTORES_VALIDOS.includes(autor)) {
-    return res.status(400).json({ erro: "Autor inválido. Use 'RH' ou 'Candidato'." });
+    if (!AUTORES_VALIDOS.includes(autor)) {
+      return res.status(400).json({ erro: "Autor inválido. Use 'RH' ou 'Candidato'." });
+    }
+
+    const textoAparado = String(texto || '').trim();
+    if (!textoAparado) {
+      return res.status(400).json({ erro: 'Mensagem vazia.' });
+    }
+
+    // Busca só a linha do candidato (não a lista inteira) - o suficiente para
+    // validar existência e a regra de bloqueio por REPROVADO.
+    const { data: candidatoRow, error: erroCandidato } = await supabase
+      .from('candidatos')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (erroCandidato) throw erroCandidato;
+
+    if (!candidatoRow) {
+      return res.status(404).json({ erro: 'Candidato não encontrado.' });
+    }
+
+    // Bloqueio definitivo: processo finalizado (reprovado) não recebe mais
+    // mensagens de nenhum dos dois lados.
+    if (candidatoRow.status === 'REPROVADO') {
+      return res.status(400).json({ erro: 'Atendimento encerrado. Este processo admissional foi finalizado.' });
+    }
+
+    // Nome exibido junto da mensagem: do candidato sempre vem da própria ficha
+    // (nunca confia no valor enviado pelo cliente); do RH vem do corpo da
+    // requisição, já que esta rota não tem middleware de autenticação.
+    const nomeAutorFinal = autor === 'Candidato'
+      ? candidatoRow.nome_completo
+      : (String(nomeAutor || '').trim() || 'RH');
+
+    const agora = new Date().toISOString();
+    const novaMensagem = {
+      id: gerarId(),
+      autor,
+      nomeAutor: nomeAutorFinal,
+      texto: textoAparado,
+      timestamp: agora,
+      ip: req.ip
+    };
+
+    // Insere a mensagem diretamente na tabela própria (mensagens_chat), sem
+    // passar pelo upsert da ficha inteira - evita sobrescrever concorrentemente
+    // o restante dos dados do candidato só para acrescentar uma mensagem.
+    const { error: erroInsercao } = await supabase.from('mensagens_chat').insert({
+      id: novaMensagem.id,
+      candidato_id: id,
+      autor: novaMensagem.autor,
+      nome_autor: novaMensagem.nomeAutor,
+      texto: novaMensagem.texto,
+      timestamp: novaMensagem.timestamp,
+      ip: novaMensagem.ip
+    });
+    if (erroInsercao) throw erroInsercao;
+
+    // Só o carimbo de atualização da ficha muda - um update pontual, não um
+    // upsert da linha inteira.
+    const { error: erroUpdate } = await supabase
+      .from('candidatos')
+      .update({ atualizado_em: agora })
+      .eq('id', id);
+    if (erroUpdate) throw erroUpdate;
+
+    // Trilha de auditoria (LGPD): quem escreveu, quando e de onde.
+    registrarEventoAuditoria({
+      id: gerarId(),
+      tipoEvento: 'mensagem_chat',
+      candidatoId: id,
+      autor,
+      timestamp: agora,
+      ip: req.ip
+    });
+
+    // Devolve a ficha completa (mesmo formato de sempre) para o frontend
+    // atualizar seu cache local e a lista de mensagens em tela.
+    const { data: mensagensLinhas, error: erroMensagens } = await supabase
+      .from('mensagens_chat')
+      .select('*')
+      .eq('candidato_id', id)
+      .order('timestamp', { ascending: true });
+    if (erroMensagens) throw erroMensagens;
+
+    candidatoRow.atualizado_em = agora;
+    const candidato = candidatoParaCamelCase(candidatoRow, (mensagensLinhas || []).map(mensagemParaCamelCase));
+
+    return res.status(201).json({ mensagem: 'Mensagem enviada.', candidato });
+  } catch (erro) {
+    console.error('Falha ao enviar mensagem:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao enviar a mensagem.' });
   }
-
-  const textoAparado = String(texto || '').trim();
-  if (!textoAparado) {
-    return res.status(400).json({ erro: 'Mensagem vazia.' });
-  }
-
-  const candidatos = lerCandidatos();
-  const candidato = candidatos.find((c) => c.id === id);
-
-  if (!candidato) {
-    return res.status(404).json({ erro: 'Candidato não encontrado.' });
-  }
-
-  // Bloqueio definitivo: processo finalizado (reprovado) não recebe mais
-  // mensagens de nenhum dos dois lados.
-  if (candidato.status === 'REPROVADO') {
-    return res.status(400).json({ erro: 'Atendimento encerrado. Este processo admissional foi finalizado.' });
-  }
-
-  if (!Array.isArray(candidato.mensagens)) {
-    candidato.mensagens = [];
-  }
-
-  // Nome exibido junto da mensagem: do candidato sempre vem da própria ficha
-  // (nunca confia no valor enviado pelo cliente); do RH vem do corpo da
-  // requisição, já que esta rota não tem middleware de autenticação.
-  const nomeAutorFinal = autor === 'Candidato'
-    ? candidato.nomeCompleto
-    : (String(nomeAutor || '').trim() || 'RH');
-
-  const novaMensagem = {
-    id: gerarId(),
-    autor,
-    nomeAutor: nomeAutorFinal,
-    texto: textoAparado,
-    timestamp: new Date().toISOString(),
-    ip: req.ip
-  };
-  candidato.mensagens.push(novaMensagem);
-  candidato.atualizadoEm = novaMensagem.timestamp;
-  salvarCandidatos(candidatos);
-
-  transmitirMensagemChat(id, novaMensagem);
-
-  // Trilha de auditoria (LGPD): quem escreveu, quando e de onde.
-  registrarEventoAuditoria({
-    id: gerarId(),
-    tipoEvento: 'mensagem_chat',
-    candidatoId: id,
-    autor,
-    timestamp: novaMensagem.timestamp,
-    ip: req.ip
-  });
-
-  return res.status(201).json({ mensagem: 'Mensagem enviada.', candidato });
 });
 
 // ---------------------------------------------------------------------------
@@ -1142,7 +1483,8 @@ app.post('/api/candidato/:id/mensagens', (req, res) => {
 // com justificativa obrigatória. Libera especificamente aquele documento para
 // o candidato reenviar, e registra o evento na trilha de auditoria (LGPD).
 // ---------------------------------------------------------------------------
-app.patch('/api/rh/fichas/:id/documento/:tipo/pendencia', exigirRh, (req, res) => {
+app.patch('/api/rh/fichas/:id/documento/:tipo/pendencia', exigirRh, async (req, res) => {
+  try {
   const { id, tipo } = req.params;
   const { justificativa } = req.body;
 
@@ -1155,7 +1497,7 @@ app.patch('/api/rh/fichas/:id/documento/:tipo/pendencia', exigirRh, (req, res) =
     return res.status(400).json({ erro: 'Informe a justificativa da pendência.' });
   }
 
-  const candidatos = lerCandidatos();
+  const candidatos = await lerCandidatos();
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) {
@@ -1179,7 +1521,7 @@ app.patch('/api/rh/fichas/:id/documento/:tipo/pendencia', exigirRh, (req, res) =
   }
 
   candidato.atualizadoEm = agora;
-  salvarCandidatos(candidatos);
+  await salvarCandidatos(candidatos);
 
   registrarEventoAuditoria({
     id: gerarId(),
@@ -1197,6 +1539,10 @@ app.patch('/api/rh/fichas/:id/documento/:tipo/pendencia', exigirRh, (req, res) =
     mensagem: 'Pendência registrada. O candidato poderá reenviar este documento.',
     candidato
   });
+  } catch (erro) {
+    console.error('Falha ao registrar pendência:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao registrar a pendência.' });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -1204,14 +1550,15 @@ app.patch('/api/rh/fichas/:id/documento/:tipo/pendencia', exigirRh, (req, res) =
 // documento). Encerra uma eventual pendência aberta e conta como primeira
 // interação do RH com a ficha.
 // ---------------------------------------------------------------------------
-app.patch('/api/rh/fichas/:id/documento/:tipo/aceitar', exigirRh, (req, res) => {
+app.patch('/api/rh/fichas/:id/documento/:tipo/aceitar', exigirRh, async (req, res) => {
+  try {
   const { id, tipo } = req.params;
 
   if (!TIPOS_DOCUMENTO.includes(tipo)) {
     return res.status(400).json({ erro: 'Tipo de documento inválido.' });
   }
 
-  const candidatos = lerCandidatos();
+  const candidatos = await lerCandidatos();
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) {
@@ -1236,7 +1583,7 @@ app.patch('/api/rh/fichas/:id/documento/:tipo/aceitar', exigirRh, (req, res) => 
   }
 
   candidato.atualizadoEm = agora;
-  salvarCandidatos(candidatos);
+  await salvarCandidatos(candidatos);
 
   registrarEventoAuditoria({
     id: gerarId(),
@@ -1250,20 +1597,25 @@ app.patch('/api/rh/fichas/:id/documento/:tipo/aceitar', exigirRh, (req, res) => 
   console.log(`--- [Auditoria] Documento aceito --- ID: ${id} | Documento: ${tipo} | IP: ${req.ip}`);
 
   return res.status(200).json({ mensagem: 'Documento aceito com sucesso!', candidato });
+  } catch (erro) {
+    console.error('Falha ao aceitar documento:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao aceitar o documento.' });
+  }
 });
 
 // ---------------------------------------------------------------------------
 // ROTA: RH abriu/visualizou um documento (clique em "Visualizar/Baixar PDF").
 // Não altera nada no documento em si; apenas registra o evento na auditoria.
 // ---------------------------------------------------------------------------
-app.patch('/api/rh/fichas/:id/documento/:tipo/visualizado', exigirRh, (req, res) => {
+app.patch('/api/rh/fichas/:id/documento/:tipo/visualizado', exigirRh, async (req, res) => {
+  try {
   const { id, tipo } = req.params;
 
   if (!TIPOS_DOCUMENTO.includes(tipo)) {
     return res.status(400).json({ erro: 'Tipo de documento inválido.' });
   }
 
-  const candidatos = lerCandidatos();
+  const candidatos = await lerCandidatos();
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) {
@@ -1282,6 +1634,10 @@ app.patch('/api/rh/fichas/:id/documento/:tipo/visualizado', exigirRh, (req, res)
   });
 
   return res.status(200).json({ mensagem: 'ok', candidato });
+  } catch (erro) {
+    console.error('Falha ao registrar visualização:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao registrar a visualização.' });
+  }
 });
 
 // Decisões finais válidas para o processo admissional.
@@ -1291,7 +1647,8 @@ const DECISOES_VALIDAS = ['APROVADO', 'REPROVADO'];
 // ROTA: decisão final do processo (Aprovar/Reprovar), com registro na trilha
 // de auditoria. A ficha do candidato passa a ficar travada para edição.
 // ---------------------------------------------------------------------------
-app.patch('/api/rh/fichas/:id/decisao', exigirRh, (req, res) => {
+app.patch('/api/rh/fichas/:id/decisao', exigirRh, async (req, res) => {
+  try {
   const { id } = req.params;
   const { decisao } = req.body;
 
@@ -1299,7 +1656,7 @@ app.patch('/api/rh/fichas/:id/decisao', exigirRh, (req, res) => {
     return res.status(400).json({ erro: "Decisão inválida. Use 'APROVADO' ou 'REPROVADO'." });
   }
 
-  const candidatos = lerCandidatos();
+  const candidatos = await lerCandidatos();
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) {
@@ -1317,7 +1674,7 @@ app.patch('/api/rh/fichas/:id/decisao', exigirRh, (req, res) => {
   // contrato) ou "Reprovado".
   candidato.status = decisao === 'APROVADO' ? 'PENDENTE_ASSINATURA' : 'REPROVADO';
   candidato.atualizadoEm = agora;
-  salvarCandidatos(candidatos);
+  await salvarCandidatos(candidatos);
 
   registrarEventoAuditoria({
     id: gerarId(),
@@ -1335,6 +1692,10 @@ app.patch('/api/rh/fichas/:id/decisao', exigirRh, (req, res) => {
     mensagem: 'Decisão registrada com sucesso!',
     candidato
   });
+  } catch (erro) {
+    console.error('Falha ao registrar decisão:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao registrar a decisão.' });
+  }
 });
 
 // Rótulos do status (documento/ficha em análise) usados no relatório exportado.
@@ -1430,7 +1791,7 @@ function montarLinhaRelatorio(c) {
 // (nova ficha, mudança de status, decisão, contrato etc. - ver o hook dentro
 // de salvarCandidatos()), sempre refletindo os dados mais recentes do sistema.
 // ---------------------------------------------------------------------------
-const ARQUIVO_PLANILHA_MESTRE = path.join(__dirname, 'relatorio_geral_admissoes.xlsx');
+const ARQUIVO_PLANILHA_MESTRE = path.join(DIRETORIO_DADOS, 'relatorio_geral_admissoes.xlsx');
 
 // Cores de destaque (fundo/texto) por status, aplicadas na coluna "Status
 // Atual" de cada linha - o equivalente visual de uma formatação condicional,
@@ -1464,7 +1825,7 @@ const COLUNAS_CENTRALIZADAS_PLANILHA = new Set([
 // para que a última gravação da fila (ver atualizarPlanilhaMestre) sempre
 // reflita o estado mais recente, mesmo sob gravações concorrentes.
 async function gerarOuAtualizarPlanilhaMestre() {
-  const candidatos = lerCandidatos();
+  const candidatos = await lerCandidatos();
 
   const workbook = new ExcelJS.Workbook();
   const planilha = workbook.addWorksheet('Relatório de Admissões');
@@ -1627,9 +1988,9 @@ function descreverFiltrosDashboard(query = {}) {
 // ROTA: relatório visual do Dashboard de Admissões em PDF (A4 paisagem),
 // respeitando os mesmos filtros (período/status/busca) aplicados na tela.
 // ---------------------------------------------------------------------------
-app.get('/api/relatorio/dashboard-pdf', exigirRh, (req, res) => {
+app.get('/api/relatorio/dashboard-pdf', exigirRh, async (req, res) => {
   try {
-    const candidatosFiltrados = filtrarCandidatosParaDashboard(lerCandidatos(), req.query);
+    const candidatosFiltrados = filtrarCandidatosParaDashboard(await lerCandidatos(), req.query);
     const kpis = calcularKpisDashboard(candidatosFiltrados);
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -1942,9 +2303,10 @@ function montarRegistroApiAdmissao(c) {
 // ---------------------------------------------------------------------------
 // ROTA: API v1 - lista/filtra admissões para integração com sistemas externos
 // ---------------------------------------------------------------------------
-app.get('/api/v1/admissoes', exigirApiKeyAdmissoes, (req, res) => {
+app.get('/api/v1/admissoes', exigirApiKeyAdmissoes, async (req, res) => {
+  try {
   const statusQuery = req.query.status;
-  let candidatos = lerCandidatos();
+  let candidatos = await lerCandidatos();
   let filtroAplicado = null;
 
   if (statusQuery) {
@@ -1961,6 +2323,10 @@ app.get('/api/v1/admissoes', exigirApiKeyAdmissoes, (req, res) => {
   const admissoes = candidatos.map(montarRegistroApiAdmissao);
 
   return res.status(200).json({ total: admissoes.length, filtro: filtroAplicado, admissoes });
+  } catch (erro) {
+    console.error('Falha ao listar admissões (API v1):', erro.message);
+    return res.status(500).json({ erro: 'Falha ao listar admissões.' });
+  }
 });
 
 function situacaoDocumentoPdf(candidato, tipo, documento) {
@@ -1970,9 +2336,15 @@ function situacaoDocumentoPdf(candidato, tipo, documento) {
   return 'Pendente';
 }
 
-app.get('/api/rh/fichas/:id/pdf', exigirRh, (req, res) => {
+app.get('/api/rh/fichas/:id/pdf', exigirRh, async (req, res) => {
   const { id } = req.params;
-  const candidatos = lerCandidatos();
+  let candidatos;
+  try {
+    candidatos = await lerCandidatos();
+  } catch (erro) {
+    console.error('Falha ao buscar candidato para PDF da ficha:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao buscar o candidato.' });
+  }
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
@@ -2200,12 +2572,13 @@ app.get('/api/contrato/minuta/:tipo', (req, res) => {
 // clique = assinatura eletrônica simples). Só é permitido para fichas já
 // APROVADAS pelo RH. Grava timestamp (ISO) e IP no documento e na auditoria.
 app.post('/api/candidato/:id/contrato/:tipo/aceite', async (req, res) => {
+  try {
   const { id, tipo } = req.params;
   if (!TIPOS_CONTRATO.includes(tipo)) {
     return res.status(400).json({ erro: 'Documento de contrato inválido.' });
   }
 
-  const candidatos = lerCandidatos();
+  const candidatos = await lerCandidatos();
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
@@ -2222,7 +2595,7 @@ app.post('/api/candidato/:id/contrato/:tipo/aceite', async (req, res) => {
   candidato.contrato.documentos[tipo].aceite = aceite;
   candidato.contrato.documentos[tipo].arquivoAssinado = 'uploads/' + arquivoAssinado;
   candidato.atualizadoEm = agora;
-  salvarCandidatos(candidatos);
+  await salvarCandidatos(candidatos);
 
   registrarEventoAuditoria({
     id: gerarId(),
@@ -2235,17 +2608,22 @@ app.post('/api/candidato/:id/contrato/:tipo/aceite', async (req, res) => {
   });
 
   return res.status(200).json({ mensagem: 'Documento aceito com sucesso!', candidato });
+  } catch (erro) {
+    console.error('Falha ao registrar aceite do documento:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao registrar o aceite do documento.' });
+  }
 });
 
 // RH também pode marcar o aceite de um documento em nome do candidato
 // (mesmo layout/ação "Aceitar Documento" usado nos demais cards do painel).
 app.patch('/api/rh/fichas/:id/contrato/:tipo/aceitar', exigirRh, async (req, res) => {
+  try {
   const { id, tipo } = req.params;
   if (!TIPOS_CONTRATO.includes(tipo)) {
     return res.status(400).json({ erro: 'Documento de contrato inválido.' });
   }
 
-  const candidatos = lerCandidatos();
+  const candidatos = await lerCandidatos();
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
@@ -2262,7 +2640,7 @@ app.patch('/api/rh/fichas/:id/contrato/:tipo/aceitar', exigirRh, async (req, res
   candidato.contrato.documentos[tipo].aceite = aceite;
   candidato.contrato.documentos[tipo].arquivoAssinado = 'uploads/' + arquivoAssinado;
   candidato.atualizadoEm = agora;
-  salvarCandidatos(candidatos);
+  await salvarCandidatos(candidatos);
 
   registrarEventoAuditoria({
     id: gerarId(),
@@ -2275,6 +2653,10 @@ app.patch('/api/rh/fichas/:id/contrato/:tipo/aceitar', exigirRh, async (req, res
   });
 
   return res.status(200).json({ mensagem: 'Documento aceito com sucesso!', candidato });
+  } catch (erro) {
+    console.error('Falha ao registrar aceite do documento (RH):', erro.message);
+    return res.status(500).json({ erro: 'Falha ao registrar o aceite do documento.' });
+  }
 });
 
 // Conclusão unificada da assinatura digital: só é permitida quando TODOS os
@@ -2286,10 +2668,11 @@ app.patch('/api/rh/fichas/:id/contrato/:tipo/aceitar', exigirRh, async (req, res
 // 14.063/2020) e a base legal do tratamento dos metadados (LGPD, Art. 7º).
 const BASE_LEGAL_ASSINATURA_DIGITAL = 'MP nº 2.200-2/2001; Lei nº 14.063/2020; LGPD Art. 7º, II e V';
 
-app.post('/api/candidato/:id/contrato/concluir', (req, res) => {
+app.post('/api/candidato/:id/contrato/concluir', async (req, res) => {
+  try {
   const { id } = req.params;
   const { consentimentoContratoLGPD } = req.body;
-  const candidatos = lerCandidatos();
+  const candidatos = await lerCandidatos();
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
@@ -2321,7 +2704,7 @@ app.post('/api/candidato/:id/contrato/concluir', (req, res) => {
     baseLegal: BASE_LEGAL_ASSINATURA_DIGITAL
   };
   candidato.atualizadoEm = agora;
-  salvarCandidatos(candidatos);
+  await salvarCandidatos(candidatos);
 
   registrarEventoAuditoria({
     id: gerarId(),
@@ -2335,13 +2718,18 @@ app.post('/api/candidato/:id/contrato/concluir', (req, res) => {
   });
 
   return res.status(200).json({ mensagem: 'Assinatura digital concluída com sucesso!', candidato });
+  } catch (erro) {
+    console.error('Falha ao concluir assinatura digital:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao concluir a assinatura digital.' });
+  }
 });
 
 // RH finaliza o processo: exige a assinatura digital unificada já concluída
 // pelo candidato, e move o status geral da ficha para o estado terminal.
-app.patch('/api/rh/fichas/:id/contrato/validar', exigirRh, (req, res) => {
+app.patch('/api/rh/fichas/:id/contrato/validar', exigirRh, async (req, res) => {
+  try {
   const { id } = req.params;
-  const candidatos = lerCandidatos();
+  const candidatos = await lerCandidatos();
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
@@ -2356,7 +2744,7 @@ app.patch('/api/rh/fichas/:id/contrato/validar', exigirRh, (req, res) => {
   candidato.contrato.validacaoRh = { timestamp: agora, ip: req.ip, validadoPor: req.usuario.id };
   candidato.status = 'CONTRATACAO_CONCLUIDA';
   candidato.atualizadoEm = agora;
-  salvarCandidatos(candidatos);
+  await salvarCandidatos(candidatos);
 
   registrarEventoAuditoria({
     id: gerarId(),
@@ -2367,6 +2755,10 @@ app.patch('/api/rh/fichas/:id/contrato/validar', exigirRh, (req, res) => {
   });
 
   return res.status(200).json({ mensagem: 'Contratação concluída com sucesso!', candidato });
+  } catch (erro) {
+    console.error('Falha ao validar contratação:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao validar a contratação.' });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -2377,8 +2769,8 @@ app.patch('/api/rh/fichas/:id/contrato/validar', exigirRh, (req, res) => {
 const EMAIL_RH_TESTE = 'rh@onboarding.local';
 const SENHA_RH_TESTE = 'onboarding123';
 
-function garantirUsuarioRhTeste() {
-  const usuarios = lerUsuarios();
+async function garantirUsuarioRhTeste() {
+  const usuarios = await lerUsuarios();
   if (usuarios.some((u) => u.email === EMAIL_RH_TESTE)) return;
 
   const { salt, hash } = gerarHashSenha(SENHA_RH_TESTE);
@@ -2392,22 +2784,47 @@ function garantirUsuarioRhTeste() {
     googleId: null,
     criadoEm: new Date().toISOString()
   });
-  salvarUsuarios(usuarios);
+  await salvarUsuarios(usuarios);
   console.log('--- Conta de RH de testes criada (MVP/Dev):', EMAIL_RH_TESTE, '---');
 }
 
-garantirUsuarioRhTeste();
-garantirMinutasContrato();
-// Gera a planilha Mestre já no boot, refletindo a carga inicial existente em
-// candidatos.json (ex.: a ficha de testes "Maria Gadu"), sem esperar a
-// próxima gravação para o arquivo existir.
-atualizarPlanilhaMestre();
+// Em serverless (Vercel), este arquivo é reavaliado a cada cold start - uma
+// falha de disco/rede aqui (ex.: /tmp indisponível, ou o Supabase ainda sem
+// as tabelas criadas pelo humano via supabase/schema.sql) não pode derrubar
+// o carregamento do módulo inteiro, ou toda requisição àquela instância
+// passaria a falhar. Localmente, uma falha aqui é genuinamente grave (impede
+// o boot de dados de teste), então o erro ainda é logado bem visível.
+// A sequência de boot agora depende de chamadas assíncronas ao Supabase, mas
+// "module.exports = app" (mais abaixo) precisa continuar síncrono - por isso
+// o boot roda numa IIFE assíncrona "solta" (fire-and-forget), sem bloquear a
+// importação do módulo pela Vercel nem pelo "node index.js" local.
+(async () => {
+  try {
+    await garantirUsuarioRhTeste();
+    garantirMinutasContrato();
+    // Gera a planilha Mestre já no boot, refletindo a carga inicial existente
+    // no banco (ex.: a ficha de testes "Maria Gadu"), sem esperar a próxima
+    // gravação para o arquivo existir.
+    await atualizarPlanilhaMestre();
+  } catch (erro) {
+    console.error('Falha na inicialização de dados (não impede o boot do servidor):', erro.message);
+  }
+})();
+
+// Exporta o app Express para a Vercel (função serverless) importar e invocar
+// diretamente, sem precisar abrir uma porta TCP própria.
+module.exports = app;
 
 // Porta configurável via variável de ambiente PORT (padrão do Node/Express e
 // das plataformas de deploy em nuvem, como Render e Railway, que injetam essa
 // variável automaticamente). Padrão local: 3001, evitando conflito com outros
 // servidores locais, como o do projeto Pré-Vendas na 3000.
+// Na Vercel, NODE_ENV já vem como 'production' e a própria plataforma invoca
+// o app exportado acima como função serverless - chamar app.listen() lá
+// seria redundante (e a Vercel não expõe uma porta TCP tradicional).
 const PORTA = process.env.PORT || 3001;
-app.listen(PORTA, () => {
-  console.log(`Servidor de Onboarding Digital rodando em http://localhost:${PORTA}`);
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORTA, () => {
+    console.log(`Servidor de Onboarding Digital rodando em http://localhost:${PORTA}`);
+  });
+}

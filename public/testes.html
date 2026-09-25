@@ -1199,15 +1199,22 @@
         }
       },
       {
-        nome: 'GET .../mensagens/eventos (SSE) não derruba o servidor quando abortado logo em seguida',
+        // Chat usa HTTP Polling (não SSE/WebSocket) para funcionar de forma
+        // segura em ambiente serverless (Vercel) - esta rota é consultada
+        // periodicamente pelo front-end enquanto o chat está visível.
+        nome: 'GET .../mensagens (polling) retorna o histórico e respeita o filtro ?apos=',
         run: async () => {
-          const controlador = new AbortController();
-          const promessa = fetch(API + '/candidato/' + window.__idChatNomeAutor + '/mensagens/eventos', { signal: controlador.signal }).catch(() => {});
-          controlador.abort();
-          await promessa;
-          // Servidor continua respondendo normalmente após a conexão SSE abortada.
-          const r = await fetch(API + '/candidato/' + window.__idChatNomeAutor);
-          return { ok: r.status === 200, detalhe: `status após abrir/abortar SSE: ${r.status}` };
+          const r1 = await fetch(API + '/candidato/' + window.__idChatNomeAutor + '/mensagens');
+          const corpo1 = await r1.json();
+          const total = (corpo1.mensagens || []).length;
+          if (total === 0) return { ok: false, detalhe: 'nenhuma mensagem encontrada para testar o polling' };
+
+          const ultimoTimestamp = corpo1.mensagens[total - 1].timestamp;
+          const r2 = await fetch(API + '/candidato/' + window.__idChatNomeAutor + '/mensagens?apos=' + encodeURIComponent(ultimoTimestamp));
+          const corpo2 = await r2.json();
+
+          const ok = r1.status === 200 && total > 0 && r2.status === 200 && Array.isArray(corpo2.mensagens) && corpo2.mensagens.length === 0;
+          return { ok, detalhe: `total sem filtro: ${total}, total após a última: ${corpo2.mensagens?.length}` };
         }
       },
       {

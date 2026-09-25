@@ -1314,37 +1314,53 @@
     // Ids das fichas com o painel de detalhes aberto, para restaurar após cada recarga.
     const detalhesExpandidos = new Set();
 
-    // Conexões SSE (Server-Sent Events) do chat, uma por ficha com o painel
-    // expandido - candidatoId -> EventSource. Mantidas só enquanto o painel
-    // daquela ficha estiver visível, para não vazar conexões abertas.
-    const chatEventSourcesRh = new Map();
+    // Polling (HTTP) do chat, um intervalo por ficha com o painel expandido -
+    // candidatoId -> { intervalId, ultimoTimestamp }. Mantido só enquanto o
+    // painel daquela ficha estiver visível, para não gerar consultas à toa.
+    // Preferido a uma conexão SSE mantida aberta porque funciona de forma
+    // segura em ambiente serverless (Vercel): cada consulta é uma
+    // requisição curta e independente, sem depender de uma conexão HTTP de
+    // longa duração (que seria encerrada pelo limite de execução da função).
+    const INTERVALO_POLLING_CHAT_MS = 3000;
+    const chatPollingRh = new Map();
 
-    function abrirChatEventSourceRh(id) {
-      if (chatEventSourcesRh.has(id)) return;
-      const es = new EventSource(`/api/candidato/${id}/mensagens/eventos`);
-      es.onmessage = (evento) => {
-        try {
-          const mensagem = JSON.parse(evento.data);
-          const mensagens = adicionarMensagemAoCache(id, mensagem);
-          if (mensagens) atualizarChatInline(id, mensagens);
-        } catch (erro) {
-          // ignora eventos que não sejam JSON de mensagem (ex.: comentários/ping)
-        }
-      };
-      chatEventSourcesRh.set(id, es);
-    }
-
-    function fecharChatEventSourceRh(id) {
-      const es = chatEventSourcesRh.get(id);
-      if (es) {
-        es.close();
-        chatEventSourcesRh.delete(id);
+    async function consultarNovasMensagensRh(id) {
+      const estado = chatPollingRh.get(id);
+      if (!estado) return;
+      try {
+        const params = estado.ultimoTimestamp ? `?apos=${encodeURIComponent(estado.ultimoTimestamp)}` : '';
+        const r = await fetch(`/api/candidato/${id}/mensagens${params}`);
+        if (!r.ok) return;
+        const { mensagens } = await r.json();
+        if (!mensagens || !mensagens.length) return;
+        mensagens.forEach((m) => { estado.ultimoTimestamp = m.timestamp; });
+        const listaAtualizada = mensagens.reduce((acc, m) => adicionarMensagemAoCache(id, m) || acc, null);
+        if (listaAtualizada) atualizarChatInline(id, listaAtualizada);
+      } catch (erro) {
+        // Falha silenciosa - a próxima consulta periódica tenta de novo.
       }
     }
 
-    function fecharTodosChatEventSourcesRh() {
-      chatEventSourcesRh.forEach((es) => es.close());
-      chatEventSourcesRh.clear();
+    function abrirChatPollingRh(id) {
+      if (chatPollingRh.has(id)) return;
+      const ficha = ultimasFichasCarregadas.find((f) => f.id === id);
+      const mensagensAtuais = (ficha && ficha.mensagens) || [];
+      const ultimoTimestamp = mensagensAtuais.length ? mensagensAtuais[mensagensAtuais.length - 1].timestamp : null;
+      const intervalId = setInterval(() => consultarNovasMensagensRh(id), INTERVALO_POLLING_CHAT_MS);
+      chatPollingRh.set(id, { intervalId, ultimoTimestamp });
+    }
+
+    function fecharChatPollingRh(id) {
+      const estado = chatPollingRh.get(id);
+      if (estado) {
+        clearInterval(estado.intervalId);
+        chatPollingRh.delete(id);
+      }
+    }
+
+    function fecharTodosChatPollingRh() {
+      chatPollingRh.forEach((estado) => clearInterval(estado.intervalId));
+      chatPollingRh.clear();
     }
 
     // Adiciona (com deduplicação por id) uma mensagem recebida via SSE ao
@@ -1434,7 +1450,7 @@
       // A tabela é reconstruída do zero a cada chamada - fecha todas as
       // conexões SSE existentes e reabre apenas para as fichas que continuam
       // com o painel de detalhes expandido, evitando conexões vazadas.
-      fecharTodosChatEventSourcesRh();
+      fecharTodosChatPollingRh();
 
       const fichas = ordenarFichas(aplicarFiltro(aplicarBusca(ultimasFichasCarregadas)));
 
@@ -1487,7 +1503,7 @@
           `;
           corpo.appendChild(trDetalhes);
 
-          if (expandidoAgora) abrirChatEventSourceRh(f.id);
+          if (expandidoAgora) abrirChatPollingRh(f.id);
         });
     }
 
@@ -1504,7 +1520,7 @@
       botao.setAttribute('aria-expanded', String(!trDetalhes.hidden));
       if (trDetalhes.hidden) {
         detalhesExpandidos.delete(id);
-        fecharChatEventSourceRh(id);
+        fecharChatPollingRh(id);
       } else {
         detalhesExpandidos.add(id);
       }

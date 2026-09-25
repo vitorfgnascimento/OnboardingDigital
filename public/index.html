@@ -1771,33 +1771,51 @@
       container.scrollTop = container.scrollHeight;
     }
 
-    // Conexão SSE (Server-Sent Events) para receber mensagens novas em tempo
-    // real, sem recarregar a página. Guardada por candidatoId para nunca abrir
-    // duas conexões para a mesma ficha em re-renderizações repetidas.
-    let chatEventSource = null;
-    let chatEventSourceCandidatoId = null;
+    // Polling (HTTP) para receber mensagens novas em tempo real, sem
+    // recarregar a página. Preferido a uma conexão SSE mantida aberta porque
+    // funciona de forma segura em ambiente serverless (Vercel): cada
+    // consulta é uma requisição curta e independente, sem depender de uma
+    // conexão HTTP de longa duração (que seria encerrada pelo limite de
+    // execução da função). Guardado por candidatoId para nunca abrir dois
+    // intervalos para a mesma ficha em re-renderizações repetidas.
+    const INTERVALO_POLLING_CHAT_MS = 3000;
+    let chatPollingIntervalId = null;
+    let chatPollingCandidatoId = null;
+    let chatPollingUltimoTimestamp = null;
 
-    function abrirChatEventSource() {
+    async function consultarNovasMensagens() {
       if (!candidatoId) return;
-      if (chatEventSource && chatEventSourceCandidatoId === candidatoId) return;
-      fecharChatEventSource();
-      chatEventSource = new EventSource('/api/candidato/' + candidatoId + '/mensagens/eventos');
-      chatEventSourceCandidatoId = candidatoId;
-      chatEventSource.onmessage = (evento) => {
-        try {
-          const mensagem = JSON.parse(evento.data);
-          adicionarMensagemRecebida(mensagem);
-        } catch (erro) {
-          // ignora eventos que não sejam JSON de mensagem (ex.: comentários/ping)
-        }
-      };
+      try {
+        const params = chatPollingUltimoTimestamp ? `?apos=${encodeURIComponent(chatPollingUltimoTimestamp)}` : '';
+        const r = await fetch(API + '/candidato/' + candidatoId + '/mensagens' + params);
+        if (!r.ok) return;
+        const { mensagens } = await r.json();
+        if (!mensagens || !mensagens.length) return;
+        mensagens.forEach((m) => {
+          chatPollingUltimoTimestamp = m.timestamp;
+          adicionarMensagemRecebida(m);
+        });
+      } catch (erro) {
+        // Falha silenciosa - a próxima consulta periódica tenta de novo.
+      }
     }
 
-    function fecharChatEventSource() {
-      if (chatEventSource) {
-        chatEventSource.close();
-        chatEventSource = null;
-        chatEventSourceCandidatoId = null;
+    function abrirChatPolling() {
+      if (!candidatoId) return;
+      if (chatPollingIntervalId && chatPollingCandidatoId === candidatoId) return;
+      fecharChatPolling();
+      chatPollingCandidatoId = candidatoId;
+      chatPollingUltimoTimestamp = (candidato && candidato.mensagens && candidato.mensagens.length)
+        ? candidato.mensagens[candidato.mensagens.length - 1].timestamp
+        : null;
+      chatPollingIntervalId = setInterval(consultarNovasMensagens, INTERVALO_POLLING_CHAT_MS);
+    }
+
+    function fecharChatPolling() {
+      if (chatPollingIntervalId) {
+        clearInterval(chatPollingIntervalId);
+        chatPollingIntervalId = null;
+        chatPollingCandidatoId = null;
       }
     }
 
@@ -1824,7 +1842,7 @@
       document.getElementById('secaoChat').classList.add('visivel');
       renderizarMensagens(candidato.mensagens || []);
       aplicarBloqueioChatReprovado();
-      abrirChatEventSource();
+      abrirChatPolling();
     }
 
     // Enter envia a mensagem; Shift+Enter continua quebrando linha normalmente.
