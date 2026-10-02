@@ -514,7 +514,7 @@
     /* --- LISTA DE DOCUMENTOS/CONTRATOS A ACEITAR (assinatura por clique) --- */
     .item-documento-contrato {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       align-items: center;
       justify-content: space-between;
       gap: 10px;
@@ -524,12 +524,19 @@
       padding: 12px 14px;
       margin-bottom: 10px;
     }
-    .item-documento-contrato .titulo-documento-contrato { font-weight: 600; font-size: 14px; }
+    .item-documento-contrato .titulo-documento-contrato { font-weight: 600; font-size: 14px; flex: 1 1 auto; min-width: 0; }
     .item-documento-contrato .acoes-item-contrato {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
       align-items: center;
+      justify-content: flex-end;
+      flex: 0 0 auto;
+    }
+    /* Em telas estreitas (celular) não há espaço lado a lado: empilha. */
+    @media (max-width: 640px) {
+      .item-documento-contrato { flex-wrap: wrap; }
+      .item-documento-contrato .acoes-item-contrato { justify-content: flex-start; }
     }
     .btn-ver-minuta {
       background: #ffffff;

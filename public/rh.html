@@ -1945,7 +1945,68 @@
     });
 
     // Carrega o painel assim que a página abre (só depois de confirmar a sessão de RH).
-    exigirSessaoRh().then((autorizado) => { if (autorizado) carregarFichas(); });
+    // Atualização automática do painel: o candidato age (envia documento,
+    // aceita um contrato, escreve) e o RH enxerga sem F5. A cada ciclo busca
+    // as fichas e só mexe na tela se algo realmente mudou (status, data de
+    // atualização, ficha nova ou removida), para não atrapalhar quem está
+    // digitando uma pendência ou mensagem.
+    const INTERVALO_ATUALIZACAO_FICHAS_MS = 5000;
+
+    function assinaturaDaFicha(f) {
+      return `${f.status}|${f.atualizadoEm || f.criadoEm}`;
+    }
+
+    async function atualizarFichasSilenciosamente() {
+      if (document.hidden) return;
+      try {
+        const resposta = await fetch('/api/rh/fichas', { headers: cabecalhosRh() });
+        if (!resposta.ok) return;
+        const novas = await resposta.json();
+        if (!Array.isArray(novas)) return;
+
+        const antigas = new Map(ultimasFichasCarregadas.map((f) => [f.id, f]));
+        const alteradas = novas.filter((f) => !antigas.has(f.id) || assinaturaDaFicha(antigas.get(f.id)) !== assinaturaDaFicha(f));
+        const estruturaMudou = novas.length !== antigas.size || novas.some((f) => !antigas.has(f.id));
+        if (!alteradas.length && !estruturaMudou) return;
+
+        ultimasFichasCarregadas = novas;
+        renderizarDashboard();
+
+        const campoAtivo = document.activeElement;
+        const digitando = campoAtivo && /^(INPUT|TEXTAREA)$/.test(campoAtivo.tagName)
+          && document.getElementById('corpoTabela').contains(campoAtivo);
+
+        if (estruturaMudou && !digitando) {
+          renderizarTabela();
+          return;
+        }
+
+        alteradas.forEach((f) => {
+          const trDetalhes = document.querySelector(`tr[data-detalhes-de="${f.id}"]`);
+          if (!trDetalhes) return;
+          const badge = trDetalhes.previousElementSibling && trDetalhes.previousElementSibling.querySelector('.badge');
+          if (badge) {
+            const { classe, rotulo } = getStatusBadge(f.status);
+            badge.className = `badge ${classe}`;
+            badge.textContent = rotulo;
+          }
+          if (detalhesExpandidos.has(f.id)) atualizarPainelDetalhesInline(f);
+        });
+      } catch (erro) {
+        // Falha de rede momentânea - a próxima consulta periódica tenta de novo.
+      }
+    }
+
+    exigirSessaoRh().then((autorizado) => {
+      if (!autorizado) return;
+      carregarFichas();
+      setInterval(atualizarFichasSilenciosamente, INTERVALO_ATUALIZACAO_FICHAS_MS);
+      // Ao voltar para esta aba (que ficou em segundo plano e não atualizava),
+      // atualiza imediatamente em vez de esperar o próximo ciclo.
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) atualizarFichasSilenciosamente();
+      });
+    });
   </script>
 </body>
 </html>
