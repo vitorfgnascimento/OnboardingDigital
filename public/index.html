@@ -1566,6 +1566,7 @@
         bloquearFicha();
         window.history.replaceState(null, '', '?id=' + candidatoId);
         exibirPainelChat();
+        iniciarAtualizacaoAutomaticaFicha();
         mensagem.style.color = '#00812a';
         mensagem.textContent = 'Admissão enviada com sucesso!';
       } catch (erro) {
@@ -1775,6 +1776,21 @@
     let chatPollingCandidatoId = null;
     let chatPollingUltimoTimestamp = null;
 
+    // Atualização automática da ficha (status geral, decisão do RH, grade de
+    // documentos, liberação do contrato) enquanto esta aba estiver aberta -
+    // sem isso, uma aprovação/reprovação feita pelo RH só apareceria para o
+    // candidato depois de um F5 manual. Reaproveita carregarFichaExistente(),
+    // a mesma função do carregamento inicial: já re-renderiza tudo a partir
+    // dos dados mais recentes e é segura de chamar repetidamente (os campos
+    // ficam bloqueados/somente leitura assim que a ficha é enviada).
+    const INTERVALO_POLLING_FICHA_MS = 5000;
+    let fichaPollingIntervalId = null;
+
+    function iniciarAtualizacaoAutomaticaFicha() {
+      if (fichaPollingIntervalId || !candidatoId) return;
+      fichaPollingIntervalId = setInterval(() => carregarFichaExistente(candidatoId), INTERVALO_POLLING_FICHA_MS);
+    }
+
     async function consultarNovasMensagens() {
       if (!candidatoId) return;
       try {
@@ -1864,11 +1880,18 @@
           alert('Erro: ' + (resultado.erro || 'não foi possível enviar a mensagem.'));
           return;
         }
-        // Não renderiza otimisticamente: a própria conexão SSE já recebe de
-        // volta a mensagem recém-enviada (adicionarMensagemRecebida faz a
-        // deduplicação por id), evitando mensagem duplicada na tela.
+        // Renderiza na hora (otimista): não espera o próximo ciclo do
+        // polling (até ~3s) para o remetente ver a própria mensagem - o
+        // backend já devolve a ficha com a mensagem recém-inserida incluída.
+        // O polling continua rodando para pegar mensagens do outro lado
+        // (RH), e a deduplicação por id evita duplicar esta aqui.
         candidato.status = resultado.candidato.status;
         candidato.atualizadoEm = resultado.candidato.atualizadoEm;
+        candidato.mensagens = resultado.candidato.mensagens;
+        renderizarMensagens(candidato.mensagens);
+        if (candidato.mensagens.length) {
+          chatPollingUltimoTimestamp = candidato.mensagens[candidato.mensagens.length - 1].timestamp;
+        }
         campo.value = '';
         campo.focus();
       } catch (erro) {
@@ -2103,6 +2126,7 @@
         exibirBannerDecisao();
         exibirPainelChat();
         renderizarSecaoContrato();
+        iniciarAtualizacaoAutomaticaFicha();
 
         return true;
       } catch (erro) {
