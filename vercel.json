@@ -4,10 +4,19 @@
     {
       "src": "index.js",
       "use": "@vercel/node",
-      "config": { "includeFiles": ["public/**", "node_modules/pdfkit/js/data/**"] }
+      "config": {
+        "includeFiles": [
+          "public/**",
+          "node_modules/pdfkit/js/data/**",
+          "node_modules/pdfkit/js/standard-fonts/**"
+        ]
+      }
     }
   ],
   "routes": [
-    { "src": "/(.*)", "dest": "index.js" }
+    {
+      "src": "/(.*)",
+      "dest": "index.js"
+    }
   ]
 }
