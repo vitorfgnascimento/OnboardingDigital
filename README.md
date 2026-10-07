@@ -89,7 +89,10 @@ Foco em documentação, conformidade com a LGPD e preparação para publicar o M
 Módulo de Autenticação e Contratação:
 
 - **Login e Registro** (`public/login.html`) - entrar com e-mail/senha, criar conta, ou entrar com o Google (Google Identity Services). Senhas usam hash `scrypt` + salt (nunca texto puro); sessão via token opaco (`Authorization: Bearer`), persistido em `sessoes.json` (7 dias de validade).
-- **Google Sign-In** requer uma credencial OAuth real (`GOOGLE_CLIENT_ID`, ver `.env.example`) gerada no Google Cloud Console pelo Líder de Projeto; sem ela, o botão fica visível mas a autenticação real não funciona nesse ambiente.
+- **Google Sign-In** requer uma credencial OAuth real (`GOOGLE_CLIENT_ID`, ver `.env.example`) gerada no Google Cloud Console pelo Líder de Projeto; sem ela, o botão aparece desabilitado com o aviso "Login com Google indisponível no momento". Veja o passo a passo em [Login com o Google](#login-com-o-google). Ao entrar pelo Google, o nome e a foto da conta Google são usados no perfil.
+- **Foto de perfil** - candidatos (card "Seu perfil" na ficha) e RH (Configurações) podem enviar uma foto, recortada e reduzida no navegador (JPEG ~256x256, até 200 KB) e guardada em `usuarios.foto` / `configuracoes.foto_rh`. A foto do candidato aparece para o RH e a do RH para os candidatos. Migração: `supabase/migracao_fotos_mensagem_contratacao.sql`.
+- **Mensagem de contratação concluída** - título e texto do card exibido ao candidato contratado são editáveis em Configurações do RH.
+- **Primeira página** - `/` e qualquer página restrita sem sessão levam ao login, que devolve o usuário à página pedida (somente caminhos internos do mesmo tipo de conta).
 - **Autopreenchimento da ficha** - Nome e E-mail são preenchidos automaticamente a partir do perfil autenticado ao abrir `public/index.html` (campos continuam editáveis).
 - **Vínculo ficha ↔ perfil** - toda ficha criada por um candidato logado grava `usuarioId`; `GET /api/auth/minhas-fichas` devolve só as fichas do usuário autenticado. O acesso direto por link (`?id=`) continua funcionando por compatibilidade com o recurso "Copiar link" do RH.
 - **Painel do RH protegido** - `public/rh.html` exige sessão do tipo `rh`; sem ela, redireciona para o login. As rotas `/api/rh/*` exigem o mesmo token no backend.
@@ -134,7 +137,15 @@ cp .env.example .env
 | Variável | Padrão | Descrição |
 |---|---|---|
 | `PORT` | `3001` | Porta em que o servidor escuta. Injetada automaticamente por plataformas de deploy em nuvem (Render, Railway, etc.). |
-| `GOOGLE_CLIENT_ID` | *(vazio)* | Client ID OAuth 2.0 do Google (Google Cloud Console), necessário para o botão "Entrar com o Google" funcionar de verdade. Sem ela, o botão continua visível mas a rota `/api/auth/google` responde 400. |
+| `GOOGLE_CLIENT_ID` | *(vazio)* | Client ID OAuth 2.0 do Google (Google Cloud Console), necessário para o botão "Entrar com o Google" funcionar de verdade. Sem ela, o botão fica desabilitado e a rota `/api/auth/google` responde 400. |
+
+### Login com o Google
+
+1. Acesse o [Google Cloud Console](https://console.cloud.google.com/), crie (ou escolha) um projeto e abra **APIs e Serviços > Tela de consentimento OAuth** para configurá-la (tipo externo; basta nome do app e e-mail de contato).
+2. Em **APIs e Serviços > Credenciais > Criar credenciais > ID do cliente OAuth**, escolha o tipo **Aplicativo da Web**.
+3. Em **Origens JavaScript autorizadas**, adicione `http://localhost:3001` (desenvolvimento) e o domínio de produção da Vercel (ex.: `https://seu-projeto.vercel.app`). Não é preciso informar URIs de redirecionamento.
+4. Copie o **ID do cliente** (termina em `.apps.googleusercontent.com`) e defina `GOOGLE_CLIENT_ID` no arquivo `.env` (local) e em **Settings > Environment Variables** do projeto na Vercel (depois faça um novo deploy).
+5. Reinicie o servidor: o botão "Entrar com o Google" passa a funcionar. Contas novas viram candidatos; se o e-mail do Google já existir no sistema, a conta é reaproveitada.
 
 ### Opção 1 (Recomendada - Docker)
 

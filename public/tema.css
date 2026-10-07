@@ -192,7 +192,9 @@ input[type="checkbox"] { accent-color: var(--verde-hover); }
   font-weight: 700; font-size: 0.875rem; letter-spacing: 0.02em;
   flex: 0 0 auto;
   user-select: none;
+  overflow: hidden;
 }
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* ---------- Grupo de acessibilidade: A- / A / A+ e "Ouvir Página" ---------- */
 .grupo-acess {

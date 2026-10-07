@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
   <script src="/acessibilidade.js"></script>
+  <script src="/foto-perfil.js"></script>
   <link rel="stylesheet" href="/tema.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
@@ -233,6 +234,7 @@
     .mensagem-rh { align-self: flex-end; background: var(--menta-2); border-bottom-right-radius: 0.25rem; }
     .mensagem-candidato { align-self: flex-start; background: var(--papel); border: 1px solid var(--borda); border-bottom-left-radius: 0.25rem; }
     .mensagem-cabecalho { font-size: 0.75rem; font-weight: 600; color: var(--tinta-2); margin-bottom: 0.1875rem; }
+    .mensagem-cabecalho .avatar-mensagem { width: 1.375rem; height: 1.375rem; font-size: 0.625rem; vertical-align: middle; margin-right: 0.25rem; }
     .mensagem-vazia { font-size: 0.875rem; color: var(--tinta-2); }
     .form-chat { display: flex; gap: 0.5rem; align-items: flex-end; }
     .form-chat textarea { flex: 1; min-width: 0; font-size: 0.9375rem; padding: 0.5rem 0.75rem; resize: vertical; min-height: 2.75rem; }
@@ -249,6 +251,11 @@
     .previa-boas-vindas { margin-top: 1rem; }
     .previa-boas-vindas .rotulo { font-size: 0.8125rem; font-weight: 600; color: var(--tinta-2); margin-bottom: 0.375rem; }
     .previa-card { background: var(--papel); border: 1px solid var(--borda); border-radius: 0.875rem 0.875rem 0.875rem 0.25rem; padding: 0.875rem 1.125rem; font-size: 0.9375rem; white-space: pre-wrap; word-break: break-word; }
+    .linha-foto-rh { display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap; }
+    .acoes-foto-rh { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .status-foto-rh { margin: 0.5rem 0 0; font-size: 0.875rem; font-weight: 600; color: var(--verde-texto); min-height: 1.25rem; }
+    .status-foto-rh.erro { color: #9B0A0A; }
+    .rotulo-campo-config { display: block; font-size: 0.8125rem; font-weight: 600; color: var(--tinta-2); margin: 0.5rem 0 0.25rem; }
     .previa-card.vazia { background: var(--creme-2); color: var(--tinta-2); font-style: italic; }
     .lista-docs-config { display: flex; flex-direction: column; }
     .linha-doc-config { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.625rem 0; border-bottom: 1px solid var(--linha); font-size: 0.9375rem; }
@@ -628,6 +635,26 @@
         </div>
       </div>
 
+      <div class="card-config" id="cardFotoRh">
+        <div class="cfg-texto">
+          <h3>Foto de perfil do RH</h3>
+          <p class="ajuda">Aparece para os candidatos no chat "Fale com o RH" e no rodapé deste painel. A imagem é recortada em quadrado e salva na hora.</p>
+        </div>
+        <div class="cfg-controles">
+          <div class="linha-foto-rh">
+            <span class="avatar avatar-grande" id="cfgFotoAvatar" aria-hidden="true">RH</span>
+            <div>
+              <div class="acoes-foto-rh">
+                <button type="button" class="btn-atualizar" id="cfgTrocarFoto">Trocar foto</button>
+                <button type="button" class="btn-atualizar" id="cfgRemoverFoto" hidden>Remover foto</button>
+                <input type="file" id="cfgInputFoto" accept="image/png,image/jpeg,image/webp" hidden>
+              </div>
+              <p class="status-foto-rh" id="cfgFotoStatus" role="status" aria-live="polite"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <form id="formConfig" novalidate>
         <div class="card-config">
           <div class="cfg-texto">
@@ -641,6 +668,26 @@
             <div class="previa-boas-vindas">
               <div class="rotulo">Prévia (como o candidato verá)</div>
               <div class="previa-card" id="cfgPrevia"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-config">
+          <div class="cfg-texto">
+            <h3>Mensagem de contratação concluída</h3>
+            <p class="ajuda">Card exibido ao candidato quando o RH valida a contratação. Em branco, volta ao texto padrão.</p>
+          </div>
+          <div class="cfg-controles">
+            <label for="cfgTituloContratacao" class="rotulo-campo-config">Título</label>
+            <input type="text" id="cfgTituloContratacao" maxlength="80" autocomplete="off">
+            <span class="contador-caracteres" id="cfgContadorTitulo">0/80</span>
+            <label for="cfgMensagemContratacao" class="rotulo-campo-config">Mensagem</label>
+            <textarea id="cfgMensagemContratacao" rows="3"></textarea>
+            <span class="contador-caracteres" id="cfgContadorContratacao">0/500</span>
+            <button type="button" class="btn-atualizar" id="cfgRestaurarContratacao">Restaurar padrão</button>
+            <div class="previa-boas-vindas">
+              <div class="rotulo">Prévia (como o candidato verá)</div>
+              <div class="previa-card" id="cfgPreviaContratacao"></div>
             </div>
           </div>
         </div>
@@ -851,12 +898,13 @@
       const ultima = partes.length > 1 ? partes[partes.length - 1].charAt(0) : '';
       return (primeira + ultima).toLocaleUpperCase('pt-BR');
     }
-    function avatarHtml(nome, classeExtra) {
+    function avatarHtml(nome, classeExtra, foto) {
       const texto = String(nome || '');
       let hash = 0;
       for (let i = 0; i < texto.length; i++) hash = (hash * 31 + texto.charCodeAt(i)) >>> 0;
       const [fundo, tinta] = PALETA_AVATARES[hash % PALETA_AVATARES.length];
-      return `<span class="avatar ${classeExtra || ''}" style="--av-bg:${fundo};--av-fg:${tinta}" aria-hidden="true">${escapeHtml(iniciais(texto))}</span>`;
+      const src = FotoPerfil.srcSeguro(foto);
+      return `<span class="avatar ${classeExtra || ''}" style="--av-bg:${fundo};--av-fg:${tinta}" aria-hidden="true">${src ? `<img src="${escapeHtml(src)}" alt="">` : escapeHtml(iniciais(texto))}</span>`;
     }
 
     // =========================================================================
@@ -881,6 +929,13 @@
     // Nome do operador de RH logado (usado como nomeAutor ao enviar mensagens no chat).
     let nomeUsuarioRh = 'RH';
 
+    // Rodapé da sidebar: foto do RH (Configurações) ou iniciais.
+    function renderizarSessaoRh() {
+      const foto = configuracoesRh && configuracoesRh.fotoRh;
+      definirHtmlSeMudou(document.getElementById('areaSessaoRh'),
+        `${avatarHtml(nomeUsuarioRh, '', foto)}<span class="sessao-textos"><strong>${escapeHtml(nomeUsuarioRh)}</strong>Equipe de RH</span>`);
+    }
+
     async function exigirSessaoRh() {
       const token = tokenSessaoRh();
       if (!token) { window.location.href = '/login.html'; return false; }
@@ -895,8 +950,7 @@
           return false;
         }
         nomeUsuarioRh = corpo.usuario.nome || 'RH';
-        document.getElementById('areaSessaoRh').innerHTML =
-          `${avatarHtml(corpo.usuario.nome)}<span class="sessao-textos"><strong>${escapeHtml(corpo.usuario.nome)}</strong>Equipe de RH</span>`;
+        renderizarSessaoRh();
         return true;
       } catch (erro) {
         window.location.href = '/login.html';
@@ -951,6 +1005,17 @@
       if (!iso) return '-';
       const d = new Date(iso);
       return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+    }
+
+    // Abre o documento numa janela própria (popup) ao lado da página, sem
+    // substituir a tela atual. Se o navegador bloquear o popup, o link segue o
+    // comportamento normal (nova aba, via target="_blank").
+    function abrirJanelaDocumento(evento, link) {
+      if (evento.ctrlKey || evento.metaKey || evento.shiftKey || evento.button === 1) return;
+      const largura = Math.min(980, window.screen.availWidth - 80);
+      const altura = Math.min(900, window.screen.availHeight - 80);
+      const janela = window.open(link.href, 'janelaDocumento', 'popup=yes,width=' + largura + ',height=' + altura + ',left=40,top=40');
+      if (janela) { evento.preventDefault(); janela.focus(); }
     }
 
     // Escapa texto livre (mensagens de chat, justificativas) antes de inserir como HTML.
@@ -1162,15 +1227,18 @@
 
     // Monta o HTML da lista de mensagens (reutilizado na montagem inicial e na
     // atualização inline após o envio, sem precisar reconstruir a tabela toda).
-    function montarListaMensagensHtml(mensagens) {
+    // fotoCandidato: foto do candidato (data URL) para o avatar do balão dele.
+    function montarListaMensagensHtml(mensagens, fotoCandidato) {
       if (!mensagens || !mensagens.length) {
         return '<div class="mensagem-vazia">Nenhuma mensagem ainda.</div>';
       }
       return mensagens.map((m) => {
         const rotulo = m.autor === 'RH' ? 'Você' : (m.nomeAutor || 'Candidato');
+        const foto = m.autor === 'RH' ? (configuracoesRh && configuracoesRh.fotoRh) : fotoCandidato;
+        const avatar = FotoPerfil.srcSeguro(foto) ? avatarHtml(rotulo, 'avatar-mensagem', foto) : '';
         return `
         <div class="mensagem mensagem-${m.autor === 'RH' ? 'rh' : 'candidato'}">
-          <div class="mensagem-cabecalho">${escapeHtml(rotulo)} · ${formatarData(m.timestamp)}</div>
+          <div class="mensagem-cabecalho">${avatar}${escapeHtml(rotulo)} · ${formatarData(m.timestamp)}</div>
           <div class="mensagem-texto">${escapeHtml(m.texto)}</div>
         </div>
       `;
@@ -1184,7 +1252,7 @@
       return `
         <div class="secao-chat">
           <div class="secao-titulo">Conversa com o Candidato</div>
-          <div class="lista-mensagens">${montarListaMensagensHtml(mensagens)}</div>
+          <div class="lista-mensagens">${montarListaMensagensHtml(mensagens, ficha.foto)}</div>
           <form class="form-chat" data-form-chat="${ficha.id}">
             <textarea placeholder="Escreva uma mensagem para o candidato..." data-campo-mensagem required></textarea>
             <button type="submit" class="btn-enviar-mensagem">Enviar</button>
@@ -1565,7 +1633,7 @@
     function montarCelulaNome(f) {
       const nome = f.nomeCompleto || '-';
       return `<div class="nome-celula">
-        ${avatarHtml(f.nomeCompleto)}
+        ${avatarHtml(f.nomeCompleto, '', f.foto)}
         <div class="nome-bloco">
           <span class="nome-candidato" role="link" tabindex="0" data-nome-candidato="${escapeHtml(f.id)}"
                 title="Clique duas vezes para abrir a página do candidato"
@@ -1724,7 +1792,8 @@
       if (paginaCandidatoId !== id || !pagina) return;
       const lista = pagina.querySelector('.lista-mensagens');
       if (lista) {
-        lista.innerHTML = montarListaMensagensHtml(mensagens);
+        lista.innerHTML = montarListaMensagensHtml(mensagens, (fichaPorId(id) || {}).foto);
+        lista._foto = (((fichaPorId(id) || {}).foto) || '') + '|' + ((configuracoesRh && configuracoesRh.fotoRh) || '');
         lista.scrollTop = lista.scrollHeight;
       }
       const campo = pagina.querySelector('[data-campo-mensagem]');
@@ -1792,8 +1861,12 @@
         return;
       }
 
+      // Links de PDF abrem em janela própria (popup); sem popup, caem em nova aba.
+      const linkPdf = e.target.closest('a.btn-pdf');
+      if (linkPdf) abrirJanelaDocumento(e, linkPdf);
+
       // Não usa closest() com return antecipado: o link precisa continuar
-      // abrindo normalmente em nova aba (não chamamos preventDefault aqui).
+      // abrindo normalmente em nova aba (o popup, quando abre, já cancela a navegação do link).
       const linkVisualizar = e.target.closest('[data-marcar-visualizado]');
       if (linkVisualizar) {
         marcarDocumentoVisualizado(...linkVisualizar.dataset.marcarVisualizado.split(':'));
@@ -2017,7 +2090,7 @@
 
     function assinaturaDaFicha(f) {
       const tags = Array.isArray(f.tags) ? f.tags.join(',') : '';
-      return `${f.status}|${f.atualizadoEm || f.criadoEm}|${f.bancoTalentos ? 1 : 0}|${tags}`;
+      return `${f.status}|${f.atualizadoEm || f.criadoEm}|${f.bancoTalentos ? 1 : 0}|${tags}|${f.foto || ''}`;
     }
 
     async function atualizarFichasSilenciosamente() {
@@ -2049,7 +2122,7 @@
         const alteradas = novas.filter((f) => !antigas.has(f.id) || assinaturaDaFicha(antigas.get(f.id)) !== assinaturaDaFicha(f));
         // Arquivar/reativar em outra aba também muda a estrutura da lista de Gestão.
         const estruturaMudou = novas.length !== antigas.size || novas.some((f) => !antigas.has(f.id))
-          || novas.some((f) => antigas.has(f.id) && !!antigas.get(f.id).bancoTalentos !== !!f.bancoTalentos);
+          || novas.some((f) => antigas.has(f.id) && (!!antigas.get(f.id).bancoTalentos !== !!f.bancoTalentos || (antigas.get(f.id).foto || null) !== (f.foto || null)));
         if (!alteradas.length && !estruturaMudou) {
           if (catalogoMudou) atualizarChipsNaTela();
           return;
@@ -2859,7 +2932,7 @@
       const id = escapeHtml(f.id);
       return `
         <div class="pc-titulo-linha">
-          ${avatarHtml(f.nomeCompleto, 'avatar-grande')}
+          ${avatarHtml(f.nomeCompleto, 'avatar-grande', f.foto)}
           <h2 class="pc-nome" id="pcNome" tabindex="-1">${escapeHtml(f.nomeCompleto || 'Candidato sem nome')}</h2>
           <span class="badge ${classe}">${rotulo}</span>
           ${selo}
@@ -2955,6 +3028,16 @@
       definirHtmlSeMudou(zona('contrato'), htmlContrato);
 
       definirHtmlSeMudou(zona('auditoria'), montarSecaoAuditoriaLgpd(f));
+
+      // Troca de foto (do candidato ou do RH) refaz só os balões do chat, mantendo a rolagem.
+      const lista = raiz.querySelector('.lista-mensagens');
+      const assinaturaFotos = (f.foto || '') + '|' + ((configuracoesRh && configuracoesRh.fotoRh) || '');
+      if (lista && lista._foto !== undefined && lista._foto !== assinaturaFotos) {
+        const rolagem = lista.scrollTop;
+        lista.innerHTML = montarListaMensagensHtml(f.mensagens || [], f.foto);
+        lista.scrollTop = rolagem;
+      }
+      if (lista) lista._foto = assinaturaFotos;
     }
 
     function renderizarPaginaCandidato() {
@@ -3075,6 +3158,9 @@
     // CONFIGURAÇÕES
     // =========================================================================
     const MAX_MENSAGEM_CONFIG = 500;
+    const MAX_TITULO_CONTRATACAO = 80;
+    const TITULO_CONTRATACAO_PADRAO = 'Contratação concluída!';
+    const MENSAGEM_CONTRATACAO_PADRAO = 'Seja bem-vindo(a) à equipe. Estamos muito felizes em ter você com a gente.';
     const REGEX_EMAIL_CONFIG = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
     let configSujo = false; // há edição não salva no formulário
 
@@ -3097,8 +3183,74 @@
       previa.classList.toggle('vazia', !limpo);
     }
 
+    function atualizarContratacaoConfig() {
+      const titulo = document.getElementById('cfgTituloContratacao').value;
+      const mensagem = document.getElementById('cfgMensagemContratacao').value;
+      const cTitulo = document.getElementById('cfgContadorTitulo');
+      const cMsg = document.getElementById('cfgContadorContratacao');
+      cTitulo.textContent = `${titulo.length}/${MAX_TITULO_CONTRATACAO}`;
+      cMsg.textContent = `${mensagem.length}/${MAX_MENSAGEM_CONFIG}`;
+      cTitulo.classList.toggle('excedeu', titulo.trim().length > MAX_TITULO_CONTRATACAO);
+      cMsg.classList.toggle('excedeu', mensagem.trim().length > MAX_MENSAGEM_CONFIG);
+      document.getElementById('cfgPreviaContratacao').innerHTML =
+        `<strong>${escapeHtml(titulo.trim() || TITULO_CONTRATACAO_PADRAO)}</strong><br>${escapeHtml(mensagem.trim() || MENSAGEM_CONTRATACAO_PADRAO)}`;
+    }
+
+    // Avatar e botões da foto do RH em Configurações (e rodapé da sidebar).
+    function atualizarFotoRhConfig() {
+      const src = FotoPerfil.srcSeguro(configuracoesRh && configuracoesRh.fotoRh);
+      document.getElementById('cfgFotoAvatar').innerHTML = src ? `<img src="${escapeHtml(src)}" alt="">` : 'RH';
+      document.getElementById('cfgRemoverFoto').hidden = !src;
+      renderizarSessaoRh();
+    }
+
+    function mostrarStatusFotoRh(texto, erro) {
+      const el = document.getElementById('cfgFotoStatus');
+      el.textContent = texto;
+      el.classList.toggle('erro', !!erro);
+    }
+
+    async function salvarFotoRh(foto) {
+      const botoes = [document.getElementById('cfgTrocarFoto'), document.getElementById('cfgRemoverFoto')];
+      botoes.forEach((b) => { b.disabled = true; });
+      mostrarStatusFotoRh('Salvando foto…', false);
+      try {
+        const resposta = await fetch('/api/rh/configuracoes/foto', {
+          method: 'PUT',
+          headers: cabecalhosRh({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ foto })
+        });
+        const resultado = await resposta.json().catch(() => ({}));
+        if (!resposta.ok) { mostrarStatusFotoRh(resultado.erro || 'Não foi possível salvar a foto.', true); return; }
+        configuracoesRh = Object.assign({}, configuracoesRh, { fotoRh: resultado.fotoRh || null });
+        atualizarFotoRhConfig();
+        mostrarStatusFotoRh(foto ? 'Foto atualizada.' : 'Foto removida.', false);
+      } catch (erro) {
+        mostrarStatusFotoRh('Falha ao comunicar com o servidor.', true);
+      } finally {
+        botoes.forEach((b) => { b.disabled = false; });
+      }
+    }
+
+    document.getElementById('cfgTrocarFoto').addEventListener('click', () => document.getElementById('cfgInputFoto').click());
+    document.getElementById('cfgRemoverFoto').addEventListener('click', () => salvarFotoRh(null));
+    document.getElementById('cfgInputFoto').addEventListener('change', async (e) => {
+      const arquivo = e.target.files[0];
+      e.target.value = '';
+      if (!arquivo) return;
+      try {
+        mostrarStatusFotoRh('Preparando foto…', false);
+        await salvarFotoRh(await FotoPerfil.prepararImagem(arquivo));
+      } catch (erro) {
+        mostrarStatusFotoRh(erro.message, true);
+      }
+    });
+
     function preencherFormularioConfig(config) {
       document.getElementById('cfgMensagem').value = config.mensagemBoasVindas || '';
+      document.getElementById('cfgTituloContratacao').value = config.tituloContratacaoConcluida || '';
+      document.getElementById('cfgMensagemContratacao').value = config.mensagemContratacaoConcluida || '';
+      atualizarContratacaoConfig();
       document.getElementById('cfgEmail').value = config.emailContatoRh || '';
       document.querySelectorAll('[data-cfg-doc]').forEach((chk) => {
         chk.checked = !(config.documentosObrigatorios && config.documentosObrigatorios[chk.dataset.cfgDoc] === false);
@@ -3113,6 +3265,7 @@
         if (!resposta.ok) return;
         configuracoesRh = await resposta.json();
         if (!configSujo) preencherFormularioConfig(configuracoesRh);
+        atualizarFotoRhConfig();
         // Reflete "Opcional" nas grades de documentos já abertas.
         const fichaAberta = fichaPorId(paginaCandidatoId); if (fichaAberta) atualizarPainelDetalhesInline(fichaAberta);
       } catch (erro) {
@@ -3129,6 +3282,8 @@
       const erros = {};
       const mensagem = document.getElementById('cfgMensagem').value.trim();
       if (mensagem.length > MAX_MENSAGEM_CONFIG) erros.geral = `A mensagem de boas-vindas pode ter no máximo ${MAX_MENSAGEM_CONFIG} caracteres.`;
+      if (document.getElementById('cfgTituloContratacao').value.trim().length > MAX_TITULO_CONTRATACAO) erros.geral = `O título da contratação concluída pode ter no máximo ${MAX_TITULO_CONTRATACAO} caracteres.`;
+      if (document.getElementById('cfgMensagemContratacao').value.trim().length > MAX_MENSAGEM_CONFIG) erros.geral = `A mensagem da contratação concluída pode ter no máximo ${MAX_MENSAGEM_CONFIG} caracteres.`;
       const algumObrigatorio = [...document.querySelectorAll('[data-cfg-doc]')].some((c) => c.checked);
       if (!algumObrigatorio) erros.docs = 'Pelo menos um documento deve permanecer obrigatório.';
       const email = document.getElementById('cfgEmail').value.trim();
@@ -3136,6 +3291,15 @@
       return erros;
     }
 
+    ['cfgTituloContratacao', 'cfgMensagemContratacao'].forEach((id) => {
+      document.getElementById(id).addEventListener('input', () => { configSujo = true; atualizarContratacaoConfig(); });
+    });
+    document.getElementById('cfgRestaurarContratacao').addEventListener('click', () => {
+      document.getElementById('cfgTituloContratacao').value = TITULO_CONTRATACAO_PADRAO;
+      document.getElementById('cfgMensagemContratacao').value = MENSAGEM_CONTRATACAO_PADRAO;
+      configSujo = true;
+      atualizarContratacaoConfig();
+    });
     ['cfgMensagem', 'cfgEmail'].forEach((id) => {
       document.getElementById(id).addEventListener('input', () => { configSujo = true; atualizarContadorEPreviaConfig(); });
     });
@@ -3168,7 +3332,9 @@
           body: JSON.stringify({
             mensagemBoasVindas: document.getElementById('cfgMensagem').value,
             documentosObrigatorios,
-            emailContatoRh: document.getElementById('cfgEmail').value
+            emailContatoRh: document.getElementById('cfgEmail').value,
+            tituloContratacaoConcluida: document.getElementById('cfgTituloContratacao').value,
+            mensagemContratacaoConcluida: document.getElementById('cfgMensagemContratacao').value
           })
         });
         const resultado = await resposta.json().catch(() => ({}));
@@ -3180,6 +3346,7 @@
         }
         configuracoesRh = resultado;
         preencherFormularioConfig(resultado);
+        atualizarFotoRhConfig();
         const fichaAberta = fichaPorId(paginaCandidatoId); if (fichaAberta) atualizarPainelDetalhesInline(fichaAberta);
         sucesso.textContent = 'Configurações salvas com sucesso.';
         sucesso.hidden = false;
@@ -3194,6 +3361,7 @@
 
     montarListaDocsConfig();
     atualizarContadorEPreviaConfig();
+    atualizarContratacaoConfig();
 
     exigirSessaoRh().then((autorizado) => {
       if (!autorizado) return;

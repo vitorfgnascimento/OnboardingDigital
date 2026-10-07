@@ -16,7 +16,8 @@ const supabase = require('./db/supabase');
 
 const app = express();
 
-app.use(express.json());
+// 400 KB: comporta a foto de perfil (até ~200 KB) em base64 dentro do JSON.
+app.use(express.json({ limit: '400kb' }));
 
 // A primeira tela do sistema é o login, não a ficha do candidato - só depois
 // de entrar (ou criar conta) é que o candidato é levado à Ficha de Admissão.
@@ -341,6 +342,7 @@ function usuarioParaCamelCase(row) {
     senhaHash: row.senha_hash,
     tipo: row.tipo,
     googleId: row.google_id,
+    foto: row.foto || null,
     cpf: row.cpf,
     dataNascimento: row.data_nascimento,
     ativo: row.ativo,
@@ -360,6 +362,7 @@ function usuarioParaSnakeCase(u) {
     senha_hash: u.senhaHash || null,
     tipo: u.tipo,
     google_id: u.googleId || null,
+    foto: u.foto || null,
     cpf: u.cpf || null,
     data_nascimento: u.dataNascimento || null,
     ativo: u.ativo !== false,
@@ -454,8 +457,51 @@ function dadosPublicosUsuario(usuario) {
     email: usuario.email,
     tipo: usuario.tipo,
     cpf: usuario.cpf || null,
-    dataNascimento: usuario.dataNascimento || null
+    dataNascimento: usuario.dataNascimento || null,
+    foto: usuario.foto || null
   };
+}
+
+// ---------------------------------------------------------------------------
+// FOTO DE PERFIL: data URL guardada em texto (usuarios.foto / configuracoes.foto_rh).
+// O navegador já entrega a imagem recortada e reduzida (~256x256 JPEG); aqui
+// só se valida formato, assinatura do arquivo e tamanho antes de gravar.
+// ---------------------------------------------------------------------------
+const MAX_BYTES_FOTO = 200 * 1024;
+const REGEX_FOTO_DATA_URL = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/;
+
+// Retorna true se for uma data URL de imagem válida (formato, base64, assinatura e tamanho).
+function fotoValida(valor) {
+  if (typeof valor !== 'string' || valor.length > Math.ceil(MAX_BYTES_FOTO * 4 / 3) + 64) return false;
+  const m = REGEX_FOTO_DATA_URL.exec(valor);
+  if (!m || m[2].length % 4 !== 0) return false;
+  const bytes = Buffer.from(m[2], 'base64');
+  if (!bytes.length || bytes.length > MAX_BYTES_FOTO) return false;
+  if (m[1] === 'jpeg') return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (m[1] === 'png') return bytes.length > 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  return bytes.length > 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
+}
+
+// Baixa a foto de perfil do Google e devolve como data URL, ou null se algo
+// fugir do esperado (nunca lança: o login não pode falhar por causa da foto).
+// Só aceita https em domínios googleusercontent.com, sem seguir redirecionamentos (evita SSRF).
+async function baixarFotoGoogle(url) {
+  try {
+    const alvo = new URL(String(url || ''));
+    if (alvo.protocol !== 'https:' || !(alvo.hostname === 'googleusercontent.com' || alvo.hostname.endsWith('.googleusercontent.com'))) return null;
+    alvo.href = alvo.href.replace(/=s\d+(-c)?$/, '=s256-c');
+    const resposta = await fetch(alvo, { redirect: 'error', signal: AbortSignal.timeout(3000) });
+    const tipo = String(resposta.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!resposta.ok || !['image/jpeg', 'image/png', 'image/webp'].includes(tipo)) return null;
+    const tamanho = Number(resposta.headers.get('content-length'));
+    if (tamanho > MAX_BYTES_FOTO) return null;
+    const bytes = Buffer.from(await resposta.arrayBuffer());
+    if (bytes.length > MAX_BYTES_FOTO) return null;
+    const dataUrl = `data:${tipo};base64,${bytes.toString('base64')}`;
+    return fotoValida(dataUrl) ? dataUrl : null;
+  } catch (erro) {
+    return null;
+  }
 }
 
 // Cria uma sessão para o usuário e persiste o token (login e registro reutilizam isso).
@@ -797,6 +843,7 @@ app.post('/api/auth/google', async (req, res) => {
 
   const emailGoogle = String(payload.email || '').trim().toLowerCase();
   if (!emailGoogle) return res.status(400).json({ erro: 'A conta Google não possui e-mail associado.' });
+  if (payload.email_verified === false) return res.status(400).json({ erro: 'O e-mail da conta Google não foi verificado.' });
 
   let usuarios;
   let usuario;
@@ -813,14 +860,25 @@ app.post('/api/auth/google', async (req, res) => {
         senhaHash: null,
         tipo: 'candidato',
         googleId: payload.sub,
+        foto: await baixarFotoGoogle(payload.picture),
         ativo: true,
         criadoEm: new Date().toISOString()
       };
       usuarios.push(usuario);
       await salvarUsuarios(usuarios);
-    } else if (!usuario.googleId) {
-      usuario.googleId = payload.sub;
-      await salvarUsuarios(usuarios);
+    } else if (usuario.googleId && usuario.googleId !== payload.sub) {
+      return res.status(401).json({ erro: 'Este e-mail já está vinculado a outra conta Google.' });
+    } else {
+      // Conta já existente (cadastro por senha ou RH): vincula o Google, completa a foto
+      // se faltar e ativa a conta (o Google já confirmou a posse do e-mail).
+      let alterado = false;
+      if (!usuario.googleId) { usuario.googleId = payload.sub; alterado = true; }
+      if (usuario.ativo === false) { usuario.ativo = true; usuario.tokenAtivacao = null; alterado = true; }
+      if (!usuario.foto) {
+        const foto = await baixarFotoGoogle(payload.picture);
+        if (foto) { usuario.foto = foto; alterado = true; }
+      }
+      if (alterado) await salvarUsuarios(usuarios);
     }
 
     const token = await criarSessao(usuario.id);
@@ -835,6 +893,35 @@ app.post('/api/auth/google', async (req, res) => {
 // (e o Client ID a usar) - evita renderizar o botão do Google sem propósito.
 app.get('/api/auth/google-client-id', (req, res) => {
   return res.status(200).json({ clientId: GOOGLE_CLIENT_ID || null });
+});
+
+// Foto de perfil do próprio usuário (id vem sempre da sessão): data URL ou null para remover.
+app.put('/api/auth/foto', autenticar, async (req, res) => {
+  try {
+    const foto = (req.body || {}).foto;
+    if (foto !== null && !fotoValida(foto)) {
+      return res.status(400).json({ erro: 'Foto inválida: envie uma imagem JPEG, PNG ou WebP de até 200 KB.' });
+    }
+    const usuarios = await lerUsuarios();
+    const usuario = usuarios.find((u) => u.id === req.usuario.id);
+    if (!usuario) return res.status(401).json({ erro: 'Sessão inválida ou expirada. Faça login novamente.' });
+    usuario.foto = foto;
+    await salvarUsuarios(usuarios);
+
+    registrarEventoAuditoria({
+      id: gerarId(),
+      tipoEvento: 'foto_perfil_alterada',
+      usuarioId: usuario.id,
+      escopo: usuario.tipo,
+      removida: foto === null,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+    return res.status(200).json({ usuario: dadosPublicosUsuario(usuario) });
+  } catch (erro) {
+    console.error('Falha ao salvar foto de perfil:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao salvar a foto.' });
+  }
 });
 
 app.get('/api/auth/sessao', autenticar, (req, res) => {
@@ -1197,7 +1284,7 @@ app.delete('/api/candidato/:id/documento/:tipo', async (req, res) => {
 app.get('/api/candidatos', async (req, res) => {
   try {
     const candidatos = await lerCandidatos();
-    return res.status(200).json(candidatos);
+    return res.status(200).json(await comFotosDosCandidatos(candidatos));
   } catch (erro) {
     console.error('Falha ao listar candidatos:', erro.message);
     return res.status(500).json({ erro: 'Falha ao listar candidatos.' });
@@ -1245,10 +1332,17 @@ app.patch('/api/candidato/:id/status', async (req, res) => {
 // ---------------------------------------------------------------------------
 // ROTA: listagem de fichas para o Painel de Gestão do RH (Etapa 2)
 // ---------------------------------------------------------------------------
+// Acrescenta a foto de perfil (usuarios.foto) a cada ficha, só na resposta -
+// nada disso é gravado na tabela "candidatos".
+async function comFotosDosCandidatos(candidatos) {
+  const fotos = new Map((await lerUsuarios()).filter((u) => u.foto).map((u) => [u.id, u.foto]));
+  return candidatos.map((c) => ({ ...c, foto: (c.usuarioId && fotos.get(c.usuarioId)) || null }));
+}
+
 app.get('/api/rh/fichas', exigirRh, async (req, res) => {
   try {
     const candidatos = await lerCandidatos();
-    return res.status(200).json(candidatos);
+    return res.status(200).json(await comFotosDosCandidatos(candidatos));
   } catch (erro) {
     console.error('Falha ao listar fichas do RH:', erro.message);
     return res.status(500).json({ erro: 'Falha ao listar as fichas.' });
@@ -1620,11 +1714,20 @@ app.patch('/api/rh/fichas/:id/reativar', exigirRh, async (req, res) => {
 // ---------------------------------------------------------------------------
 const MENSAGEM_BOAS_VINDAS_PADRAO = 'Bem-vindo(a) ao processo admissional! Preencha seus dados e anexe os documentos solicitados para dar andamento à sua contratação.';
 const MAX_MENSAGEM_BOAS_VINDAS = 500;
+const TITULO_CONTRATACAO_PADRAO = 'Contratação concluída!';
+const MENSAGEM_CONTRATACAO_PADRAO = 'Seja bem-vindo(a) à equipe. Estamos muito felizes em ter você com a gente.';
+const MAX_TITULO_CONTRATACAO = 80;
+const MAX_MENSAGEM_CONTRATACAO = 500;
 
 function configuracoesPadrao() {
   const documentosObrigatorios = {};
   TIPOS_DOCUMENTO.forEach((t) => { documentosObrigatorios[t] = true; });
-  return { mensagemBoasVindas: MENSAGEM_BOAS_VINDAS_PADRAO, documentosObrigatorios, emailContatoRh: '' };
+  return { mensagemBoasVindas: MENSAGEM_BOAS_VINDAS_PADRAO, documentosObrigatorios,
+    emailContatoRh: '',
+    tituloContratacaoConcluida: TITULO_CONTRATACAO_PADRAO,
+    mensagemContratacaoConcluida: MENSAGEM_CONTRATACAO_PADRAO,
+    fotoRh: null
+  };
 }
 
 // Completa/normaliza uma linha possivelmente nula ou incompleta com os padrões
@@ -1639,7 +1742,18 @@ function configuracoesDeLinha(row) {
   // Mensagem vazia é uma escolha válida do RH (oculta o card); só null (linha incompleta) volta ao padrão.
   const mensagemBoasVindas = typeof row.mensagem_boas_vindas === 'string' ? row.mensagem_boas_vindas : padrao.mensagemBoasVindas;
   const emailContatoRh = typeof row.email_contato_rh === 'string' ? row.email_contato_rh : '';
-  return { mensagemBoasVindas, documentosObrigatorios: padrao.documentosObrigatorios, emailContatoRh };
+  // Título/mensagem da contratação não podem ficar vazios: texto em branco volta ao padrão.
+  const tituloContratacaoConcluida = (row.titulo_contratacao_concluida || '').trim() || padrao.tituloContratacaoConcluida;
+  const mensagemContratacaoConcluida = (row.mensagem_contratacao_concluida || '').trim() || padrao.mensagemContratacaoConcluida;
+  const fotoRh = fotoValida(row.foto_rh) ? row.foto_rh : null;
+  return {
+    mensagemBoasVindas,
+    documentosObrigatorios: padrao.documentosObrigatorios,
+    emailContatoRh,
+    tituloContratacaoConcluida,
+    mensagemContratacaoConcluida,
+    fotoRh
+  };
 }
 
 async function lerConfiguracoes() {
@@ -1659,6 +1773,9 @@ async function salvarConfiguracoes(config) {
     mensagem_boas_vindas: config.mensagemBoasVindas,
     documentos_obrigatorios: config.documentosObrigatorios,
     email_contato_rh: config.emailContatoRh,
+    titulo_contratacao_concluida: config.tituloContratacaoConcluida,
+    mensagem_contratacao_concluida: config.mensagemContratacaoConcluida,
+    foto_rh: config.fotoRh || null,
     atualizado_em: new Date().toISOString()
   }, { onConflict: 'id' });
   if (error) throw error;
@@ -1672,7 +1789,7 @@ app.get('/api/rh/configuracoes', exigirRh, async (req, res) => {
 app.put('/api/rh/configuracoes', exigirRh, async (req, res) => {
   try {
     const corpo = req.body || {};
-    const { mensagemBoasVindas, documentosObrigatorios, emailContatoRh } = corpo;
+    const { mensagemBoasVindas, documentosObrigatorios, emailContatoRh, tituloContratacaoConcluida, mensagemContratacaoConcluida } = corpo;
 
     if (typeof mensagemBoasVindas !== 'string') {
       return res.status(400).json({ erro: 'A mensagem de boas-vindas deve ser um texto.' });
@@ -1702,9 +1819,32 @@ app.put('/api/rh/configuracoes', exigirRh, async (req, res) => {
       return res.status(400).json({ erro: 'E-mail de contato do RH inválido.' });
     }
 
+    // Campos ausentes mantêm o valor atual; texto vazio volta ao padrão.
+    for (const [valor, rotulo] of [[tituloContratacaoConcluida, 'O título'], [mensagemContratacaoConcluida, 'A mensagem']]) {
+      if (valor !== undefined && valor !== null && typeof valor !== 'string') {
+        return res.status(400).json({ erro: `${rotulo} da contratação concluída deve ser um texto.` });
+      }
+    }
+    const titulo = tituloContratacaoConcluida === undefined ? undefined : String(tituloContratacaoConcluida || '').trim();
+    const mensagemContratacao = mensagemContratacaoConcluida === undefined ? undefined : String(mensagemContratacaoConcluida || '').trim();
+    if (titulo && titulo.length > MAX_TITULO_CONTRATACAO) {
+      return res.status(400).json({ erro: `O título da contratação concluída pode ter no máximo ${MAX_TITULO_CONTRATACAO} caracteres.` });
+    }
+    if (mensagemContratacao && mensagemContratacao.length > MAX_MENSAGEM_CONTRATACAO) {
+      return res.status(400).json({ erro: `A mensagem da contratação concluída pode ter no máximo ${MAX_MENSAGEM_CONTRATACAO} caracteres.` });
+    }
+
     const docs = {};
     TIPOS_DOCUMENTO.forEach((t) => { docs[t] = documentosObrigatorios[t]; });
-    const config = { mensagemBoasVindas: mensagem, documentosObrigatorios: docs, emailContatoRh: email };
+    const atual = await lerConfiguracoes();
+    const config = {
+      mensagemBoasVindas: mensagem,
+      documentosObrigatorios: docs,
+      emailContatoRh: email,
+      tituloContratacaoConcluida: titulo === undefined ? atual.tituloContratacaoConcluida : (titulo || TITULO_CONTRATACAO_PADRAO),
+      mensagemContratacaoConcluida: mensagemContratacao === undefined ? atual.mensagemContratacaoConcluida : (mensagemContratacao || MENSAGEM_CONTRATACAO_PADRAO),
+      fotoRh: atual.fotoRh
+    };
     await salvarConfiguracoes(config);
 
     registrarEventoAuditoria({
@@ -1723,10 +1863,37 @@ app.put('/api/rh/configuracoes', exigirRh, async (req, res) => {
   }
 });
 
+// Foto de perfil do RH (única, institucional): data URL ou null para remover.
+app.put('/api/rh/configuracoes/foto', exigirRh, async (req, res) => {
+  try {
+    const foto = (req.body || {}).foto;
+    if (foto !== null && !fotoValida(foto)) {
+      return res.status(400).json({ erro: 'Foto inválida: envie uma imagem JPEG, PNG ou WebP de até 200 KB.' });
+    }
+    const config = await lerConfiguracoes();
+    config.fotoRh = foto;
+    await salvarConfiguracoes(config);
+
+    registrarEventoAuditoria({
+      id: gerarId(),
+      tipoEvento: 'foto_perfil_alterada',
+      usuarioId: req.usuario.id,
+      escopo: 'rh',
+      removida: foto === null,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+    return res.status(200).json(config);
+  } catch (erro) {
+    console.error('Falha ao salvar foto do RH:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao salvar a foto.' });
+  }
+});
+
 // Pública (sem autenticação): consumida pela ficha do candidato.
 app.get('/api/configuracoes/publicas', async (req, res) => {
-  const { mensagemBoasVindas, documentosObrigatorios, emailContatoRh } = await lerConfiguracoes();
-  return res.status(200).json({ mensagemBoasVindas, documentosObrigatorios, emailContatoRh });
+  const { mensagemBoasVindas, documentosObrigatorios, emailContatoRh, tituloContratacaoConcluida, mensagemContratacaoConcluida, fotoRh } = await lerConfiguracoes();
+  return res.status(200).json({ mensagemBoasVindas, documentosObrigatorios, emailContatoRh, tituloContratacaoConcluida, mensagemContratacaoConcluida, fotoRh });
 });
 
 // Status que o RH pode atribuir a uma ficha pelo Painel de Gestão.
@@ -1797,7 +1964,8 @@ app.get('/api/candidato/:id', async (req, res) => {
       return res.status(404).json({ erro: 'Candidato não encontrado.' });
     }
 
-    return res.status(200).json(candidato);
+    const [comFoto] = await comFotosDosCandidatos([candidato]);
+    return res.status(200).json(comFoto);
   } catch (erro) {
     console.error('Falha ao buscar candidato:', erro.message);
     return res.status(500).json({ erro: 'Falha ao buscar o candidato.' });

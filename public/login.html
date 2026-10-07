@@ -126,7 +126,7 @@
       margin-top: 0.625rem;
       display: none;
     }
-    .aviso-google code { background: var(--creme-2); padding: 0.0625rem 0.3125rem; border-radius: 0.25rem; }
+    #areaGoogle .btn-secundario { width: 100%; max-width: 20rem; justify-content: center; }
 
     .mensagem-erro, .mensagem-sucesso {
       margin-top: 1rem;
@@ -328,10 +328,7 @@
 
         <!-- ENTRAR COM O GOOGLE (Google Identity Services) -->
         <div id="areaGoogle"></div>
-        <div class="aviso-google" id="avisoGoogle">
-          Login com Google requer a configuração de um Client ID OAuth
-          (variável de ambiente <code>GOOGLE_CLIENT_ID</code>) neste ambiente.
-        </div>
+        <div class="aviso-google" id="avisoGoogle">Login com Google indisponível no momento.</div>
 
         <div class="mensagem-erro" id="mensagemErro" role="alert"></div>
         <div class="mensagem-sucesso" id="mensagemSucesso" role="status"></div>
@@ -354,7 +351,7 @@
   </div>
 
   <script src="/ouvir-pagina.js" defer></script>
-  <script src="https://accounts.google.com/gsi/client" async defer onerror="document.getElementById('avisoGoogle').style.display='block'"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer onerror="mostrarGoogleIndisponivel('Script do Google Identity Services não carregou.')"></script>
   <script>
     const API = '/api';
 
@@ -372,13 +369,25 @@
       el.style.display = 'block';
     }
 
-    // Após um login bem-sucedido (qualquer método), guarda a sessão e volta
-    // para a Ficha do Candidato, que faz o autopreenchimento de Nome/E-mail.
+    // Destino pedido na URL (?destino=) quando o usuário abriu o painel/ficha sem
+    // sessão. Só vale se for um caminho interno conhecido e do mesmo tipo de
+    // usuário que acabou de entrar - qualquer outra coisa é ignorada (sem open-redirect).
+    const REGEX_DESTINO = /^\/(rh|index)\.html(\?id=[\w-]+)?(#\/candidato\/[\w%-]+(\/documentos)?)?$/;
+    function destinoPosLogin(tipo) {
+      const padrao = tipo === 'rh' ? '/rh.html' : '/index.html';
+      const pedido = new URLSearchParams(window.location.search).get('destino') || '';
+      const m = REGEX_DESTINO.exec(pedido);
+      if (!m || (m[1] === 'rh') !== (tipo === 'rh')) return padrao;
+      return pedido;
+    }
+
+    // Após um login bem-sucedido (qualquer método), guarda a sessão e leva o
+    // usuário ao seu espaço (ou de volta à página que tentou abrir).
     function concluirLogin(token, usuario) {
       localStorage.setItem('onboarding_token', token);
       localStorage.setItem('onboarding_usuario', JSON.stringify(usuario));
       mostrarSucesso('Tudo certo! Levando você para o seu espaço...');
-      const destino = usuario.tipo === 'rh' ? '/rh.html' : '/index.html';
+      const destino = destinoPosLogin(usuario.tipo);
       setTimeout(() => { window.location.href = destino; }, 600);
     }
 
@@ -544,8 +553,17 @@
     // =========================================================================
     // ENTRAR COM O GOOGLE (Google Identity Services)
     // Requer que o backend informe um Client ID configurado (GOOGLE_CLIENT_ID).
-    // Sem essa configuração, o botão não é renderizado e um aviso é exibido.
+    // Sem essa configuração, mostra o botão desabilitado com um aviso discreto.
     // =========================================================================
+    function mostrarGoogleIndisponivel(detalhe) {
+      console.info('Login com Google desativado:', detalhe, '(defina GOOGLE_CLIENT_ID no ambiente; ver README).');
+      const area = document.getElementById('areaGoogle');
+      if (area.querySelector('button')) return;
+      area.innerHTML = '<button type="button" class="btn btn-secundario" disabled aria-describedby="avisoGoogle">'
+        + '<svg class="ic" aria-hidden="true"><use href="#i-pessoa"/></svg>Entrar com o Google</button>';
+      document.getElementById('avisoGoogle').style.display = 'block';
+    }
+
     async function respostaCredencialGoogle(resposta) {
       try {
         const r = await fetch(API + '/auth/google', {
@@ -569,19 +587,19 @@
       try {
         const r = await fetch(API + '/auth/google-client-id');
         const corpo = await r.json();
-        if (!corpo.clientId || !window.google) {
-          document.getElementById('avisoGoogle').style.display = 'block';
-          return;
-        }
+        if (!corpo.clientId) { mostrarGoogleIndisponivel('GOOGLE_CLIENT_ID não configurado no servidor.'); return; }
+        // O script do Google é assíncrono: espera até ~5 s por ele antes de desistir.
+        for (let i = 0; i < 25 && !window.google; i++) await new Promise((ok) => setTimeout(ok, 200));
+        if (!window.google) { mostrarGoogleIndisponivel('Script do Google Identity Services indisponível.'); return; }
         window.google.accounts.id.initialize({
           client_id: corpo.clientId,
           callback: respostaCredencialGoogle
         });
         window.google.accounts.id.renderButton(document.getElementById('areaGoogle'), {
-          theme: 'outline', size: 'large', width: 320, text: 'continue_with'
+          theme: 'outline', size: 'large', width: Math.min(320, document.getElementById('areaGoogle').clientWidth || 320), text: 'continue_with'
         });
       } catch (erro) {
-        document.getElementById('avisoGoogle').style.display = 'block';
+        mostrarGoogleIndisponivel(erro.message);
       }
     }
 

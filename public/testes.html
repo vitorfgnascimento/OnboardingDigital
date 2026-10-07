@@ -158,6 +158,9 @@
       return new File([bytes], nome, { type: mimetype === undefined ? 'application/pdf' : mimetype });
     }
 
+    // JPEG mínimo (só a assinatura do arquivo): o servidor valida formato, assinatura e tamanho.
+    const FOTO_TESTE = 'data:image/jpeg;base64,' + btoa(String.fromCharCode(0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70, 73, 70, 0, 1));
+
     async function postJson(caminho, corpo) {
       const r = await fetch(API + caminho, {
         method: 'POST',
@@ -1907,7 +1910,7 @@
             && p.mensagemBoasVindas === 'Mensagem de teste automatizado'
             && p.documentosObrigatorios.carteiraTrabalho === false && p.documentosObrigatorios.identidade === true
             && p.emailContatoRh === 'rh.teste@exemplo.com'
-            && chavesPub === 'documentosObrigatorios,emailContatoRh,mensagemBoasVindas'
+            && chavesPub === 'documentosObrigatorios,emailContatoRh,fotoRh,mensagemBoasVindas,mensagemContratacaoConcluida,tituloContratacaoConcluida'
             && get.corpo.emailContatoRh === 'rh.teste@exemplo.com';
           return { ok, detalhe: `put ${put.status}, publico ${pub.status}, chaves ${chavesPub}, carteira ${p.documentosObrigatorios && p.documentosObrigatorios.carteiraTrabalho}` };
         }
@@ -1918,6 +1921,94 @@
           const c = window.__configOriginal;
           const r = await putJsonRh('/rh/configuracoes', Object.assign({}, c, { mensagemBoasVindas: '', emailContatoRh: '' }));
           return { ok: r.status === 200 && r.corpo.mensagemBoasVindas === '' && r.corpo.emailContatoRh === '', detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'Mensagem de contratação concluída: padrão nas configurações públicas',
+        run: async () => {
+          const c = window.__configOriginal;
+          await putJsonRh('/rh/configuracoes', Object.assign({}, c, { tituloContratacaoConcluida: '', mensagemContratacaoConcluida: '' }));
+          const p = await fetch(API + '/configuracoes/publicas').then((x) => x.json());
+          const ok = p.tituloContratacaoConcluida === 'Contratação concluída!'
+            && p.mensagemContratacaoConcluida === 'Seja bem-vindo(a) à equipe. Estamos muito felizes em ter você com a gente.';
+          return { ok, detalhe: JSON.stringify([p.tituloContratacaoConcluida, p.mensagemContratacaoConcluida]) };
+        }
+      },
+      {
+        nome: 'PUT com título/mensagem de contratação válidos persiste e aparece nas configurações públicas',
+        run: async () => {
+          const c = window.__configOriginal;
+          const put = await putJsonRh('/rh/configuracoes', Object.assign({}, c, { tituloContratacaoConcluida: '  Parabéns! ', mensagemContratacaoConcluida: 'Texto de teste automatizado' }));
+          const p = await fetch(API + '/configuracoes/publicas').then((x) => x.json());
+          const ok = put.status === 200 && p.tituloContratacaoConcluida === 'Parabéns!' && p.mensagemContratacaoConcluida === 'Texto de teste automatizado';
+          return { ok, detalhe: `put ${put.status}, título "${p.tituloContratacaoConcluida}"` };
+        }
+      },
+      {
+        nome: 'Título/mensagem de contratação inválidos são recusados (400): tipo errado e acima do limite',
+        run: async () => {
+          const c = window.__configOriginal;
+          const tipo = await putJsonRh('/rh/configuracoes', Object.assign({}, c, { tituloContratacaoConcluida: 123 }));
+          const longoTitulo = await putJsonRh('/rh/configuracoes', Object.assign({}, c, { tituloContratacaoConcluida: 'x'.repeat(81) }));
+          const longaMsg = await putJsonRh('/rh/configuracoes', Object.assign({}, c, { mensagemContratacaoConcluida: 'x'.repeat(501) }));
+          return { ok: tipo.status === 400 && longoTitulo.status === 400 && longaMsg.status === 400, detalhe: `${tipo.status}/${longoTitulo.status}/${longaMsg.status}` };
+        }
+      },
+      { grupo: 'Foto de perfil (candidato e RH) e login com Google' },
+      {
+        nome: 'PUT /api/auth/foto sem sessão é recusado (401)',
+        run: async () => {
+          const r = await fetch(API + '/auth/foto', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ foto: FOTO_TESTE }) });
+          return { ok: r.status === 401, detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'PUT /api/auth/foto recusa imagem inválida (400): formato, assinatura do arquivo e tamanho',
+        run: async () => {
+          const enviar = (foto) => fetch(API + '/auth/foto', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + window.__tokenAuth }, body: JSON.stringify({ foto }) }).then((x) => x.status);
+          const texto = await enviar('data:text/html;base64,PGgxPm9pPC9oMT4=');
+          const falsa = await enviar('data:image/jpeg;base64,' + btoa('isto nao e uma imagem jpeg'));
+          const grande = await enviar('data:image/jpeg;base64,' + btoa(String.fromCharCode(0xff, 0xd8, 0xff) + 'a'.repeat(210 * 1024)));
+          const numero = await enviar(123);
+          return { ok: texto === 400 && falsa === 400 && grande === 400 && numero === 400, detalhe: `${texto}/${falsa}/${grande}/${numero}` };
+        }
+      },
+      {
+        nome: 'Foto do candidato salva aparece em /auth/sessao, na ficha dele e na lista do RH; remover (null) a apaga',
+        run: async () => {
+          const put = await fetch(API + '/auth/foto', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + window.__tokenAuth }, body: JSON.stringify({ foto: FOTO_TESTE }) });
+          const sessao = await fetch(API + '/auth/sessao', { headers: { Authorization: 'Bearer ' + window.__tokenAuth } }).then((x) => x.json());
+          const ficha = await fetch(API + '/candidato/' + window.__idAuthFicha).then((x) => x.json());
+          const lista = await getRh('/rh/fichas');
+          const naLista = (lista.corpo || []).find((f) => f.id === window.__idAuthFicha);
+          const comFoto = put.status === 200 && sessao.usuario.foto === FOTO_TESTE && ficha.foto === FOTO_TESTE && naLista && naLista.foto === FOTO_TESTE;
+          const del = await fetch(API + '/auth/foto', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + window.__tokenAuth }, body: JSON.stringify({ foto: null }) });
+          const depois = await fetch(API + '/candidato/' + window.__idAuthFicha).then((x) => x.json());
+          return { ok: !!comFoto && del.status === 200 && !depois.foto, detalhe: `put ${put.status}, sessão ${!!sessao.usuario.foto}, ficha ${!!ficha.foto}, lista ${!!(naLista && naLista.foto)}, após remover ${!!depois.foto}` };
+        }
+      },
+      {
+        nome: 'Foto do RH: candidato não altera (403), sem sessão 401, RH salva e a rota pública reflete, null remove',
+        run: async () => {
+          const corpoFoto = JSON.stringify({ foto: FOTO_TESTE });
+          const semSessao = await fetch(API + '/rh/configuracoes/foto', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: corpoFoto });
+          const comoCandidato = await fetch(API + '/rh/configuracoes/foto', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + window.__tokenAuth }, body: corpoFoto });
+          const invalida = await putJsonRh('/rh/configuracoes/foto', { foto: 'nao-e-imagem' });
+          const salva = await putJsonRh('/rh/configuracoes/foto', { foto: FOTO_TESTE });
+          const pub = await fetch(API + '/configuracoes/publicas').then((x) => x.json());
+          const remove = await putJsonRh('/rh/configuracoes/foto', { foto: null });
+          const pubDepois = await fetch(API + '/configuracoes/publicas').then((x) => x.json());
+          const ok = semSessao.status === 401 && comoCandidato.status === 403 && invalida.status === 400
+            && salva.status === 200 && pub.fotoRh === FOTO_TESTE && remove.status === 200 && !pubDepois.fotoRh;
+          return { ok, detalhe: `${semSessao.status}/${comoCandidato.status}/${invalida.status}/${salva.status}/${remove.status}` };
+        }
+      },
+      {
+        nome: 'POST /api/auth/google sem credencial é recusado (400) e com credencial inválida não gera erro 500',
+        run: async () => {
+          const vazio = await fetch(API + '/auth/google', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+          const falsa = await fetch(API + '/auth/google', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ credential: 'credencial.invalida.teste' }) });
+          return { ok: vazio.status === 400 && (falsa.status === 400 || falsa.status === 401), detalhe: `sem credencial ${vazio.status}, inválida ${falsa.status}` };
         }
       },
       {

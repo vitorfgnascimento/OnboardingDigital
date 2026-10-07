@@ -119,6 +119,28 @@
     .passo-nota { font-size: 0.875rem; color: var(--tinta-2); line-height: 1.35; }
     .passo[data-estado="concluido"] .passo-nota { color: var(--verde-texto); font-weight: 600; }
 
+    /* --- CARD "SEU PERFIL": foto, nome, idade e data de nascimento --- */
+    .card-perfil {
+      display: flex; align-items: center; gap: 1.5rem;
+      background: var(--papel); border: 1px solid var(--borda);
+      border-radius: 1rem 1rem 1rem 0.375rem;
+      padding: 1.25rem 1.5rem; margin-bottom: 1.25rem;
+    }
+    .card-perfil[hidden] { display: none; }
+    .perfil-avatar { width: 6rem; height: 6rem; font-size: 2rem; font-family: var(--fonte-titulo); font-weight: 600; }
+    .perfil-corpo { flex: 1; min-width: 0; }
+    .perfil-corpo h2 { font-size: 1.25rem; margin: 0 0 0.625rem; }
+    .perfil-dados { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem 1.5rem; margin: 0; }
+    .perfil-dados div:first-child { grid-column: 1 / -1; }
+    .perfil-dados dt { font-size: 0.8125rem; font-weight: 600; color: var(--tinta-2); }
+    .perfil-dados dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+    .perfil-acoes { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.875rem; }
+    .perfil-acoes .btn { font-size: 0.875rem; }
+    .perfil-status { margin: 0.5rem 0 0; font-size: 0.875rem; color: var(--verde-texto); font-weight: 600; min-height: 1.25rem; }
+    .perfil-status.erro { color: #9B0A0A; }
+    .area-avatar { width: 1.75rem; height: 1.75rem; font-size: 0.6875rem; margin-right: 0.125rem; }
+    .mensagem-cabecalho .avatar { width: 1.375rem; height: 1.375rem; font-size: 0.625rem; vertical-align: middle; margin-right: 0.25rem; }
+
     /* --- CARTÃO DE MENSAGEM HUMANIZADA --- */
     @keyframes cardEntrada { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
     .card-status {
@@ -516,6 +538,7 @@
       .linha-principal-contrato { flex-wrap: wrap; }
       .btn-ver-documento { min-width: 0; }
       .card-status { padding: 1rem 1.125rem; }
+      .card-perfil { flex-direction: column; align-items: flex-start; gap: 1rem; padding: 1.125rem; }
     }
     @media (max-width: 560px) {
       .secao-chat { right: 0.75rem; bottom: 0.75rem; left: 0.75rem; }
@@ -631,6 +654,25 @@
       </aside>
 
       <div class="coluna-principal">
+
+    <!-- SEU PERFIL (visível sempre que há sessão): foto + dados pessoais -->
+    <section class="card-perfil" id="cardPerfil" aria-labelledby="tituloPerfil" hidden>
+      <span class="avatar perfil-avatar" id="perfilAvatar" aria-hidden="true"></span>
+      <div class="perfil-corpo">
+        <h2 id="tituloPerfil">Seu perfil</h2>
+        <dl class="perfil-dados">
+          <div><dt>Nome</dt><dd id="perfilNome">—</dd></div>
+          <div><dt>Idade</dt><dd id="perfilIdade">—</dd></div>
+          <div><dt>Data de nascimento</dt><dd id="perfilNascimento">—</dd></div>
+        </dl>
+        <div class="perfil-acoes">
+          <button type="button" class="btn btn-secundario" id="btnTrocarFoto">Trocar foto</button>
+          <button type="button" class="btn btn-secundario" id="btnRemoverFoto" hidden>Remover foto</button>
+          <input type="file" id="inputFoto" accept="image/png,image/jpeg,image/webp" hidden>
+        </div>
+        <p class="perfil-status" id="perfilFotoStatus" role="status" aria-live="polite"></p>
+      </div>
+    </section>
 
     <!-- MENSAGEM DE BOAS-VINDAS (configurada pelo RH; oculta se vazia) -->
     <section class="card-boas-vindas" id="cardBoasVindas" aria-label="Mensagem de boas-vindas" hidden>
@@ -800,7 +842,7 @@
   <div class="secao-chat" id="secaoChat">
     <div class="chat-painel" id="chatPainel" role="region" aria-label="Fale com o RH">
       <div class="chat-cabecalho">
-        <span class="avatar chat-avatar" aria-hidden="true">RH</span>
+        <span class="avatar chat-avatar" id="chatAvatarRh" aria-hidden="true">RH</span>
         <div class="chat-titulos">
           <h3>Fale com o RH</h3>
           <span class="chat-sub">Respondemos por aqui</span>
@@ -823,6 +865,7 @@
   </div>
 
   <script src="/ouvir-pagina.js" defer></script>
+  <script src="/foto-perfil.js"></script>
   <script>
     const API = '/api';
 
@@ -1006,7 +1049,15 @@
 
     // Configuração pública definida pelo RH. Os padrões (tudo obrigatório,
     // sem mensagem/e-mail) valem se a consulta falhar - nunca bloqueia a página.
-    let configPublica = { mensagemBoasVindas: '', documentosObrigatorios: {}, emailContatoRh: '' };
+    const TITULO_CONTRATACAO_PADRAO = 'Contratação concluída!';
+    const MENSAGEM_CONTRATACAO_PADRAO = 'Seja bem-vindo(a) à equipe. Estamos muito felizes em ter você com a gente.';
+    let configPublica = {
+      mensagemBoasVindas: '', documentosObrigatorios: {}, emailContatoRh: '',
+      tituloContratacaoConcluida: TITULO_CONTRATACAO_PADRAO,
+      mensagemContratacaoConcluida: MENSAGEM_CONTRATACAO_PADRAO,
+      fotoRh: ''
+    };
+    let assinaturaConfigPublica = null; // evita refazer a tela quando nada mudou (polling de 5 s)
 
     function documentoObrigatorioConfig(tipo) {
       return configPublica.documentosObrigatorios[tipo] !== false;
@@ -1017,11 +1068,19 @@
         const resposta = await fetch(API + '/configuracoes/publicas');
         if (!resposta.ok) return;
         const dados = await resposta.json();
-        configPublica = {
+        const textoOuPadrao = (valor, padrao) => (typeof valor === 'string' && valor.trim() ? valor : padrao);
+        const novaConfig = {
           mensagemBoasVindas: typeof dados.mensagemBoasVindas === 'string' ? dados.mensagemBoasVindas : '',
           documentosObrigatorios: dados.documentosObrigatorios && typeof dados.documentosObrigatorios === 'object' ? dados.documentosObrigatorios : {},
-          emailContatoRh: typeof dados.emailContatoRh === 'string' ? dados.emailContatoRh : ''
+          emailContatoRh: typeof dados.emailContatoRh === 'string' ? dados.emailContatoRh : '',
+          tituloContratacaoConcluida: textoOuPadrao(dados.tituloContratacaoConcluida, TITULO_CONTRATACAO_PADRAO),
+          mensagemContratacaoConcluida: textoOuPadrao(dados.mensagemContratacaoConcluida, MENSAGEM_CONTRATACAO_PADRAO),
+          fotoRh: FotoPerfil.srcSeguro(dados.fotoRh)
         };
+        const assinatura = JSON.stringify(novaConfig);
+        if (assinatura === assinaturaConfigPublica) return;
+        assinaturaConfigPublica = assinatura;
+        configPublica = novaConfig;
       } catch (erro) {
         return; // mantém os padrões
       }
@@ -1040,6 +1099,8 @@
 
       atualizarBarras();
       atualizarProgresso();
+      atualizarAvatarChatRh();
+      if (candidato) renderizarMensagens(candidato.mensagens || []);
     }
 
     // Documentos que o candidato precisa anexar antes de concluir.
@@ -1684,7 +1745,7 @@
       EM_ANALISE: { classe: 'estado-em-analise', icone: 'busca', titulo: 'Tudo certo por aqui!', texto: 'Sua ficha está em análise pela nossa equipe de RH. Avisaremos por aqui assim que houver novidades.' },
       PENDENTE_ASSINATURA: { classe: 'estado-pendente-assinatura', icone: 'brilho', titulo: 'Boas notícias!', texto: 'Seus documentos foram aprovados. Falta só assinar os contratos para concluir.' },
       ASSINATURA_ENVIADA: { classe: 'estado-pendente-assinatura', icone: 'caneta', titulo: 'Assinatura recebida', texto: 'Recebemos os seus aceites. Nossa equipe está fazendo a validação final e avisaremos por aqui.' },
-      CONTRATACAO_CONCLUIDA: { classe: 'estado-concluida', icone: 'festa', titulo: 'Contratação concluída!', texto: 'Seja bem-vindo(a) à equipe. Estamos muito felizes em ter você com a gente.' },
+      CONTRATACAO_CONCLUIDA: { classe: 'estado-concluida', icone: 'festa' }, // título e texto vêm da configuração do RH
       REPROVADO: { classe: 'estado-reprovado', icone: 'coracao', titulo: 'Agradecemos o seu interesse', texto: 'Neste momento seu processo foi encerrado. Suas informações ficam guardadas conosco e entraremos em contato caso surja uma oportunidade alinhada ao seu perfil.' }
     };
     let chaveMensagemStatusAtual = null;
@@ -1692,9 +1753,12 @@
     // Só mexe no DOM quando o estado muda: o refresh de 5 s não reanima o card
     // nem faz o leitor de tela repetir a mesma mensagem.
     function renderizarMensagemStatus(chave) {
-      if (chave === chaveMensagemStatusAtual) return;
-      chaveMensagemStatusAtual = chave;
-      const m = MENSAGENS_STATUS[chave];
+      const m = chave === 'CONTRATACAO_CONCLUIDA'
+        ? Object.assign({}, MENSAGENS_STATUS[chave], { titulo: configPublica.tituloContratacaoConcluida, texto: configPublica.mensagemContratacaoConcluida })
+        : MENSAGENS_STATUS[chave];
+      const assinatura = [chave, m.titulo, m.texto].join('|');
+      if (assinatura === chaveMensagemStatusAtual) return;
+      chaveMensagemStatusAtual = assinatura;
       const card = document.getElementById('badgeStatus');
       card.className = 'card-status ' + m.classe;
       document.getElementById('statusIcone').innerHTML = icone(m.icone);
@@ -1822,14 +1886,136 @@
         : 'Olá! Vamos cuidar da sua <em>admissão</em> juntos.';
     }
 
+    // Leva ao login guardando a página pedida; o login só a reaproveita se for do mesmo tipo de usuário.
+    function irParaLogin() {
+      window.location.href = '/login.html?destino=' + encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
+    }
+
+    // =========================================================================
+    // CARD "SEU PERFIL" (foto, nome, idade e data de nascimento)
+    // =========================================================================
+    function iniciais(nome) {
+      const partes = String(nome || '').trim().split(/\s+/).filter(Boolean);
+      if (!partes.length) return '?';
+      return (partes[0].charAt(0) + (partes.length > 1 ? partes[partes.length - 1].charAt(0) : '')).toLocaleUpperCase('pt-BR');
+    }
+
+    // Conteúdo de um avatar: a foto (se for uma imagem válida) ou as iniciais.
+    function conteudoAvatar(foto, nome) {
+      const src = FotoPerfil.srcSeguro(foto);
+      return src ? `<img src="${escapeHtml(src)}" alt="">` : escapeHtml(iniciais(nome));
+    }
+
+    // Aceita dd/mm/aaaa, aaaa-mm-dd (com ou sem horário) e 8 dígitos; devolve Date ou null.
+    function lerDataNascimento(texto) {
+      const t = String(texto || '').trim();
+      let d; let m; let a;
+      const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
+      if (iso) { a = +iso[1]; m = +iso[2]; d = +iso[3]; } else {
+        const digitos = t.replace(/\D/g, '');
+        if (digitos.length !== 8) return null;
+        d = +digitos.slice(0, 2); m = +digitos.slice(2, 4); a = +digitos.slice(4);
+      }
+      const data = new Date(a, m - 1, d);
+      const valida = data.getFullYear() === a && data.getMonth() === m - 1 && data.getDate() === d;
+      return valida && a >= 1900 && data <= new Date() ? data : null;
+    }
+
+    function calcularIdade(nascimento) {
+      const hoje = new Date();
+      let idade = hoje.getFullYear() - nascimento.getFullYear();
+      if (hoje.getMonth() < nascimento.getMonth() || (hoje.getMonth() === nascimento.getMonth() && hoje.getDate() < nascimento.getDate())) idade--;
+      return idade;
+    }
+
+    let assinaturaPerfilAtual = null;
+    // Nome e nascimento: o que está no formulário agora (ao vivo), depois a ficha enviada, depois o cadastro.
+    function atualizarCartaoPerfil() {
+      const card = document.getElementById('cardPerfil');
+      card.hidden = !sessaoUsuario;
+      if (!sessaoUsuario) return;
+
+      const nome = document.getElementById('nomeCompleto').value.trim() || (candidato && candidato.nomeCompleto) || sessaoUsuario.nome || '';
+      const nascimento = lerDataNascimento(document.getElementById('dataNascimento').value)
+        || lerDataNascimento(candidato && candidato.dataNascimento)
+        || lerDataNascimento(sessaoUsuario.dataNascimento);
+      const foto = FotoPerfil.srcSeguro(sessaoUsuario.foto);
+      const idade = nascimento ? calcularIdade(nascimento) : null;
+      const nascimentoTexto = nascimento ? nascimento.toLocaleDateString('pt-BR') : '—';
+
+      const assinatura = [nome, idade, nascimentoTexto, foto].join('|');
+      if (assinatura === assinaturaPerfilAtual) return;
+      assinaturaPerfilAtual = assinatura;
+
+      document.getElementById('perfilNome').textContent = nome || '—';
+      document.getElementById('perfilIdade').textContent = idade === null ? '—' : idade + (idade === 1 ? ' ano' : ' anos');
+      document.getElementById('perfilNascimento').textContent = nascimentoTexto;
+      document.getElementById('perfilAvatar').innerHTML = conteudoAvatar(foto, nome);
+      document.getElementById('btnRemoverFoto').hidden = !foto;
+    }
+
+    ['nomeCompleto', 'dataNascimento'].forEach((id) => {
+      document.getElementById(id).addEventListener('input', atualizarCartaoPerfil);
+    });
+
+    function mostrarStatusFoto(texto, erro) {
+      const el = document.getElementById('perfilFotoStatus');
+      el.textContent = texto;
+      el.classList.toggle('erro', !!erro);
+    }
+
+    async function salvarFotoPerfil(foto) {
+      const botoes = [document.getElementById('btnTrocarFoto'), document.getElementById('btnRemoverFoto')];
+      botoes.forEach((b) => { b.disabled = true; });
+      mostrarStatusFoto('Salvando foto…', false);
+      try {
+        const r = await fetch(API + '/auth/foto', {
+          method: 'PUT',
+          headers: cabecalhosAutenticados({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ foto })
+        });
+        const corpo = await r.json().catch(() => ({}));
+        if (!r.ok) { mostrarStatusFoto(corpo.erro || 'Não foi possível salvar a foto. Tente de novo.', true); return; }
+        sessaoUsuario.foto = corpo.usuario.foto || null;
+        atualizarCartaoPerfil();
+        renderizarAreaSessao();
+        mostrarStatusFoto(foto ? 'Foto atualizada.' : 'Foto removida.', false);
+      } catch (erro) {
+        mostrarStatusFoto('Não conseguimos falar com o servidor. Tente de novo em instantes.', true);
+      } finally {
+        botoes.forEach((b) => { b.disabled = false; });
+      }
+    }
+
+    document.getElementById('btnTrocarFoto').addEventListener('click', () => document.getElementById('inputFoto').click());
+    document.getElementById('btnRemoverFoto').addEventListener('click', () => salvarFotoPerfil(null));
+    document.getElementById('inputFoto').addEventListener('change', async (e) => {
+      const arquivo = e.target.files[0];
+      e.target.value = '';
+      if (!arquivo) return;
+      try {
+        mostrarStatusFoto('Preparando foto…', false);
+        await salvarFotoPerfil(await FotoPerfil.prepararImagem(arquivo));
+      } catch (erro) {
+        mostrarStatusFoto(erro.message, true);
+      }
+    });
+
+    // Foto do RH no cabeçalho do chat.
+    function atualizarAvatarChatRh() {
+      const src = FotoPerfil.srcSeguro(configPublica.fotoRh);
+      document.getElementById('chatAvatarRh').innerHTML = src ? `<img src="${escapeHtml(src)}" alt="">` : 'RH';
+    }
+
     function renderizarAreaSessao() {
       const area = document.getElementById('areaSessao');
       atualizarSaudacao();
+      atualizarCartaoPerfil();
       if (!sessaoUsuario) {
         area.innerHTML = '<a href="/login.html">Entrar / Criar Conta</a>';
         return;
       }
-      area.innerHTML = `Olá, <span class="nome-sessao">${escapeHtml(sessaoUsuario.nome)}</span> <button type="button" id="btnSair">${icone('sair')}Sair</button>`;
+      area.innerHTML = `<span class="avatar area-avatar" aria-hidden="true">${conteudoAvatar(sessaoUsuario.foto, sessaoUsuario.nome)}</span>Olá, <span class="nome-sessao">${escapeHtml(sessaoUsuario.nome)}</span> <button type="button" id="btnSair">${icone('sair')}Sair</button>`;
       document.getElementById('btnSair').addEventListener('click', () => {
         fetch(API + '/auth/logout', { method: 'POST', headers: cabecalhosAutenticados() }).catch(() => {});
         localStorage.removeItem('onboarding_token');
@@ -1868,14 +2054,14 @@
     // editáveis pelo candidato.
     async function exigirSessaoCandidato() {
       const token = tokenSessao();
-      if (!token) { window.location.href = '/login.html'; return false; }
+      if (!token) { irParaLogin(); return false; }
 
       try {
         const r = await fetch(API + '/auth/sessao', { headers: cabecalhosAutenticados() });
         if (!r.ok) {
           localStorage.removeItem('onboarding_token');
           localStorage.removeItem('onboarding_usuario');
-          window.location.href = '/login.html';
+          irParaLogin();
           return false;
         }
         const corpo = await r.json();
@@ -1888,7 +2074,7 @@
         if (sessaoUsuario.dataNascimento) document.getElementById('dataNascimento').value = mascaraData(sessaoUsuario.dataNascimento);
         return true;
       } catch (erro) {
-        window.location.href = '/login.html';
+        irParaLogin();
         return false;
       }
     }
@@ -1924,9 +2110,11 @@
       }
       container.innerHTML = mensagens.map((m) => {
         const rotulo = m.autor === 'Candidato' ? 'Você' : (m.nomeAutor || 'RH');
+        const fotoRh = FotoPerfil.srcSeguro(configPublica.fotoRh);
+        const avatarRh = m.autor === 'RH' && fotoRh ? `<span class="avatar" aria-hidden="true"><img src="${escapeHtml(fotoRh)}" alt=""></span>` : '';
         return `
         <div class="mensagem ${m.autor === 'RH' ? 'mensagem-rh' : 'mensagem-candidato'}">
-          <div class="mensagem-cabecalho">${escapeHtml(rotulo)} · ${formatarDataHora(m.timestamp)}</div>
+          <div class="mensagem-cabecalho">${avatarRh}${escapeHtml(rotulo)} · ${formatarDataHora(m.timestamp)}</div>
           <div class="mensagem-texto">${escapeHtml(m.texto)}</div>
         </div>
       `;
@@ -1958,7 +2146,10 @@
 
     function iniciarAtualizacaoAutomaticaFicha() {
       if (fichaPollingIntervalId || !candidatoId) return;
-      fichaPollingIntervalId = setInterval(() => carregarFichaExistente(candidatoId), INTERVALO_POLLING_FICHA_MS);
+      fichaPollingIntervalId = setInterval(() => {
+        carregarFichaExistente(candidatoId);
+        carregarConfiguracoesPublicas(); // reflete mudanças de texto/foto do RH sem recarregar
+      }, INTERVALO_POLLING_FICHA_MS);
     }
 
     async function consultarNovasMensagens() {
@@ -2178,6 +2369,22 @@
     // assinatura eletrônica (Momento 3 da jornada).
     document.getElementById('checkConsentimentoContrato').addEventListener('change', renderizarSecaoContrato);
 
+    // Abre o documento numa janela própria (popup) ao lado da página, sem
+    // substituir a tela atual. Se o navegador bloquear o popup, o link segue o
+    // comportamento normal (nova aba, via target="_blank").
+    function abrirJanelaDocumento(evento, link) {
+      if (evento.ctrlKey || evento.metaKey || evento.shiftKey || evento.button === 1) return;
+      const largura = Math.min(980, window.screen.availWidth - 80);
+      const altura = Math.min(900, window.screen.availHeight - 80);
+      const janela = window.open(link.href, 'janelaDocumento', 'popup=yes,width=' + largura + ',height=' + altura + ',left=40,top=40');
+      if (janela) { evento.preventDefault(); janela.focus(); }
+    }
+
+    document.getElementById('listaDocumentosContrato').addEventListener('click', (e) => {
+      const link = e.target.closest('a.btn-ver-documento');
+      if (link) abrirJanelaDocumento(e, link);
+    });
+
     document.getElementById('btnConcluirAssinatura').addEventListener('click', async () => {
       if (!candidatoId) return;
       if (!document.getElementById('checkConsentimentoContrato').checked) {
@@ -2212,6 +2419,7 @@
 
         preencherFormularioComCandidato(candidato);
         atualizarSaudacao();
+        atualizarCartaoPerfil();
         atualizarBadgeGeral();
         travarCamposFormulario();
         exibirPainelChat();
@@ -2248,6 +2456,7 @@
       // Ficha nova (sem id na URL): exige login antes de mostrar o
       // formulário, como já acontece no Painel do RH.
       await exigirSessaoCandidato();
+      atualizarCartaoPerfil();
       atualizarProgresso();
     }
 
