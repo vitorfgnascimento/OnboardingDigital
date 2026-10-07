@@ -173,6 +173,9 @@ function candidatoParaCamelCase(row, mensagens) {
     fichaPdf: row.ficha_pdf,
     criadoEm: row.criado_em,
     atualizadoEm: row.atualizado_em,
+    bancoTalentos: !!row.banco_talentos,
+    bancoTalentosEm: row.banco_talentos_em || null,
+    tags: Array.isArray(row.tags) ? row.tags : [],
     mensagens: mensagens || []
   };
 }
@@ -212,7 +215,12 @@ function candidatoParaSnakeCase(c) {
     // problema real do PostgREST em upserts em lote: se um objeto do lote
     // não tem a chave (undefined) enquanto outros têm, o PostgREST manda
     // NULL para essa linha, violando a coluna NOT NULL da tabela.
-    atualizado_em: c.atualizadoEm || c.criadoEm || new Date().toISOString()
+    atualizado_em: c.atualizadoEm || c.criadoEm || new Date().toISOString(),
+    // Sempre explícitos pelo mesmo motivo do upsert em lote descrito acima
+    // (colunas banco_talentos e tags são NOT NULL).
+    banco_talentos: !!c.bancoTalentos,
+    banco_talentos_em: c.bancoTalentosEm || null,
+    tags: Array.isArray(c.tags) ? c.tags : []
   };
 }
 
@@ -1247,6 +1255,480 @@ app.get('/api/rh/fichas', exigirRh, async (req, res) => {
   }
 });
 
+
+// ---------------------------------------------------------------------------
+// BANCO DE TALENTOS: candidato arquivado sai da lista ativa de Gestão e das
+// métricas, sem alterar o status. A ficha continua acessível por link.
+// ---------------------------------------------------------------------------
+const MAX_TAGS_BANCO_TALENTOS = 10; // máximo de etiquetas por ficha
+const MAX_TAMANHO_TAG = 30;
+const MAX_ETIQUETAS_CATALOGO = 50;
+const COR_ETIQUETA_PADRAO = '#6b7280';
+const REGEX_COR_ETIQUETA = /^#[0-9a-f]{6}$/i;
+
+// ---------------------------------------------------------------------------
+// ETIQUETAS (estilo Trello): catálogo global (cor + nome opcional). A coluna
+// candidatos.tags guarda os IDs das etiquetas anexadas à ficha.
+// ---------------------------------------------------------------------------
+function etiquetaParaCamelCase(row) {
+  return {
+    id: row.id,
+    nome: row.nome || '',
+    cor: row.cor,
+    criadoEm: row.criado_em,
+    atualizadoEm: row.atualizado_em
+  };
+}
+
+function etiquetaParaSnakeCase(e) {
+  return {
+    id: e.id,
+    nome: e.nome || '',
+    cor: e.cor,
+    criado_em: e.criadoEm,
+    atualizado_em: e.atualizadoEm || e.criadoEm
+  };
+}
+
+async function lerEtiquetas() {
+  const { data, error } = await supabase.from('etiquetas').select('*').order('criado_em', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(etiquetaParaCamelCase);
+}
+
+async function salvarEtiquetas(lista) {
+  if (!lista.length) return;
+  const { error } = await supabase.from('etiquetas').upsert(lista.map(etiquetaParaSnakeCase), { onConflict: 'id' });
+  if (error) throw error;
+}
+
+// Chave de comparação de nomes: sem acento, sem diferenciar maiúsculas.
+function chaveNomeEtiqueta(nome) {
+  return String(nome || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+}
+
+// Valida nome (opcional, até 30) e cor (#RRGGBB). Retorna { nome?, cor? } ou { erro }.
+function validarCamposEtiqueta(corpo, { corObrigatoria }) {
+  const saida = {};
+  if (corpo.nome !== undefined && corpo.nome !== null) {
+    if (typeof corpo.nome !== 'string') return { erro: 'O nome da etiqueta deve ser um texto.' };
+    const nome = corpo.nome.trim();
+    if (nome.length > MAX_TAMANHO_TAG) return { erro: `O nome da etiqueta pode ter no máximo ${MAX_TAMANHO_TAG} caracteres.` };
+    saida.nome = nome;
+  }
+  if (corpo.cor === undefined || corpo.cor === null) {
+    if (corObrigatoria) return { erro: 'Escolha uma cor para a etiqueta.' };
+  } else {
+    if (typeof corpo.cor !== 'string' || !REGEX_COR_ETIQUETA.test(corpo.cor.trim())) {
+      return { erro: 'Cor inválida: use o formato #RRGGBB.' };
+    }
+    saida.cor = corpo.cor.trim().toLowerCase();
+  }
+  return saida;
+}
+
+// Converte tags legadas (texto) em etiquetas do catálogo: reaproveita a de
+// mesmo nome (sem acento/caixa) ou cria uma nova cinza. Muta "catalogo" e
+// devolve { ids, novas }; quem chama é responsável por gravar as novas.
+function resolverTagsLegadas(textos, catalogo) {
+  const ids = [];
+  const novas = [];
+  const agora = new Date().toISOString();
+  textos.forEach((texto) => {
+    const chave = chaveNomeEtiqueta(texto);
+    if (!chave) return;
+    let etiqueta = catalogo.find((e) => chaveNomeEtiqueta(e.nome) === chave);
+    if (!etiqueta) {
+      etiqueta = { id: gerarId(), nome: String(texto).trim().slice(0, MAX_TAMANHO_TAG), cor: COR_ETIQUETA_PADRAO, criadoEm: agora, atualizadoEm: agora };
+      catalogo.push(etiqueta);
+      novas.push(etiqueta);
+    }
+    if (!ids.includes(etiqueta.id)) ids.push(etiqueta.id);
+  });
+  return { ids, novas };
+}
+
+// Migração idempotente: fichas antigas guardam o NOME da tag em
+// candidatos.tags. Cada texto que não é id do catálogo vira (ou reaproveita)
+// uma etiqueta e é substituído pelo id. Nenhuma tag se perde.
+async function migrarTagsLegadasParaEtiquetas() {
+  const catalogo = await lerEtiquetas();
+  const idsConhecidos = new Set(catalogo.map((e) => e.id));
+  const { data: linhas, error } = await supabase.from('candidatos').select('id, tags');
+  if (error) throw error;
+
+  const pendentes = (linhas || []).filter((l) => Array.isArray(l.tags) && l.tags.some((t) => typeof t === 'string' && !idsConhecidos.has(t)));
+  if (!pendentes.length) return;
+
+  const todasNovas = [];
+  const atualizacoes = [];
+  pendentes.forEach((linha) => {
+    const textos = linha.tags.filter((t) => typeof t === 'string' && !idsConhecidos.has(t));
+    const { ids, novas } = resolverTagsLegadas(textos, catalogo);
+    todasNovas.push(...novas);
+    const mantidos = linha.tags.filter((t) => typeof t === 'string' && idsConhecidos.has(t));
+    atualizacoes.push({ id: linha.id, tags: [...new Set([...mantidos, ...ids])] });
+  });
+
+  // Grava o catálogo antes das fichas: se algo falhar no meio, as tags
+  // legadas continuam nas fichas e a próxima execução termina o trabalho.
+  await salvarEtiquetas(todasNovas);
+  for (const a of atualizacoes) {
+    const { error: erroUpdate } = await supabase.from('candidatos').update({ tags: a.tags }).eq('id', a.id);
+    if (erroUpdate) throw erroUpdate;
+  }
+  console.log(`Migração de tags: ${todasNovas.length} etiqueta(s) criada(s), ${atualizacoes.length} ficha(s) atualizada(s).`);
+}
+
+function registrarAuditoriaEtiqueta(req, tipoEvento, extra) {
+  registrarEventoAuditoria({
+    id: gerarId(),
+    tipoEvento,
+    ...extra,
+    usuarioId: req.usuario.id,
+    usuarioEmail: req.usuario.email,
+    timestamp: new Date().toISOString(),
+    ip: req.ip
+  });
+}
+
+app.get('/api/rh/etiquetas', exigirRh, async (req, res) => {
+  try {
+    return res.status(200).json(await lerEtiquetas());
+  } catch (erro) {
+    console.error('Falha ao listar etiquetas:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao listar as etiquetas.' });
+  }
+});
+
+app.post('/api/rh/etiquetas', exigirRh, async (req, res) => {
+  try {
+    const campos = validarCamposEtiqueta(req.body || {}, { corObrigatoria: true });
+    if (campos.erro) return res.status(400).json({ erro: campos.erro });
+
+    const catalogo = await lerEtiquetas();
+    if (catalogo.length >= MAX_ETIQUETAS_CATALOGO) {
+      return res.status(400).json({ erro: `O catálogo pode ter no máximo ${MAX_ETIQUETAS_CATALOGO} etiquetas.` });
+    }
+    const agora = new Date().toISOString();
+    const etiqueta = { id: gerarId(), nome: campos.nome || '', cor: campos.cor, criadoEm: agora, atualizadoEm: agora };
+    await salvarEtiquetas([etiqueta]);
+    registrarAuditoriaEtiqueta(req, 'etiqueta_criada', { etiquetaId: etiqueta.id, nome: etiqueta.nome, cor: etiqueta.cor });
+    return res.status(201).json({ mensagem: 'Etiqueta criada.', etiqueta });
+  } catch (erro) {
+    console.error('Falha ao criar etiqueta:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao criar a etiqueta.' });
+  }
+});
+
+app.patch('/api/rh/etiquetas/:id', exigirRh, async (req, res) => {
+  try {
+    const campos = validarCamposEtiqueta(req.body || {}, { corObrigatoria: false });
+    if (campos.erro) return res.status(400).json({ erro: campos.erro });
+
+    const catalogo = await lerEtiquetas();
+    const etiqueta = catalogo.find((e) => e.id === req.params.id);
+    if (!etiqueta) return res.status(404).json({ erro: 'Etiqueta não encontrada.' });
+
+    if (campos.nome !== undefined) etiqueta.nome = campos.nome;
+    if (campos.cor !== undefined) etiqueta.cor = campos.cor;
+    etiqueta.atualizadoEm = new Date().toISOString();
+    await salvarEtiquetas([etiqueta]);
+    registrarAuditoriaEtiqueta(req, 'etiqueta_editada', { etiquetaId: etiqueta.id, nome: etiqueta.nome, cor: etiqueta.cor });
+    return res.status(200).json({ mensagem: 'Etiqueta atualizada.', etiqueta });
+  } catch (erro) {
+    console.error('Falha ao editar etiqueta:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao editar a etiqueta.' });
+  }
+});
+
+app.delete('/api/rh/etiquetas/:id', exigirRh, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const catalogo = await lerEtiquetas();
+    const etiqueta = catalogo.find((e) => e.id === id);
+    if (!etiqueta) return res.status(404).json({ erro: 'Etiqueta não encontrada.' });
+
+    // Retira o id das fichas antes de apagar do catálogo (updates pontuais, só
+    // nas fichas afetadas, para não regravar a base inteira).
+    const { data: linhas, error } = await supabase.from('candidatos').select('id, tags');
+    if (error) throw error;
+    const afetadas = (linhas || []).filter((l) => Array.isArray(l.tags) && l.tags.includes(id));
+    const agora = new Date().toISOString();
+    for (const linha of afetadas) {
+      const { error: erroUpdate } = await supabase
+        .from('candidatos')
+        .update({ tags: linha.tags.filter((t) => t !== id), atualizado_em: agora })
+        .eq('id', linha.id);
+      if (erroUpdate) throw erroUpdate;
+    }
+    const { error: erroDelete } = await supabase.from('etiquetas').delete().eq('id', id);
+    if (erroDelete) throw erroDelete;
+
+    registrarAuditoriaEtiqueta(req, 'etiqueta_excluida', { etiquetaId: id, nome: etiqueta.nome, cor: etiqueta.cor, fichasAfetadas: afetadas.length });
+    return res.status(200).json({ mensagem: 'Etiqueta excluída.', fichasAfetadas: afetadas.length });
+  } catch (erro) {
+    console.error('Falha ao excluir etiqueta:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao excluir a etiqueta.' });
+  }
+});
+
+// Valida uma lista de ids de etiquetas contra o catálogo. Retorna { ids } ou { erro }.
+function sanitizarIdsEtiquetas(entrada, catalogo) {
+  if (entrada === undefined || entrada === null) return { ids: [] };
+  if (!Array.isArray(entrada)) return { erro: 'As etiquetas devem ser uma lista de identificadores.' };
+  const ids = [];
+  for (const item of entrada) {
+    if (typeof item !== 'string' || !item.trim()) return { erro: 'Cada etiqueta deve ser um identificador válido.' };
+    if (!catalogo.some((e) => e.id === item)) return { erro: 'Uma ou mais etiquetas não existem.' };
+    if (!ids.includes(item)) ids.push(item);
+  }
+  if (ids.length > MAX_TAGS_BANCO_TALENTOS) return { erro: `Use no máximo ${MAX_TAGS_BANCO_TALENTOS} etiquetas por ficha.` };
+  return { ids };
+}
+
+app.patch('/api/rh/fichas/:id/etiquetas', exigirRh, async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!req.body || !Array.isArray(req.body.etiquetas)) {
+      return res.status(400).json({ erro: 'Informe a lista de etiquetas da ficha.' });
+    }
+    const catalogo = await lerEtiquetas();
+    const resultado = sanitizarIdsEtiquetas(req.body.etiquetas, catalogo);
+    if (resultado.erro) return res.status(400).json({ erro: resultado.erro });
+
+    const candidatos = await lerCandidatos();
+    const candidato = candidatos.find((c) => c.id === id);
+    if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
+
+    candidato.tags = resultado.ids;
+    candidato.atualizadoEm = new Date().toISOString();
+    await salvarCandidatos(candidatos);
+    registrarAuditoriaEtiqueta(req, 'etiquetas_ficha_alteradas', { candidatoId: id, etiquetas: resultado.ids });
+    return res.status(200).json({ mensagem: 'Etiquetas da ficha atualizadas.', candidato });
+  } catch (erro) {
+    console.error('Falha ao anexar etiquetas à ficha:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao atualizar as etiquetas da ficha.' });
+  }
+});
+
+// Retorna { tags } saneadas ou { erro } (trim, sem vazias/duplicadas) - formato
+// legado (texto livre), convertido em etiquetas pela rota do Banco de Talentos.
+function sanitizarTags(entrada) {
+  if (entrada === undefined || entrada === null) return { tags: [] };
+  if (!Array.isArray(entrada)) return { erro: 'As tags devem ser uma lista de textos.' };
+  const tags = [];
+  const vistas = new Set();
+  for (const item of entrada) {
+    if (typeof item !== 'string') return { erro: 'Cada tag deve ser um texto.' };
+    const tag = item.trim();
+    if (!tag) continue;
+    if (tag.length > MAX_TAMANHO_TAG) return { erro: `Cada tag pode ter no máximo ${MAX_TAMANHO_TAG} caracteres.` };
+    const chave = chaveNomeEtiqueta(tag);
+    if (vistas.has(chave)) continue;
+    vistas.add(chave);
+    tags.push(tag);
+  }
+  if (tags.length > MAX_TAGS_BANCO_TALENTOS) return { erro: `Use no máximo ${MAX_TAGS_BANCO_TALENTOS} tags.` };
+  return { tags };
+}
+
+app.patch('/api/rh/fichas/:id/banco-talentos', exigirRh, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const corpo = req.body || {};
+    const legadas = sanitizarTags(corpo.tags);
+    if (legadas.erro) return res.status(400).json({ erro: legadas.erro });
+    const catalogo = await lerEtiquetas();
+    const porIds = sanitizarIdsEtiquetas(corpo.etiquetas, catalogo);
+    if (porIds.erro) return res.status(400).json({ erro: porIds.erro });
+
+    const candidatos = await lerCandidatos();
+    const candidato = candidatos.find((c) => c.id === id);
+    if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
+    if (candidato.bancoTalentos) {
+      return res.status(400).json({ erro: 'Este candidato já está no Banco de Talentos.' });
+    }
+
+    // Tags em texto (legado) viram etiquetas do catálogo (reuso por nome).
+    const { ids: idsLegadas, novas } = resolverTagsLegadas(legadas.tags, catalogo);
+    if (novas.length && catalogo.length > MAX_ETIQUETAS_CATALOGO) {
+      return res.status(400).json({ erro: `O catálogo pode ter no máximo ${MAX_ETIQUETAS_CATALOGO} etiquetas.` });
+    }
+    const todas = [...new Set([...porIds.ids, ...idsLegadas])];
+    if (todas.length > MAX_TAGS_BANCO_TALENTOS) {
+      return res.status(400).json({ erro: `Use no máximo ${MAX_TAGS_BANCO_TALENTOS} etiquetas por ficha.` });
+    }
+    await salvarEtiquetas(novas);
+
+    const agora = new Date().toISOString();
+    candidato.bancoTalentos = true;
+    candidato.bancoTalentosEm = agora;
+    candidato.tags = todas;
+    candidato.atualizadoEm = agora;
+    await salvarCandidatos(candidatos);
+
+    registrarEventoAuditoria({
+      id: gerarId(),
+      tipoEvento: 'banco_talentos_mover',
+      candidatoId: id,
+      tags: todas,
+      timestamp: agora,
+      ip: req.ip
+    });
+
+    return res.status(200).json({ mensagem: 'Candidato movido para o Banco de Talentos.', candidato });
+  } catch (erro) {
+    console.error('Falha ao mover para o Banco de Talentos:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao mover o candidato para o Banco de Talentos.' });
+  }
+});
+
+app.patch('/api/rh/fichas/:id/reativar', exigirRh, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const candidatos = await lerCandidatos();
+    const candidato = candidatos.find((c) => c.id === id);
+    if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
+    if (!candidato.bancoTalentos) {
+      return res.status(400).json({ erro: 'Este candidato não está no Banco de Talentos.' });
+    }
+
+    const agora = new Date().toISOString();
+    candidato.bancoTalentos = false;
+    candidato.bancoTalentosEm = null; // as tags são mantidas
+    candidato.atualizadoEm = agora;
+    await salvarCandidatos(candidatos);
+
+    registrarEventoAuditoria({
+      id: gerarId(),
+      tipoEvento: 'banco_talentos_reativar',
+      candidatoId: id,
+      timestamp: agora,
+      ip: req.ip
+    });
+
+    return res.status(200).json({ mensagem: 'Candidato reativado com sucesso.', candidato });
+  } catch (erro) {
+    console.error('Falha ao reativar candidato:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao reativar o candidato.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// CONFIGURAÇÕES DO RH (tabela "configuracoes", linha única id = 'geral')
+// ---------------------------------------------------------------------------
+const MENSAGEM_BOAS_VINDAS_PADRAO = 'Bem-vindo(a) ao processo admissional! Preencha seus dados e anexe os documentos solicitados para dar andamento à sua contratação.';
+const MAX_MENSAGEM_BOAS_VINDAS = 500;
+
+function configuracoesPadrao() {
+  const documentosObrigatorios = {};
+  TIPOS_DOCUMENTO.forEach((t) => { documentosObrigatorios[t] = true; });
+  return { mensagemBoasVindas: MENSAGEM_BOAS_VINDAS_PADRAO, documentosObrigatorios, emailContatoRh: '' };
+}
+
+// Completa/normaliza uma linha possivelmente nula ou incompleta com os padrões
+// - o app nunca pode quebrar por falta de configuração.
+function configuracoesDeLinha(row) {
+  const padrao = configuracoesPadrao();
+  if (!row) return padrao;
+  const docs = row.documentos_obrigatorios && typeof row.documentos_obrigatorios === 'object' ? row.documentos_obrigatorios : {};
+  TIPOS_DOCUMENTO.forEach((t) => {
+    if (typeof docs[t] === 'boolean') padrao.documentosObrigatorios[t] = docs[t];
+  });
+  // Mensagem vazia é uma escolha válida do RH (oculta o card); só null (linha incompleta) volta ao padrão.
+  const mensagemBoasVindas = typeof row.mensagem_boas_vindas === 'string' ? row.mensagem_boas_vindas : padrao.mensagemBoasVindas;
+  const emailContatoRh = typeof row.email_contato_rh === 'string' ? row.email_contato_rh : '';
+  return { mensagemBoasVindas, documentosObrigatorios: padrao.documentosObrigatorios, emailContatoRh };
+}
+
+async function lerConfiguracoes() {
+  try {
+    const { data, error } = await supabase.from('configuracoes').select('*').eq('id', 'geral').maybeSingle();
+    if (error) throw error;
+    return configuracoesDeLinha(data);
+  } catch (erro) {
+    console.error('Falha ao ler configurações (usando padrões):', erro.message);
+    return configuracoesPadrao();
+  }
+}
+
+async function salvarConfiguracoes(config) {
+  const { error } = await supabase.from('configuracoes').upsert({
+    id: 'geral',
+    mensagem_boas_vindas: config.mensagemBoasVindas,
+    documentos_obrigatorios: config.documentosObrigatorios,
+    email_contato_rh: config.emailContatoRh,
+    atualizado_em: new Date().toISOString()
+  }, { onConflict: 'id' });
+  if (error) throw error;
+}
+
+app.get('/api/rh/configuracoes', exigirRh, async (req, res) => {
+  return res.status(200).json(await lerConfiguracoes());
+});
+
+// Mensagem vazia é permitida: o card de boas-vindas fica oculto na ficha.
+app.put('/api/rh/configuracoes', exigirRh, async (req, res) => {
+  try {
+    const corpo = req.body || {};
+    const { mensagemBoasVindas, documentosObrigatorios, emailContatoRh } = corpo;
+
+    if (typeof mensagemBoasVindas !== 'string') {
+      return res.status(400).json({ erro: 'A mensagem de boas-vindas deve ser um texto.' });
+    }
+    const mensagem = mensagemBoasVindas.trim();
+    if (mensagem.length > MAX_MENSAGEM_BOAS_VINDAS) {
+      return res.status(400).json({ erro: `A mensagem de boas-vindas pode ter no máximo ${MAX_MENSAGEM_BOAS_VINDAS} caracteres.` });
+    }
+
+    if (!documentosObrigatorios || typeof documentosObrigatorios !== 'object' || Array.isArray(documentosObrigatorios)) {
+      return res.status(400).json({ erro: 'Informe a lista de documentos obrigatórios.' });
+    }
+    const chaves = Object.keys(documentosObrigatorios);
+    const chavesOk = chaves.length === TIPOS_DOCUMENTO.length && TIPOS_DOCUMENTO.every((t) => chaves.includes(t));
+    if (!chavesOk || !TIPOS_DOCUMENTO.every((t) => typeof documentosObrigatorios[t] === 'boolean')) {
+      return res.status(400).json({ erro: 'Documentos obrigatórios inválidos: informe exatamente os 6 documentos com valores verdadeiro/falso.' });
+    }
+    if (!TIPOS_DOCUMENTO.some((t) => documentosObrigatorios[t])) {
+      return res.status(400).json({ erro: 'Pelo menos um documento deve permanecer obrigatório.' });
+    }
+
+    if (emailContatoRh !== undefined && emailContatoRh !== null && typeof emailContatoRh !== 'string') {
+      return res.status(400).json({ erro: 'E-mail de contato inválido.' });
+    }
+    const email = String(emailContatoRh || '').trim();
+    if (email && !REGEX_EMAIL.test(email)) {
+      return res.status(400).json({ erro: 'E-mail de contato do RH inválido.' });
+    }
+
+    const docs = {};
+    TIPOS_DOCUMENTO.forEach((t) => { docs[t] = documentosObrigatorios[t]; });
+    const config = { mensagemBoasVindas: mensagem, documentosObrigatorios: docs, emailContatoRh: email };
+    await salvarConfiguracoes(config);
+
+    registrarEventoAuditoria({
+      id: gerarId(),
+      tipoEvento: 'configuracoes_alteradas',
+      usuarioId: req.usuario.id,
+      usuarioEmail: req.usuario.email,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+
+    return res.status(200).json(config);
+  } catch (erro) {
+    console.error('Falha ao salvar configurações:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao salvar as configurações.' });
+  }
+});
+
+// Pública (sem autenticação): consumida pela ficha do candidato.
+app.get('/api/configuracoes/publicas', async (req, res) => {
+  const { mensagemBoasVindas, documentosObrigatorios, emailContatoRh } = await lerConfiguracoes();
+  return res.status(200).json({ mensagemBoasVindas, documentosObrigatorios, emailContatoRh });
+});
+
 // Status que o RH pode atribuir a uma ficha pelo Painel de Gestão.
 const STATUS_VALIDOS_RH = ['EM_ANALISE', 'PENDENTE_ASSINATURA'];
 
@@ -1990,7 +2472,8 @@ function descreverFiltrosDashboard(query = {}) {
 // ---------------------------------------------------------------------------
 app.get('/api/relatorio/dashboard-pdf', exigirRh, async (req, res) => {
   try {
-    const candidatosFiltrados = filtrarCandidatosParaDashboard(await lerCandidatos(), req.query);
+    // Arquivados no Banco de Talentos ficam fora, como na tela do dashboard.
+    const candidatosFiltrados = filtrarCandidatosParaDashboard((await lerCandidatos()).filter((c) => !c.bancoTalentos), req.query);
     const kpis = calcularKpisDashboard(candidatosFiltrados);
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -2290,6 +2773,7 @@ function montarRegistroApiAdmissao(c) {
     statusRotulo: ROTULO_STATUS_CSV[c.status] || c.status || '',
     criadoEm: c.criadoEm,
     atualizadoEm: c.atualizadoEm,
+    bancoTalentos: !!c.bancoTalentos,
     documentos,
     auditoriaLgpd: {
       consentimentoFicha: c.consentimentoFichaLGPD,
@@ -2536,7 +3020,7 @@ function gerarDocumentoContratoAssinado(candidato, tipo, titulo, aceite) {
   );
   doc.moveDown(2);
 
-  const alturaCarimbo = 110;
+  const alturaCarimbo = 140;
   const yCarimbo = doc.y;
   doc.save();
   doc.rect(50, yCarimbo, doc.page.width - 100, alturaCarimbo).fillAndStroke('#eafaef', '#00A335');
@@ -2549,9 +3033,10 @@ function gerarDocumentoContratoAssinado(candidato, tipo, titulo, aceite) {
   doc.text(`Data/Hora: ${formatarDataBr(aceite.timestamp)}`, 60, yCarimbo + 47);
   doc.text(`IP de origem: ${aceite.ip || '-'}`, 60, yCarimbo + 62);
   doc.text(`Confirmado por: ${aceite.por === 'RH' ? 'RH (em nome do candidato)' : 'Candidato'}`, 60, yCarimbo + 77);
+  if (aceite.hash) doc.text(`Hash (SHA-256): ${aceite.hash}`, 60, yCarimbo + 92, { width: doc.page.width - 120 });
   doc.text(
     'Assinatura eletrônica válida nos termos da MP nº 2.200-2/2001 e da Lei nº 14.063/2020.',
-    60, yCarimbo + 92
+    60, yCarimbo + 118
   );
 
   doc.end();
@@ -2565,7 +3050,9 @@ app.get('/api/contrato/minuta/:tipo', (req, res) => {
     return res.status(400).json({ erro: 'Documento de contrato inválido.' });
   }
   garantirMinutaContrato(tipo, CONTRATOS_DOCUMENTOS.find((d) => d.tipo === tipo).titulo);
-  return res.download(caminhoMinuta(tipo), nomeArquivoMinuta(tipo));
+  // Inline (não attachment): abre direto no visualizador de PDF da nova aba.
+  res.setHeader('Content-Disposition', `inline; filename="${nomeArquivoMinuta(tipo)}"`);
+  return res.type('application/pdf').send(fs.readFileSync(caminhoMinuta(tipo)));
 });
 
 // O candidato clica em "Li e Aceito os Termos" para UM documento (aceite por
@@ -2587,9 +3074,15 @@ app.post('/api/candidato/:id/contrato/:tipo/aceite', async (req, res) => {
   }
 
   const agora = new Date().toISOString();
-  const aceite = { timestamp: agora, ip: req.ip, por: 'CANDIDATO' };
   const titulo = CONTRATOS_DOCUMENTOS.find((d) => d.tipo === tipo).titulo;
   garantirMinutaContrato(tipo, titulo);
+  // Hash SHA-256 da assinatura: amarra o conteúdo exato da minuta aceita ao
+  // candidato (id + CPF), ao instante e ao IP do aceite.
+  const hash = crypto.createHash('sha256')
+    .update(fs.readFileSync(caminhoMinuta(tipo)))
+    .update(`|${tipo}|${candidato.id}|${candidato.cpf}|${agora}|${req.ip}`)
+    .digest('hex');
+  const aceite = { timestamp: agora, ip: req.ip, por: 'CANDIDATO', hash };
   const arquivoAssinado = await gerarDocumentoContratoAssinado(candidato, tipo, titulo, aceite);
 
   candidato.contrato.documentos[tipo].aceite = aceite;
@@ -2614,49 +3107,10 @@ app.post('/api/candidato/:id/contrato/:tipo/aceite', async (req, res) => {
   }
 });
 
-// RH também pode marcar o aceite de um documento em nome do candidato
-// (mesmo layout/ação "Aceitar Documento" usado nos demais cards do painel).
-app.patch('/api/rh/fichas/:id/contrato/:tipo/aceitar', exigirRh, async (req, res) => {
-  try {
-  const { id, tipo } = req.params;
-  if (!TIPOS_CONTRATO.includes(tipo)) {
-    return res.status(400).json({ erro: 'Documento de contrato inválido.' });
-  }
-
-  const candidatos = await lerCandidatos();
-  const candidato = candidatos.find((c) => c.id === id);
-
-  if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
-  if (candidato.status !== 'PENDENTE_ASSINATURA') {
-    return res.status(400).json({ erro: 'O aceite dos documentos só está disponível para fichas aprovadas e ainda não contratadas.' });
-  }
-
-  const agora = new Date().toISOString();
-  const aceite = { timestamp: agora, ip: req.ip, por: 'RH' };
-  const titulo = CONTRATOS_DOCUMENTOS.find((d) => d.tipo === tipo).titulo;
-  garantirMinutaContrato(tipo, titulo);
-  const arquivoAssinado = await gerarDocumentoContratoAssinado(candidato, tipo, titulo, aceite);
-
-  candidato.contrato.documentos[tipo].aceite = aceite;
-  candidato.contrato.documentos[tipo].arquivoAssinado = 'uploads/' + arquivoAssinado;
-  candidato.atualizadoEm = agora;
-  await salvarCandidatos(candidatos);
-
-  registrarEventoAuditoria({
-    id: gerarId(),
-    tipoEvento: 'aceite_documento_contrato',
-    candidatoId: id,
-    documentoTipo: tipo,
-    por: 'RH',
-    timestamp: agora,
-    ip: req.ip
-  });
-
-  return res.status(200).json({ mensagem: 'Documento aceito com sucesso!', candidato });
-  } catch (erro) {
-    console.error('Falha ao registrar aceite do documento (RH):', erro.message);
-    return res.status(500).json({ erro: 'Falha ao registrar o aceite do documento.' });
-  }
+// O aceite dos documentos do contrato é ato do próprio candidato: o RH não
+// pode assinar em nome dele. A rota segue existindo só para recusar com clareza.
+app.patch('/api/rh/fichas/:id/contrato/:tipo/aceitar', exigirRh, (req, res) => {
+  return res.status(403).json({ erro: 'O aceite dos documentos do contrato só pode ser feito pelo próprio candidato.' });
 });
 
 // Conclusão unificada da assinatura digital: só é permitida quando TODOS os
@@ -2739,6 +3193,9 @@ app.patch('/api/rh/fichas/:id/contrato/validar', exigirRh, async (req, res) => {
   if (!candidato.contrato.assinaturaConcluida) {
     return res.status(400).json({ erro: 'Aguardando a conclusão da assinatura digital pelo candidato.' });
   }
+  if (TIPOS_CONTRATO.some((tipo) => !candidato.contrato.documentos[tipo]?.aceite)) {
+    return res.status(400).json({ erro: 'Todos os documentos do contrato precisam ter sido aceitos pelo candidato.' });
+  }
 
   const agora = new Date().toISOString();
   candidato.contrato.validacaoRh = { timestamp: agora, ip: req.ip, validadoPor: req.usuario.id };
@@ -2802,6 +3259,7 @@ async function garantirUsuarioRhTeste() {
   try {
     await garantirUsuarioRhTeste();
     garantirMinutasContrato();
+    await migrarTagsLegadasParaEtiquetas();
     // Gera a planilha Mestre já no boot, refletindo a carga inicial existente
     // no banco (ex.: a ficha de testes "Maria Gadu"), sem esperar a próxima
     // gravação para o arquivo existir.

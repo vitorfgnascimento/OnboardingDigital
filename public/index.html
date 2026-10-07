@@ -4,684 +4,655 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Onboarding Digital - Ficha do Candidato</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+  <script src="/acessibilidade.js"></script>
+  <link rel="stylesheet" href="/tema.css">
   <style>
-    :root {
-      /* Identidade visual: Verde Intelbras como cor principal da jornada */
-      --verde-intelbras: #00A335;
-      --verde-intelbras-escuro: #00812a;
-      --vermelho: #dc3545;
-      --amarelo: #ffc107;
-      --verde: #28a745;
-      --cinza-borda: #cccccc;
-      --cinza-barra: #f8f9fa;
-      --texto: #2c3e50;
+    body { padding-bottom: 6rem; }
+
+    /* --- BARRA SUPERIOR (logo, etapa, acessibilidade, sessão) --- */
+    .barra-topo {
+      position: sticky;
+      top: 0;
+      z-index: 700;
+      background: rgba(251, 248, 243, 0.94);
+      -webkit-backdrop-filter: saturate(160%) blur(10px);
+      backdrop-filter: saturate(160%) blur(10px);
+      border-bottom: 1px solid var(--linha);
     }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background-color: #f4f6f9;
-      margin: 0;
-      padding: 30px 15px;
-      color: var(--texto);
-    }
-    .container {
-      max-width: 820px;
+    .barra-topo-conteudo {
+      max-width: 71rem;
       margin: 0 auto;
-      background: #ffffff;
-      padding: 30px;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      min-height: 3.5rem;
+      padding: 0.375rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem 1rem;
+      flex-wrap: wrap;
     }
-    h2 {
-      color: #1a252f;
-      border-bottom: 2px solid var(--verde-intelbras);
-      padding-bottom: 10px;
-      margin-top: 0;
+    .logo { display: flex; align-items: center; gap: 0.5rem; font-family: var(--fonte-titulo); font-weight: 600; font-size: 1.125rem; color: var(--floresta); }
+    .logo .ic-logo { width: 2rem; height: 2rem; }
+    .logo span { white-space: nowrap; }
+    .barra-topo-direita { display: flex; align-items: center; gap: 0.5rem 1rem; flex-wrap: wrap; justify-content: flex-end; }
+    .indicador-etapas { font-size: 0.875rem; color: var(--tinta-2); white-space: nowrap; }
+    .indicador-etapas strong { color: var(--tinta); font-weight: 600; }
+    .linha-progresso { position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--linha); overflow: hidden; }
+    .linha-progresso-preenche {
+      height: 100%;
+      width: 0;
+      background: var(--verde);
+      transition: width .6s ease, background-color .6s ease;
     }
-    h3 {
-      color: #1a252f;
-      margin: 30px 0 15px;
-      font-size: 18px;
+    .linha-progresso.encerrada .linha-progresso-preenche { background: #C9A9A3; }
+
+    .area-sessao { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.875rem; color: var(--tinta-2); }
+    .nome-sessao { font-weight: 600; color: var(--tinta); }
+    .area-sessao a { font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; min-height: var(--alvo); }
+    .area-sessao a:hover { text-decoration: underline; }
+    .area-sessao button {
+      display: inline-flex; align-items: center; gap: 0.375rem;
+      min-height: var(--alvo);
+      background: none; border: 0;
+      color: var(--tinta-2);
+      font-size: 0.875rem; font-weight: 600;
+      padding: 0 0.5rem;
+      border-radius: var(--r-controle);
     }
+    .area-sessao button:hover { color: var(--tinta); background: var(--creme-2); }
+
+    /* --- SAUDAÇÃO PESSOAL --- */
+    .container { max-width: 71rem; margin: 0 auto; padding: 0 1.25rem; }
+    .saudacao {
+      position: relative;
+      overflow: hidden;
+      margin: 1.5rem 0 1.75rem;
+      padding: 2.25rem 2.5rem;
+      border-radius: 1.5rem 1.5rem 1.5rem 0.5rem;
+      background: var(--creme-2);
+    }
+    .saudacao > *:not(.forma-organica) { position: relative; z-index: 1; }
+    .saudacao h1 { max-width: 40rem; }
+    .saudacao h1 em { font-style: italic; font-weight: 500; color: var(--verde-texto); }
+    .saudacao p { margin: 0.875rem 0 0; max-width: 34rem; font-size: 1.0625rem; color: #4A463F; }
+
+    /* --- LAYOUT ASSIMÉTRICO: ficha + "Sua jornada" --- */
+    .layout-ficha {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 17rem;
+      gap: 2rem;
+      align-items: start;
+    }
+    .coluna-principal { grid-column: 1; grid-row: 1; min-width: 0; }
+    .coluna-jornada { grid-column: 2; grid-row: 1; position: sticky; top: 5rem; }
+
+    .jornada-cartao { background: var(--papel); border: 1px solid var(--borda); border-radius: 1rem 1rem 1rem 0.375rem; padding: 1.25rem 1.25rem 1.5rem; }
+    .jornada-titulo { font-size: 1.25rem; margin-bottom: 1.125rem; }
+    .jornada { list-style: none; margin: 0; padding: 0; }
+    .passo { position: relative; display: flex; gap: 0.875rem; padding-bottom: 1.5rem; }
+    .passo:last-child { padding-bottom: 0; }
+    .passo::before { /* linha que liga as etapas */
+      content: ''; position: absolute; left: 1.1875rem; top: 2.5rem; bottom: 0.125rem; width: 2px;
+      background: var(--linha);
+    }
+    .passo:last-child::before { display: none; }
+    .passo[data-estado="concluido"]::before { background: var(--floresta); }
+    .passo-marca {
+      position: relative; z-index: 1;
+      width: 2.5rem; height: 2.5rem; flex: 0 0 auto;
+      display: grid; place-items: center;
+      border-radius: 50%;
+      background: var(--creme-2); color: var(--tinta-2);
+      border: 1.5px dashed #C9C1B1;
+    }
+    .passo-marca .ico-ok { display: none; }
+    .passo[data-estado="concluido"] .passo-marca { background: var(--floresta); color: #FBF8F3; border: 1.5px solid var(--floresta); }
+    .passo[data-estado="concluido"] .ico-passo { display: none; }
+    .passo[data-estado="concluido"] .ico-ok { display: block; }
+    .passo[data-estado="atual"] .passo-marca { background: var(--verde); color: var(--tinta-botao); border: 1.5px solid var(--verde); box-shadow: 0 0 0 4px var(--menta-2); }
+    .passo[data-estado="encerrado"] .passo-marca { background: var(--linha); border: 1.5px solid #D9D2C5; }
+    .passo-textos { display: flex; flex-direction: column; padding-top: 0.125rem; min-width: 0; }
+    .passo-nome { font-weight: 700; color: var(--tinta); }
+    .passo[data-estado="pendente"] .passo-nome, .passo[data-estado="encerrado"] .passo-nome { color: var(--tinta-2); }
+    .passo-nota { font-size: 0.875rem; color: var(--tinta-2); line-height: 1.35; }
+    .passo[data-estado="concluido"] .passo-nota { color: var(--verde-texto); font-weight: 600; }
+
+    /* --- CARTÃO DE MENSAGEM HUMANIZADA --- */
+    @keyframes cardEntrada { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+    .card-status {
+      --est-fundo: var(--menta);
+      --est-borda: var(--menta-2);
+      --est-icone-fundo: #FFFFFF;
+      --est-icone-cor: var(--floresta);
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+      padding: 1.25rem 1.5rem;
+      background: var(--est-fundo);
+      border: 1px solid var(--est-borda);
+      border-radius: 1.125rem 1.125rem 1.125rem 0.375rem;
+      animation: cardEntrada .4s ease-out;
+    }
+    .card-status.estado-em-analise { --est-fundo: #FDF8CF; --est-borda: #F2E98F; --est-icone-fundo: #F5E40B; --est-icone-cor: #4A4100; }
+    .card-status.estado-pendente-assinatura { --est-fundo: #FEEBDC; --est-borda: #F9CDAA; --est-icone-fundo: #F97316; --est-icone-cor: #2E1100; }
+    .card-status.estado-concluida { --est-fundo: #E0F3E7; --est-borda: #BEE3CB; --est-icone-fundo: #00A335; --est-icone-cor: #0B1F15; }
+    .card-status.estado-reprovado { --est-fundo: #F8EEEA; --est-borda: #EBD3CC; --est-icone-fundo: #F2D3CC; --est-icone-cor: #7A1D14; }
+    .card-status-icone {
+      flex: 0 0 auto;
+      width: 3rem; height: 3rem;
+      display: grid; place-items: center;
+      background: var(--est-icone-fundo);
+      color: var(--est-icone-cor);
+      border-radius: 58% 42% 52% 48% / 46% 54% 46% 54%;
+    }
+    .card-status-icone .ic { width: 1.5rem; height: 1.5rem; }
+    .card-status-titulo { display: block; font-family: var(--fonte-titulo); font-weight: 600; font-size: 1.25rem; color: var(--floresta); line-height: 1.2; margin-bottom: 0.25rem; }
+    .card-status-texto { margin: 0; font-size: 1rem; line-height: 1.55; color: #3F3B35; }
+
+    .card-boas-vindas {
+      background: var(--papel);
+      border: 1px solid var(--borda);
+      border-radius: 1rem;
+      padding: 1.125rem 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+    .card-boas-vindas[hidden] { display: none; }
+    .card-boas-vindas p { margin: 0; font-size: 1rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+    .rodape-contato { text-align: center; font-size: 0.9375rem; color: var(--tinta-2); margin: 1rem 0 0; }
+    .rodape-contato[hidden] { display: none; }
+    .rodape-contato a { font-weight: 600; }
+
+    /* --- CONTAINER ÚNICO DA FICHA --- */
+    .ficha-container {
+      background: var(--papel);
+      border: 1px solid var(--borda);
+      border-radius: 1.125rem;
+      margin-bottom: 1.25rem;
+      overflow: hidden;
+    }
+    .secao-ficha { padding: 2rem 2.25rem; }
+    .secao-ficha + .secao-ficha, .ficha-container > .secao-contrato { border-top: 1px solid var(--linha); }
+    .ficha-container h2 { font-size: 1.75rem; margin-bottom: 0.375rem; }
+    .ficha-container h3 { font-size: 1.25rem; margin-bottom: 1.125rem; }
+    .subtitulo-pagina { color: var(--tinta-2); margin: 0 0 1.75rem; }
 
     /* --- FORMULÁRIO DE DADOS PESSOAIS --- */
-    .grid-campos {
-      display: grid;
-      grid-template-columns: 2fr 1fr 1fr;
-      gap: 15px;
-    }
-    .campo {
-      display: flex;
-      flex-direction: column;
-      margin-bottom: 10px;
-    }
+    .grid-campos { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr); gap: 0.25rem 1.25rem; }
+    .campo input, .campo select { min-width: 0; width: 100%; }
+    /* Com texto muito ampliado, uma coluna só evita campos espremidos */
+    html[data-fonte="130"] .grid-campos, html[data-fonte="150"] .grid-campos { grid-template-columns: minmax(0, 1fr); }
+    html[data-fonte="130"] .span-3, html[data-fonte="130"] .span-2, html[data-fonte="130"] .span-1,
+    html[data-fonte="150"] .span-3, html[data-fonte="150"] .span-2, html[data-fonte="150"] .span-1 { grid-column: span 1; }
+    .campo { display: flex; flex-direction: column; margin-bottom: 0.875rem; }
+    .campo label { margin-bottom: 0.375rem; }
     .span-3 { grid-column: span 3; }
     .span-2 { grid-column: span 2; }
     .span-1 { grid-column: span 1; }
+    .erro-texto { color: var(--perigo); font-size: 0.875rem; margin-top: 0.375rem; display: none; }
 
-    label {
-      font-weight: 600;
-      margin-bottom: 6px;
-      color: var(--texto);
-      font-size: 14px;
-    }
-    input, select {
-      padding: 10px 12px;
-      border: 1px solid var(--cinza-borda);
-      border-radius: 5px;
-      font-size: 14px;
-      outline: none;
-      background: #ffffff;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-    input:focus, select:focus {
-      border-color: var(--verde-intelbras);
-      box-shadow: 0 0 0 3px rgba(0, 163, 53, 0.15);
-    }
-    input:disabled, select:disabled {
-      background: #eef0f2;
-      color: #6c757d;
-      cursor: not-allowed;
-    }
+    /* Status de cada documento (chip com bolinha; texto escuro) */
+    .status-badge.status-amarelo { --ponto: var(--status-em-analise); --et-fundo: #FDF8CF; --et-texto: #5A4F00; }
+    .status-badge.status-verde { --ponto: var(--status-concluida); --et-fundo: #E0F3E7; --et-texto: #0B5A27; }
+    .status-badge { --ponto: var(--status-reprovado); --et-fundo: #FDE6E4; --et-texto: #9B0A0A; }
+    .status-badge.status-amarelo::before { box-shadow: 0 0 0 1px rgba(90, 79, 0, 0.35); }
 
-    .status-badge {
-      display: inline-block;
-      padding: 6px 12px;
-      border-radius: 20px;
-      font-weight: bold;
-      font-size: 12px;
-      color: white;
-      background-color: var(--vermelho);
-      transition: background-color 0.3s ease;
-    }
-    .status-amarelo { background-color: var(--amarelo) !important; color: #212529 !important; }
-    .status-verde   { background-color: var(--verde) !important; }
-    .status-em-analise         { background-color: #F5E40B !important; color: #1a1a1a !important; }
-    .status-pendente-assinatura { background-color: #F97316 !important; }
-    .status-reprovado          { background-color: #FF0303 !important; }
-    .status-concluida          { background-color: #00A335 !important; }
-    #badgeStatus { margin-bottom: 15px; }
-
-    /* --- BARRA SUPERIOR DE NAVEGAÇÃO ENTRE TELAS --- */
-    .barra-navegacao {
-      display: flex;
-      justify-content: flex-end;
-      margin-bottom: 10px;
-    }
-    .area-sessao {
-      flex: 1;
-      font-size: 13px;
-      color: #6c757d;
-    }
-    .area-sessao a { color: var(--verde-intelbras-escuro); font-weight: 600; text-decoration: none; }
-    .area-sessao a:hover { text-decoration: underline; }
-    .area-sessao button {
-      background: none;
-      border: none;
-      color: var(--vermelho);
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      padding: 0;
-      margin-left: 6px;
-      text-decoration: underline;
-    }
-
-    .erro-texto {
-      color: var(--vermelho);
-      font-size: 12px;
-      margin-top: 4px;
-      display: none;
-    }
-
-    /* --- BARRAS EXPANSÍVEIS LARGAS (ACCORDION) --- */
+    /* --- BARRAS EXPANSÍVEIS (ACORDEÃO) --- */
     .barra {
-      background: var(--cinza-barra);
-      border-left: 4px solid var(--verde-intelbras);
-      border-radius: 6px;
-      margin-bottom: 10px;
+      background: var(--papel);
+      border: 1px solid var(--borda);
+      border-radius: 0.75rem;
+      margin-bottom: 0.625rem;
       overflow: hidden;
     }
+    .barra.ativa { border-color: #CFC8BA; }
     .barra-cabecalho {
       width: 100%;
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
-      gap: 14px;
-      padding: 16px 18px;
+      gap: 0.75rem;
+      min-height: 3.5rem;
+      padding: 0.625rem 1rem;
       background: none;
       border: none;
       margin: 0;
-      cursor: pointer;
       text-align: left;
-      font-size: 15px;
+      font-size: 1rem;
       font-weight: 600;
-      color: var(--texto);
+      color: var(--tinta);
     }
-    .barra-cabecalho:focus-visible {
-      outline: 2px solid var(--verde-intelbras);
-      outline-offset: -2px;
+    .barra-cabecalho:hover { background: var(--creme); }
+    .barra-cabecalho:focus-visible { outline-offset: -3px; }
+    .barra-doc-icone { color: var(--tinta-2); }
+    .barra-titulo { flex: 1 1 8rem; min-width: 0; }
+    .rotulo-opcional {
+      font-size: 0.75rem; font-weight: 600;
+      color: #4B473F; background: var(--creme-2);
+      border: 1px solid var(--borda);
+      padding: 0.125rem 0.625rem;
+      border-radius: 999px;
+      white-space: nowrap;
     }
-    .barra-titulo { flex: 1; }
-    .barra-seta {
-      font-size: 12px;
-      color: var(--verde-intelbras);
-      flex: 0 0 auto;
-      min-width: 16px;
-      text-align: center;
-    }
-    .barra-painel {
-      display: none;
-      padding: 4px 18px 20px;
-    }
+    .rotulo-opcional[hidden] { display: none; }
+    .barra-seta { display: grid; place-items: center; flex: 0 0 auto; color: var(--tinta-2); margin-left: auto; }
+    .barra-seta .ic { transition: transform 0.2s ease; }
+    .barra.ativa .barra-seta .ic-chevron { transform: rotate(180deg); }
+    .barra-painel { display: none; padding: 0.25rem 1rem 1.25rem; }
     .barra.ativa .barra-painel { display: block; }
-
-    .barra-desabilitada {
-      opacity: 0.65;
-      border-left-color: var(--cinza-borda);
-    }
-    .barra-desabilitada .barra-cabecalho { cursor: not-allowed; }
-    .barra-desabilitada .barra-seta { color: #6c757d; }
+    .barra-desabilitada { background: var(--creme); border-style: dashed; }
+    .barra-desabilitada .barra-cabecalho { cursor: not-allowed; color: var(--tinta-2); }
+    .barra-desabilitada .barra-cabecalho:hover { background: none; }
 
     /* --- DROPZONE DE UPLOAD DE PDF --- */
     .dropzone {
       display: block;
-      border: 2px dashed var(--verde-intelbras);
-      border-radius: 8px;
-      padding: 34px 20px;
+      border: 1.5px dashed #BDB5A5;
+      border-radius: 0.75rem;
+      padding: 1.75rem 1rem;
       text-align: center;
-      color: #6c757d;
-      background: rgba(0, 163, 53, 0.04);
+      color: var(--tinta-2);
+      background: var(--creme);
       cursor: pointer;
-      transition: background-color 0.2s, border-color 0.2s;
+      transition: background-color 0.15s, border-color 0.15s;
     }
-    .dropzone:hover, .dropzone.dropzone-sobre {
-      background: rgba(0, 163, 53, 0.12);
-      border-color: var(--verde-intelbras-escuro);
+    .dropzone:hover, .dropzone.dropzone-sobre { background: var(--menta); border-color: var(--verde-hover); }
+    .dropzone-icone {
+      display: inline-grid; place-items: center;
+      width: 2.75rem; height: 2.75rem; margin-bottom: 0.5rem;
+      background: var(--papel); color: var(--floresta);
+      border: 1px solid var(--borda);
+      border-radius: 56% 44% 52% 48% / 48% 56% 44% 52%;
     }
-    .dropzone strong { color: var(--verde-intelbras-escuro); }
+    .dropzone strong { color: var(--verde-texto); text-decoration: underline; text-underline-offset: 0.2em; }
+    .dropzone-dica { margin-top: 0.375rem; font-size: 0.875rem; }
     .dropzone input[type="file"] { display: none; }
-    .dropzone.dropzone-travada {
-      border-color: var(--cinza-borda);
-      background: #eef0f2;
-      color: #adb5bd;
-      cursor: not-allowed;
-    }
+    .dropzone.dropzone-travada { background: var(--creme-2); border-color: #D9D2C5; color: var(--tinta-3); cursor: not-allowed; }
+    .dropzone:has(input:focus-visible) { outline: 3px solid var(--verde); outline-offset: 2px; }
 
-    /* Arquivo anexado: nome + botão "x" */
     .arquivo-anexado {
       display: none;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
-      margin-top: 12px;
-      padding: 10px 14px;
-      background: #ffffff;
-      border: 1px solid var(--verde-intelbras);
-      border-radius: 6px;
-      font-size: 13px;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+      padding: 0.625rem 0.875rem;
+      background: var(--menta);
+      border: 1px solid var(--menta-2);
+      border-radius: 0.625rem;
+      font-size: 0.9375rem;
     }
     .arquivo-anexado.visivel { display: flex; }
-    .arquivo-nome {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
+    .arquivo-nome { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .btn-remover {
       flex: 0 0 auto;
-      width: 26px;
-      height: 26px;
-      border: none;
+      width: var(--alvo); height: var(--alvo);
+      display: grid; place-items: center;
+      border: 1px solid transparent;
       border-radius: 50%;
-      background: var(--vermelho);
-      color: #ffffff;
-      font-size: 14px;
-      font-weight: bold;
-      line-height: 1;
-      cursor: pointer;
-      transition: background-color 0.2s;
+      background: transparent;
+      color: var(--tinta-2);
+      transition: background-color 0.15s, color 0.15s;
     }
-    .btn-remover:hover { background: #b02a37; }
-    .btn-remover:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-remover:hover:not(:disabled) { background: var(--perigo-fundo); color: var(--perigo); border-color: var(--perigo-borda); }
+    .btn-remover:disabled { opacity: 0.4; }
 
-    .btn-enviar-documento {
-      flex: 0 0 auto;
-      background-color: var(--verde-intelbras);
-      color: #ffffff;
-      border: none;
-      padding: 6px 14px;
-      font-size: 13px;
-      font-weight: bold;
-      border-radius: 5px;
-      cursor: pointer;
-      transition: background-color 0.2s;
+    .btn-enviar-documento,
+    .btn-li-aceito, .btn-contrato, .btn-enviar-mensagem, #btnConcluir {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+      min-height: var(--alvo);
+      padding: 0.5rem 1.125rem;
+      background: var(--verde);
+      color: var(--tinta-botao);
+      border: 1px solid transparent;
+      border-radius: var(--r-controle);
+      font-weight: 600; font-size: 0.9375rem; line-height: 1.2;
+      text-decoration: none;
+      transition: background-color 0.15s, color 0.15s;
     }
-    .btn-enviar-documento:hover { background-color: var(--verde-intelbras-escuro); }
-    .btn-enviar-documento:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-enviar-documento:hover:not(:disabled), .btn-li-aceito:hover:not(:disabled), .btn-contrato:hover:not(:disabled),
+    .btn-enviar-mensagem:hover:not(:disabled), #btnConcluir:hover:not(:disabled) {
+      background: var(--verde-hover); color: #fff;
+    }
+    .btn-enviar-documento:disabled, .btn-li-aceito:disabled, .btn-contrato:disabled,
+    .btn-enviar-mensagem:disabled, #btnConcluir:disabled { opacity: 0.5; }
     .btn-enviar-documento[hidden] { display: none; }
 
     .aviso-regra {
-      background: rgba(0, 163, 53, 0.08);
-      border-left: 4px solid var(--verde-intelbras);
-      padding: 12px 14px;
-      border-radius: 4px;
-      font-size: 13px;
-      margin-bottom: 15px;
+      background: var(--menta);
+      border-radius: 0.625rem;
+      padding: 0.75rem 0.875rem;
+      font-size: 0.9375rem;
+      margin-bottom: 0.875rem;
     }
     .aviso-regra[hidden] { display: none; }
-    .check-linha {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin: 0 0 15px;
-      font-size: 14px;
-    }
+    .check-linha { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.875rem; min-height: var(--alvo); }
     .check-linha[hidden] { display: none; }
-    .check-linha input[type="checkbox"] {
-      width: 16px;
-      height: 16px;
-      accent-color: var(--verde-intelbras);
-    }
+    .check-linha input[type="checkbox"] { width: 1.125rem; height: 1.125rem; }
+    .check-linha label { margin: 0; font-weight: 600; }
 
-    /* --- CONSENTIMENTO LGPD (cards destacados, Momentos 2 e 3 da jornada) --- */
+    /* --- CONSENTIMENTO LGPD --- */
     .card-consentimento-lgpd {
-      margin-top: 30px;
-      padding: 16px 18px;
-      background: rgba(0, 163, 53, 0.06);
-      border: 1px solid var(--verde-intelbras);
-      border-radius: 8px;
-      font-size: 13px;
-      line-height: 1.5;
-      color: #333333;
+      margin-top: 1rem;
+      padding: 1.125rem 1.25rem;
+      background: var(--menta);
+      border-radius: 0.875rem;
+      font-size: 0.9375rem;
+      line-height: 1.55;
+      color: #2F3B33;
     }
-    .check-lgpd {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--texto);
-      margin-top: 12px;
-      cursor: pointer;
-    }
-    .check-lgpd input[type="checkbox"] {
-      margin-top: 2px;
-      width: 16px;
-      height: 16px;
-      accent-color: var(--verde-intelbras);
-      cursor: pointer;
-      flex: 0 0 auto;
-    }
+    .secao-ficha .card-consentimento-lgpd { margin-top: 0; }
+    .check-lgpd { display: flex; align-items: flex-start; gap: 0.625rem; font-size: 0.9375rem; font-weight: 600; color: var(--tinta); margin-top: 0.875rem; cursor: pointer; }
+    .check-lgpd input[type="checkbox"] { margin-top: 0.1875rem; width: 1.125rem; height: 1.125rem; cursor: pointer; flex: 0 0 auto; }
 
-    /* --- BOTÃO ÚNICO DE CONCLUSÃO (fim da página) --- */
-    .rodape-envio {
-      margin-top: 35px;
-      border-top: 2px solid #e6e9ee;
-      padding-top: 25px;
-    }
-    #btnConcluir {
-      width: 100%;
-      background-color: var(--verde-intelbras);
-      color: #ffffff;
-      border: none;
-      padding: 18px;
-      font-size: 18px;
-      font-weight: bold;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-    #btnConcluir:hover { background-color: var(--verde-intelbras-escuro); }
-    #btnConcluir:disabled { opacity: 0.5; cursor: not-allowed; }
-    #mensagemEnvioGeral {
-      font-size: 13px;
-      margin-top: 12px;
-      min-height: 18px;
-      text-align: center;
-    }
+    /* --- BOTÃO ÚNICO DE CONCLUSÃO --- */
+    #btnConcluir { width: 100%; min-height: 3.25rem; font-size: 1.0625rem; border-radius: 0.625rem; }
+    #mensagemEnvioGeral { font-size: 0.9375rem; margin-top: 0.75rem; min-height: 1.25rem; text-align: center; }
 
-    /* --- AVISO DE FICHA BLOQUEADA --- */
     .aviso-bloqueio {
       display: none;
-      margin-top: 20px;
-      padding: 16px 18px;
-      background: rgba(255, 193, 7, 0.15);
-      border: 1px solid var(--amarelo);
-      border-radius: 6px;
-      font-size: 14px;
+      margin-top: 1.25rem;
+      padding: 0.875rem 1rem;
+      background: var(--creme-2);
+      border: 1px solid var(--borda);
+      border-radius: 0.75rem;
+      font-size: 0.9375rem;
       font-weight: 600;
-      color: #7a5c00;
+      color: #3F3B35;
     }
     .aviso-bloqueio.visivel { display: block; }
 
-    /* --- AVISO DE PENDÊNCIA (reabertura pontual de um documento) --- */
     .aviso-pendencia {
-      background: rgba(220, 53, 69, 0.08);
-      border-left: 4px solid var(--vermelho);
-      padding: 12px 14px;
-      border-radius: 4px;
-      font-size: 13px;
-      margin-bottom: 15px;
-      color: #7a1220;
+      background: var(--perigo-fundo);
+      border: 1px solid var(--perigo-borda);
+      padding: 0.75rem 0.875rem;
+      border-radius: 0.625rem;
+      font-size: 0.9375rem;
+      margin-bottom: 0.875rem;
+      color: #6E1A13;
     }
     .aviso-pendencia[hidden] { display: none; }
 
-    /* --- BANNER DE DECISÃO FINAL (Aprovado/Reprovado) --- */
-    @keyframes bannerEntrada {
-      from { opacity: 0; transform: translateY(-16px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .banner-decisao {
-      display: none;
-      margin-bottom: 20px;
-      padding: 18px 20px;
-      border-radius: 8px;
-      font-size: 15px;
-      font-weight: 600;
-      line-height: 1.5;
-    }
-    .banner-decisao.visivel { display: block; animation: bannerEntrada 0.55s ease-out; }
-    .banner-aprovado {
-      background: linear-gradient(135deg, rgba(0, 163, 53, 0.16), rgba(40, 167, 69, 0.08));
-      border: 2px solid var(--verde);
-      color: #14532d;
-      box-shadow: 0 4px 16px rgba(40, 167, 69, 0.25);
-    }
-    .banner-reprovado {
-      background: rgba(255, 193, 7, 0.15);
-      border: 1px solid var(--amarelo);
-      color: #7a5c00;
-    }
-
-    /* --- CHAT COM O RH --- */
+    /* --- CHAT COM O RH (widget flutuante) --- */
     .secao-chat {
       display: none;
-      margin-top: 30px;
-      padding-top: 25px;
-      border-top: 2px solid #e6e9ee;
+      position: fixed;
+      right: 5rem; /* deixa livre a faixa do botão do VLibras (~56px na borda direita) */
+      bottom: 1.25rem;
+      z-index: 900;
     }
     .secao-chat.visivel { display: block; }
-    .lista-mensagens {
-      max-height: 240px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin: 15px 0;
-      padding-right: 4px;
-    }
-    .mensagem {
-      max-width: 80%;
-      padding: 10px 12px;
-      border-radius: 8px;
-      font-size: 13px;
-    }
-    .mensagem-rh {
-      align-self: flex-start;
-      background: #eef0f2;
-    }
-    .mensagem-candidato {
-      align-self: flex-end;
-      background: rgba(0, 163, 53, 0.12);
-    }
-    .mensagem-cabecalho {
-      font-size: 11px;
-      font-weight: 700;
-      color: #6c757d;
-      margin-bottom: 3px;
-    }
-    .mensagem-vazia { font-size: 13px; color: #6c757d; }
-    .form-chat { display: flex; gap: 10px; }
-    .form-chat textarea {
-      flex: 1;
-      font-size: 13px;
-      font-family: inherit;
-      padding: 10px 12px;
-      border: 1px solid var(--cinza-borda);
-      border-radius: 5px;
-      resize: vertical;
-      min-height: 44px;
-    }
-    .btn-enviar-mensagem {
-      background-color: var(--verde-intelbras);
-      color: #ffffff;
-      border: none;
-      padding: 0 18px;
-      font-size: 13px;
-      font-weight: bold;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    .btn-enviar-mensagem:hover { background-color: var(--verde-intelbras-escuro); }
-    .btn-atualizar-ficha {
-      background: none;
-      border: 1px solid var(--cinza-borda);
-      color: #6c757d;
-      padding: 6px 12px;
-      font-size: 12px;
-      border-radius: 5px;
-      cursor: pointer;
-      margin-bottom: 12px;
-    }
-    .btn-atualizar-ficha:hover { background: #f4f6f9; }
-
-    /* --- ETAPA FINAL: ACEITE VIRTUAL DO CONTRATO DE TRABALHO --- */
-    .secao-contrato {
-      display: none;
-      margin-top: 30px;
-      padding: 20px;
-      border: 2px solid var(--verde-intelbras);
-      border-radius: 8px;
-      background: rgba(0, 163, 53, 0.05);
-    }
-    .secao-contrato.visivel { display: block; }
-    .secao-contrato h3 { margin-top: 0; }
-    .secao-contrato .acoes-contrato {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin: 14px 0;
-    }
-    .secao-contrato .btn-contrato {
-      background-color: var(--verde-intelbras);
-      color: #ffffff;
-      border: none;
-      padding: 10px 16px;
-      font-size: 13px;
-      font-weight: bold;
-      border-radius: 5px;
-      cursor: pointer;
-      text-decoration: none;
-      display: inline-block;
-    }
-    .secao-contrato .btn-contrato:hover { background-color: var(--verde-intelbras-escuro); }
-    .secao-contrato .btn-contrato.secundario {
-      background: #ffffff;
-      color: var(--verde-intelbras-escuro);
-      border: 1px solid var(--verde-intelbras);
-    }
-    .secao-contrato .btn-contrato:disabled { opacity: 0.5; cursor: not-allowed; }
-    .secao-contrato .btn-contrato[hidden] { display: none; }
-    .status-contrato {
-      font-size: 13px;
-      padding: 10px 12px;
-      border-radius: 5px;
-      margin: 10px 0;
-    }
-    .status-contrato.info { background: rgba(0, 163, 53, 0.1); color: #00812a; }
-    .status-contrato.aviso { background: rgba(255, 193, 7, 0.15); color: #7a5c00; }
-    .status-contrato.sucesso { background: rgba(40, 167, 69, 0.15); color: #14532d; font-weight: 700; }
-
-    /* --- LISTA DE DOCUMENTOS/CONTRATOS A ACEITAR (assinatura por clique) --- */
-    .item-documento-contrato {
-      display: flex;
-      flex-wrap: nowrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      background: #ffffff;
-      border: 1px solid var(--cinza-borda);
-      border-radius: 6px;
-      padding: 12px 14px;
-      margin-bottom: 10px;
-    }
-    .item-documento-contrato .titulo-documento-contrato { font-weight: 600; font-size: 14px; flex: 1 1 auto; min-width: 0; }
-    .item-documento-contrato .acoes-item-contrato {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-      justify-content: flex-end;
-      flex: 0 0 auto;
-    }
-    /* Em telas estreitas (celular) não há espaço lado a lado: empilha. */
-    @media (max-width: 640px) {
-      .item-documento-contrato { flex-wrap: wrap; }
-      .item-documento-contrato .acoes-item-contrato { justify-content: flex-start; }
-    }
-    .btn-ver-minuta {
-      background: #ffffff;
-      color: var(--verde-intelbras-escuro);
-      border: 1px solid var(--verde-intelbras);
-      padding: 8px 12px;
-      font-size: 12px;
-      font-weight: bold;
-      border-radius: 5px;
-      cursor: pointer;
-      text-decoration: none;
-      display: inline-block;
-    }
-    .btn-ver-minuta:hover { background: rgba(0, 163, 53, 0.08); }
-    .btn-li-aceito {
-      background-color: var(--verde-intelbras);
-      color: #ffffff;
-      border: none;
-      padding: 8px 12px;
-      font-size: 12px;
-      font-weight: bold;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    .btn-li-aceito:hover { background-color: var(--verde-intelbras-escuro); }
-    .badge-documento-contrato-aceito {
-      color: var(--verde-intelbras-escuro);
-      font-size: 12px;
-      font-weight: bold;
-    }
-    .btn-ver-documento {
-      background: #ffffff;
-      color: var(--verde-intelbras-escuro);
-      border: 1px solid var(--verde-intelbras);
-      padding: 8px 12px;
-      font-size: 12px;
-      font-weight: bold;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    .btn-ver-documento:hover { background: rgba(0, 163, 53, 0.08); }
-
-    /* --- MODAL LEITOR DE MINUTA (trava de leitura obrigatória) --- */
-    .modal-leitor-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.6);
-      z-index: 1000;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .modal-leitor-overlay.visivel { display: flex; }
-    .modal-leitor-caixa {
-      background: #ffffff;
-      width: min(720px, 100%);
-      height: min(85vh, 900px);
-      border-radius: 8px;
+    .chat-painel {
+      width: clamp(18rem, 36vw, 21.5rem); max-width: calc(100vw - 6.5rem);
+      height: min(30rem, 68vh);
+      max-height: calc(100vh - 2.5rem);
+      background: var(--papel);
+      border: 1px solid var(--borda);
+      border-radius: 1.125rem 1.125rem 0.375rem 1.125rem;
+      box-shadow: 0 12px 36px rgba(15, 61, 42, 0.2);
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
     }
-    .modal-leitor-cabecalho {
+    .secao-chat.minimizado .chat-painel { display: none; }
+    .chat-cabecalho {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 12px 16px;
-      background: #1a252f;
-      color: #ffffff;
+      gap: 0.625rem;
+      background: var(--floresta);
+      color: #FBF8F3;
+      padding: 0.625rem 0.625rem 0.625rem 0.875rem;
     }
-    .modal-leitor-titulo { font-weight: 700; font-size: 14px; }
-    .modal-leitor-acoes-cabecalho { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; }
-    .btn-baixar-modal {
-      background: #ffffff;
-      color: #1a252f;
-      padding: 6px 12px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: bold;
-      text-decoration: none;
-    }
-    .btn-fechar-modal {
-      background: none;
+    .chat-avatar { --av-bg: #FBF8F3; --av-fg: var(--floresta); width: 2.25rem; height: 2.25rem; font-size: 0.8125rem; }
+    .chat-titulos { flex: 1; min-width: 0; line-height: 1.2; }
+    .chat-cabecalho h3 { color: #FBF8F3; margin: 0; font-size: 1.0625rem; }
+    .chat-sub { font-size: 0.8125rem; color: #CFE3D6; }
+    .btn-chat-cab {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.375rem;
+      background: rgba(251, 248, 243, 0.14);
+      color: #FBF8F3;
       border: none;
-      color: #ffffff;
-      font-size: 22px;
-      line-height: 1;
-      cursor: pointer;
-      padding: 0 4px;
+      min-width: var(--alvo);
+      min-height: var(--alvo);
+      padding: 0 0.625rem;
+      border-radius: var(--r-controle);
+      font-size: 0.8125rem;
+      font-weight: 600;
     }
-    .modal-leitor-corpo {
-      flex: 1;
-      overflow-y: auto;
-      background: #525659;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
+    .btn-chat-cab:hover { background: rgba(251, 248, 243, 0.26); }
+    .btn-chat-cab:focus-visible { outline-color: #FBF8F3; }
+    .chat-corpo { flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--creme); }
+    .lista-mensagens { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.625rem; padding: 0.875rem; }
+    .mensagem { max-width: 85%; padding: 0.5rem 0.75rem; font-size: 0.9375rem; word-break: break-word; border-radius: 1rem; }
+    .mensagem-rh { align-self: flex-start; background: var(--papel); border: 1px solid var(--borda); border-bottom-left-radius: 0.25rem; }
+    .mensagem-candidato { align-self: flex-end; background: var(--menta-2); border-bottom-right-radius: 0.25rem; }
+    .mensagem-cabecalho { font-size: 0.75rem; font-weight: 600; color: var(--tinta-2); margin-bottom: 0.1875rem; }
+    .mensagem-vazia { font-size: 0.9375rem; color: var(--tinta-2); text-align: center; margin: auto; }
+    .chat-corpo .aviso-bloqueio { margin: 0 0.75rem 0.5rem; padding: 0.625rem 0.75rem; font-size: 0.875rem; }
+    .form-chat { display: flex; gap: 0.5rem; padding: 0.625rem; border-top: 1px solid var(--borda); background: var(--papel); align-items: flex-end; }
+    .form-chat textarea { flex: 1; min-width: 0; font-size: 0.9375rem; padding: 0.5rem 0.75rem; min-height: 2.75rem; height: 2.75rem; border-radius: 0.625rem; resize: none; }
+    .btn-enviar-mensagem { padding: 0 0.875rem; }
+    .btn-abrir-chat {
+      display: none;
+      width: 3.5rem; height: 3.5rem;
+      border-radius: 50%;
+      border: none;
+      background: var(--floresta);
+      color: #FBF8F3;
+      box-shadow: 0 8px 24px rgba(15, 61, 42, 0.32);
       align-items: center;
-      gap: 10px;
+      justify-content: center;
+      margin-left: auto;
     }
-    .modal-leitor-corpo canvas {
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
-      max-width: 100%;
-      height: auto;
+    .btn-abrir-chat:hover { background: var(--floresta-2); }
+    .btn-abrir-chat .ic { width: 1.5rem; height: 1.5rem; }
+    .secao-chat.minimizado .btn-abrir-chat { display: flex; }
+
+    /* --- ETAPA FINAL: ACEITE VIRTUAL DO CONTRATO --- */
+    .secao-contrato { display: none; padding: 2rem 2.25rem; background: var(--papel); }
+    .secao-contrato.visivel { display: block; }
+    .secao-contrato h3 { margin-top: 0; }
+    .secao-contrato .acoes-contrato { display: flex; flex-wrap: wrap; gap: 0.625rem; margin: 1rem 0 0; }
+    .secao-contrato .btn-contrato[hidden] { display: none; }
+    .status-contrato { font-size: 0.9375rem; padding: 0.75rem 0.875rem; border-radius: 0.625rem; margin: 0 0 1rem; }
+    .status-contrato.info { background: var(--menta); color: #1F3A2A; }
+    .status-contrato.aviso { background: #FDF8CF; color: #4A4100; }
+    .status-contrato.sucesso { background: #E0F3E7; color: #0B4F23; font-weight: 600; }
+
+    .item-documento-contrato {
+      display: flex; flex-direction: column; justify-content: space-between; gap: 0.625rem;
+      min-height: 9rem;
+      background: var(--papel);
+      border: 1px solid var(--borda);
+      border-radius: 0.75rem;
+      padding: 0.875rem 1rem;
+      margin-bottom: 0.75rem;
     }
-    .modal-leitor-corpo .modal-leitor-carregando {
-      color: #ffffff;
-      font-size: 13px;
+    .linha-principal-contrato { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+    .item-documento-contrato .titulo-documento-contrato { font-weight: 600; flex: 1 1 auto; min-width: 0; }
+    .situacao-item-contrato { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8125rem; color: var(--tinta-2); }
+    .hash-assinatura { font-family: ui-monospace, Consolas, monospace; font-size: 0.75rem; word-break: break-all; color: var(--tinta-2); }
+    .btn-ver-documento {
+      flex: 0 0 auto; white-space: nowrap; text-decoration: none; justify-content: center; min-width: 10.5rem;
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      min-height: var(--alvo);
+      background: var(--papel);
+      color: var(--tinta);
+      border: 1px solid #D9D2C5;
+      padding: 0.5rem 0.875rem;
+      font-size: 0.875rem; font-weight: 600;
+      border-radius: var(--r-controle);
     }
-    .modal-leitor-rodape {
-      padding: 12px 16px;
-      border-top: 1px solid var(--cinza-borda);
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
+    .btn-ver-documento:hover { background: var(--menta); border-color: var(--verde-hover); }
+    .badge-documento-contrato-aceito { display: inline-flex; align-items: center; gap: 0.375rem; color: var(--verde-texto); font-size: 0.875rem; font-weight: 600; }
+
+    @media (max-width: 900px) {
+      .layout-ficha { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
+      .coluna-jornada, .coluna-principal { grid-column: 1; }
+      .coluna-jornada { grid-row: 1; position: static; }
+      .coluna-principal { grid-row: 2; }
+      /* "Sua jornada" vira um bloco compacto, em linha, acima do formulário */
+      .jornada-cartao { padding: 0.875rem 1rem 1rem; }
+      .jornada-titulo { font-size: 1.0625rem; margin-bottom: 0.75rem; }
+      .jornada { display: flex; gap: 0.5rem; }
+      .passo { flex: 1 1 0; flex-direction: column; align-items: center; text-align: center; gap: 0.375rem; padding: 0; }
+      .passo::before { left: calc(50% + 1.5rem); right: calc(-50% + 1.5rem); top: 1.1875rem; bottom: auto; width: auto; height: 2px; }
+      .passo-textos { align-items: center; padding-top: 0; }
+      .passo-nota { display: none; }
+      .passo-nome { font-size: 0.9375rem; }
     }
-    .aviso-rolagem { font-size: 12px; color: #6c757d; text-align: center; }
-    .btn-aceitar-modal {
-      background-color: var(--verde-intelbras);
-      color: #ffffff;
-      border: none;
-      padding: 12px;
-      font-size: 14px;
-      font-weight: bold;
-      border-radius: 5px;
-      cursor: pointer;
+    @media (max-width: 640px) {
+      .barra-topo { position: relative; } /* a barra tem 2 linhas: não fica fixa para não cobrir o formulário */
+      .barra-topo-conteudo { padding: 0.5rem 1rem; }
+      .barra-topo-direita { width: 100%; justify-content: space-between; }
+      .container { padding: 0 1rem; }
+      .saudacao { padding: 1.5rem 1.25rem; margin-top: 1rem; }
+      h1 { font-size: 1.875rem; }
+      .secao-ficha, .secao-contrato { padding: 1.5rem 1.125rem; }
+      .grid-campos { grid-template-columns: 1fr; }
+      .span-3, .span-2, .span-1 { grid-column: span 1; }
+      .linha-principal-contrato { flex-wrap: wrap; }
+      .btn-ver-documento { min-width: 0; }
+      .card-status { padding: 1rem 1.125rem; }
     }
-    .btn-aceitar-modal:disabled { background-color: #adb5bd; cursor: not-allowed; }
+    @media (max-width: 560px) {
+      .secao-chat { right: 0.75rem; bottom: 0.75rem; left: 0.75rem; }
+      .chat-painel { width: 100%; height: min(58vh, 28rem); }
+      /* Em celular o painel ocupa a largura toda: afasta os botões do cabeçalho
+         da faixa do botão do VLibras (borda direita). */
+      .chat-cabecalho { padding-right: 3.875rem; }
+    }
+    @media (prefers-reduced-motion: reduce) { .linha-progresso-preenche { transition: none; } }
   </style>
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <symbol id="i-logo" viewBox="0 0 40 40"><path style="fill:var(--logo-fundo,#0F3D2A)" d="M21 2.5c10 .4 17.5 7.2 17 17.6C37.5 31 30 37.8 19.8 37.5 9.5 37 2 30 2.4 19.5 2.8 9.2 11 2.1 21 2.500z"/><path d="M20 30V20.5" fill="none" style="stroke:var(--logo-broto,#FBF8F3)" stroke-width="2.4" stroke-linecap="round"/><path d="M20.5 21c0-5.2 3-8.2 8.2-8.2 0 5.2-3 8.2-8.2 8.200z" fill="#00A335"/><path d="M19.5 25c0-4.2-2.6-6.7-7-6.7 0 4.2 2.6 6.7 7 6.7z" style="fill:var(--logo-broto,#FBF8F3)"/></symbol>
+      <symbol id="i-doc" viewBox="0 0 24 24"><path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></symbol>
+      <symbol id="i-caneta" viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.500a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14.5 6.500l3 3"/><path d="M12 21h8"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.500l2.7 2.700L16 9.5"/></symbol>
+      <symbol id="i-pessoa" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.4 7-5.400s6.2 1.8 7 5.4"/></symbol>
+      <symbol id="i-pessoas" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.2"/><path d="M3 19.500c.6-3.2 3-4.8 6-4.800s5.4 1.6 6 4.8"/><path d="M16 5.600a3 3 0 0 1 0 5.8"/><path d="M18 15.200c1.8.6 2.9 2 3.2 4.3"/></symbol>
+      <symbol id="i-alerta" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.500v5"/><path d="M12 16.200v.1"/></symbol>
+      <symbol id="i-fechar" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+      <symbol id="i-seta-baixo" viewBox="0 0 24 24"><path d="M6 9.500l6 6 6-6"/></symbol>
+      <symbol id="i-seta-esq" viewBox="0 0 24 24"><path d="M14.5 6l-6 6 6 6"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+      <symbol id="i-relogio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.200l3.3 2"/></symbol>
+      <symbol id="i-busca" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.500L20 20"/></symbol>
+      <symbol id="i-coracao" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-7.5-10.200A4.3 4.3 0 0 1 12 7.200a4.3 4.3 0 0 1 7.5 2.600C19.5 15.4 12 20 12 20z"/></symbol>
+      <symbol id="i-broto" viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 13c0-4.2 2.6-6.8 7-6.8 0 4.2-2.6 6.8-7 6.800z"/><path d="M12 16.500c0-3.4-2.2-5.5-6-5.5 0 3.4 2.2 5.5 6 5.500z"/></symbol>
+      <symbol id="i-brilho" viewBox="0 0 24 24"><path d="M11 3.500l1.9 5.1 5.1 1.9-5.1 1.900L11 17.500l-1.9-5.100L4 10.500l5.1-1.900z"/><path d="M18.5 16.500v3.500M16.750 18.250h3.5"/></symbol>
+      <symbol id="i-festa" viewBox="0 0 24 24"><path d="M5 20l4.2-11.2 6.9 6.900z"/><path d="M13 4.500l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6z"/><path d="M18 10.500l.5 1.2 1.2.5-1.2.5-.5 1.2-.5-1.2-1.2-.5 1.2-.5z"/></symbol>
+      <symbol id="i-alto-falante" viewBox="0 0 24 24"><path d="M11 5L6.5 9h-3v6h3L11 19z"/><path d="M15.5 9.200a4 4 0 0 1 0 5.6"/><path d="M18.2 6.600a7.6 7.6 0 0 1 0 10.8"/></symbol>
+      <symbol id="i-parar" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5"/></symbol>
+      <symbol id="i-engrenagem" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="6.8"/><path d="M12 2.500v2.200M12 19.300v2.200M2.5 12h2.200M19.3 12h2.200M5.3 5.300l1.5 1.500M17.2 17.200l1.5 1.500M18.7 5.300l-1.5 1.500M6.8 17.200l-1.5 1.5"/></symbol>
+      <symbol id="i-pasta" viewBox="0 0 24 24"><path d="M3.5 7.500A1.5 1.5 0 0 1 5 6h4.200l2 2.300H19a1.5 1.5 0 0 1 1.5 1.500v7.700A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.500z"/></symbol>
+      <symbol id="i-grafico" viewBox="0 0 24 24"><path d="M4 4v16h16"/><rect x="7.5" y="11" width="3" height="6" rx=".8"/><rect x="13" y="7" width="3" height="10" rx=".8"/></symbol>
+      <symbol id="i-sair" viewBox="0 0 24 24"><path d="M10 4H6.500A1.5 1.5 0 0 0 5 5.500v13A1.5 1.5 0 0 0 6.5 20H10"/><path d="M14.5 8l4 4-4 4"/><path d="M18.5 12h-9"/></symbol>
+      <symbol id="i-etiqueta" viewBox="0 0 24 24"><path d="M3.5 12.200V5.500A1.5 1.5 0 0 1 5 4h6.700l8 8-7.7 7.700z"/><circle cx="8.3" cy="8.3" r="1.2"/></symbol>
+      <symbol id="i-lixeira" viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M9.5 7V4.800h5V7"/><path d="M6.8 7l.8 12.200h8.800L17.2 7"/><path d="M10 11v5M14 11v5"/></symbol>
+      <symbol id="i-lapis" viewBox="0 0 24 24"><path d="M4 20l.9-4L16 4.900a2 2 0 0 1 2.8 2.800L7.7 18.800z"/><path d="M14.3 6.600l2.8 2.8"/></symbol>
+      <symbol id="i-mais" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-menos" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 12.200c0 3.8-3.6 6.8-8 6.8-1.2 0-2.3-.2-3.3-.6L4 20l1.2-3.600C4.4 15.3 4 13.8 4 12.2 4 8.4 7.6 5.4 12 5.400s8 3 8 6.800z"/></symbol>
+      <symbol id="i-atualizar" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 0 1-13 5"/><path d="M4.5 12a7.5 7.5 0 0 1 13-5"/><path d="M17.5 3.500v4h-4"/><path d="M6.5 20.500v-4h4"/></symbol>
+      <symbol id="i-cadeado" viewBox="0 0 24 24"><rect x="5.5" y="10.5" width="13" height="9.5" rx="2"/><path d="M8.5 10.500V8a3.5 3.5 0 0 1 7 0v2.5"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V5"/><path d="M7.5 9.500L12 5l4.5 4.5"/><path d="M5 15.500V18a1.5 1.5 0 0 0 1.5 1.500h11A1.5 1.5 0 0 0 19 18v-2.5"/></symbol>
+      <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l2.8-2.800a4 4 0 0 0-5.7-5.700L11.7 6.6"/><path d="M14 10a4 4 0 0 0-5.7 0l-2.8 2.800a4 4 0 0 0 5.7 5.700l1.1-1.1"/></symbol>
+      <symbol id="i-baixar" viewBox="0 0 24 24"><path d="M12 5v11"/><path d="M7.5 12L12 16.5 16.5 12"/><path d="M5 19.500h14"/></symbol>
+          <symbol id="i-ok" viewBox="0 0 24 24"><path d="M5.5 12.5l4.2 4.2L18.5 7.5"/></symbol>
+      <symbol id="i-enviar" viewBox="0 0 24 24"><path d="M20.5 3.5L10 14"/><path d="M20.5 3.5l-6.5 17-3.5-7-7-3.5z"/></symbol>
+    </defs>
+  </svg>
 
-  <div class="container">
-    <div class="barra-navegacao">
-      <span class="area-sessao" id="areaSessao"></span>
+  <!-- BARRA SUPERIOR: logo, etapa, acessibilidade (A-/A/A+ e Ouvir Página), sessão e linha de progresso de 2px -->
+  <header class="barra-topo">
+    <div class="barra-topo-conteudo">
+      <div class="logo" data-ouvir-ignorar>
+        <svg class="ic ic-logo" aria-hidden="true"><use href="#i-logo"/></svg>
+        <span>Onboarding Digital</span>
+      </div>
+      <div class="barra-topo-direita">
+        <span class="indicador-etapas" id="indicadorEtapas">Sua Admissão · <strong>1 de 3 etapas</strong></span>
+        <div class="grupo-acess" data-acessibilidade-slot data-ouvir-ignorar><span data-ouvir-pagina-slot></span></div>
+        <span class="area-sessao" id="areaSessao" data-ouvir-ignorar></span>
+      </div>
     </div>
+    <div class="linha-progresso" id="linhaProgresso" role="progressbar" aria-label="Progresso da sua admissão" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="linha-progresso-preenche" id="linhaProgressoPreenche"></div>
+    </div>
+  </header>
 
-    <!-- BANNER DE DECISÃO FINAL (Aprovado/Reprovado) -->
-    <div class="banner-decisao" id="bannerDecisao"></div>
+  <main class="container" id="conteudoPrincipal">
 
-    <div class="status-badge" id="badgeStatus">STATUS: EM ANÁLISE</div>
+    <!-- SAUDAÇÃO PESSOAL (o primeiro nome vem da sessão ou da ficha) -->
+    <section class="saudacao" aria-labelledby="saudacaoTitulo">
+      <svg class="forma-organica" style="right:-4rem;top:-4.5rem;width:21rem;height:21rem" viewBox="0 0 400 400" aria-hidden="true" focusable="false">
+        <path d="M312 40c52 36 84 104 68 164s-84 100-148 112-130-14-160-70S2 142 60 94 260 4 312 40z" fill="#DCEEE1"/>
+      </svg>
+      <svg class="forma-organica" style="right:15%;bottom:-2.5rem;width:9rem;height:9rem" viewBox="0 0 200 200" aria-hidden="true" focusable="false">
+        <path d="M100 18c40 4 72 34 76 74s-22 78-62 88-84-8-98-46S36 24 100 18z" fill="#F3E3C3"/>
+      </svg>
+      <h1 id="saudacaoTitulo">Olá! Vamos cuidar da sua <em>admissão</em> juntos.</h1>
+      <p>São três etapas rápidas: seus dados, seus documentos e a assinatura dos contratos.</p>
+    </section>
+
+    <div class="layout-ficha">
+
+      <!-- SUA JORNADA: o estado de cada etapa vem da mesma lógica da linha de progresso -->
+      <aside class="coluna-jornada" aria-labelledby="tituloJornada">
+        <div class="jornada-cartao">
+          <h2 class="jornada-titulo" id="tituloJornada">Sua jornada</h2>
+          <ol class="jornada" id="listaJornada">
+            <li class="passo" data-etapa="1" data-estado="atual" aria-current="step">
+              <span class="passo-marca" aria-hidden="true">
+                <svg class="ic ico-passo"><use href="#i-pessoa"/></svg><svg class="ic ico-ok"><use href="#i-ok"/></svg>
+              </span>
+              <span class="passo-textos"><span class="passo-nome">Dados</span><span class="passo-nota" data-nota>Em andamento</span></span>
+            </li>
+            <li class="passo" data-etapa="2" data-estado="pendente">
+              <span class="passo-marca" aria-hidden="true">
+                <svg class="ic ico-passo"><use href="#i-doc"/></svg><svg class="ic ico-ok"><use href="#i-ok"/></svg>
+              </span>
+              <span class="passo-textos"><span class="passo-nome">Documentos</span><span class="passo-nota" data-nota>A fazer</span></span>
+            </li>
+            <li class="passo" data-etapa="3" data-estado="pendente">
+              <span class="passo-marca" aria-hidden="true">
+                <svg class="ic ico-passo"><use href="#i-caneta"/></svg><svg class="ic ico-ok"><use href="#i-ok"/></svg>
+              </span>
+              <span class="passo-textos"><span class="passo-nome">Contratos</span><span class="passo-nota" data-nota>A fazer</span></span>
+            </li>
+          </ol>
+        </div>
+      </aside>
+
+      <div class="coluna-principal">
+
+    <!-- MENSAGEM DE BOAS-VINDAS (configurada pelo RH; oculta se vazia) -->
+    <section class="card-boas-vindas" id="cardBoasVindas" aria-label="Mensagem de boas-vindas" hidden>
+      <p id="textoBoasVindas"></p>
+    </section>
+
+    <!-- MENSAGEM HUMANIZADA DE STATUS (única; preenchida por atualizarProgresso) -->
+    <section class="card-status" id="badgeStatus" aria-live="polite" aria-atomic="true">
+      <span class="card-status-icone" id="statusIcone" aria-hidden="true"><svg class="ic"><use href="#i-broto"/></svg></span>
+      <div>
+        <strong class="card-status-titulo" id="statusTitulo">Vamos começar?</strong>
+        <p class="card-status-texto" id="statusTexto">Preencha seus dados e anexe os documentos. Leva poucos minutos.</p>
+      </div>
+    </section>
+
+    <!-- CONTAINER ÚNICO DA FICHA -->
+    <div class="ficha-container">
+
+    <section class="secao-ficha" aria-labelledby="tituloDadosPessoais">
     <h2>Ficha Única de Admissão</h2>
+    <p class="subtitulo-pagina">Preencha seus dados, anexe os documentos e conclua o envio.</p>
+    <h3 id="tituloDadosPessoais">Dados Pessoais</h3>
 
     <!-- CAIXA DE DADOS PESSOAIS (sem botão de salvar próprio) -->
     <form id="formCandidato" onsubmit="return false;">
@@ -756,13 +727,18 @@
 
       </div>
     </form>
+    </section>
 
     <!-- CONTÊINER DE DOCUMENTOS OBRIGATÓRIOS (barras accordion) -->
-    <h3>Documentos Obrigatórios</h3>
+    <section class="secao-ficha" aria-labelledby="tituloDocumentos">
+    <h3 id="tituloDocumentos">Documentos Obrigatórios</h3>
     <div id="containerDocumentos"></div>
+    </section>
 
     <!-- TERMO DE CONSENTIMENTO LGPD (Momento 2 da jornada) -->
-    <div class="card-consentimento-lgpd" id="cardConsentimentoFicha">
+    <section class="secao-ficha" id="cardConsentimentoFicha" aria-labelledby="tituloLgpd">
+      <h3 id="tituloLgpd">Consentimento LGPD</h3>
+      <div class="card-consentimento-lgpd">
       <strong>Consentimento para Tratamento de Dados Pessoais e Sensíveis:</strong>
       Ao enviar esta ficha e os documentos anexados, autorizo expressamente a coleta, armazenamento e
       processamento das minhas informações pessoais, bancárias e documentos de identificação para fins
@@ -772,34 +748,22 @@
         <input type="checkbox" id="checkConsentimentoFicha">
         Li e concordo com o tratamento dos meus dados e documentos para fins de admissão.
       </label>
-    </div>
+      </div>
+    </section>
 
     <!-- BOTÃO ÚNICO DE CONCLUSÃO -->
-    <div class="rodape-envio">
+    <div class="secao-ficha rodape-envio">
       <button type="button" id="btnConcluir" disabled>Concluir e Enviar Admissão Completa</button>
       <div id="mensagemEnvioGeral"></div>
-    </div>
-
-    <!-- AVISO DE FICHA BLOQUEADA -->
-    <div class="aviso-bloqueio" id="avisoBloqueio">
-      Sua ficha foi enviada com sucesso e está em análise pelo RH. Os campos foram bloqueados para alteração.
-    </div>
-
-    <!-- CHAT COM O RH (visível apenas quando a ficha já foi enviada) -->
-    <div class="secao-chat" id="secaoChat">
-      <h3>Fale com o RH</h3>
-      <button type="button" class="btn-atualizar-ficha" id="btnAtualizarFicha">Atualizar</button>
-      <div class="lista-mensagens" id="listaMensagens"></div>
-      <div class="aviso-bloqueio" id="avisoChatEncerrado">Atendimento encerrado. Este processo admissional foi finalizado.</div>
-      <form class="form-chat" id="formChat">
-        <textarea id="campoMensagem" placeholder="Escreva sua mensagem..." required></textarea>
-        <button type="submit" class="btn-enviar-mensagem">Enviar</button>
-      </form>
+      <!-- AVISO DE FICHA BLOQUEADA -->
+      <div class="aviso-bloqueio" id="avisoBloqueio">
+        Recebemos a sua ficha e ela está com o RH. Enquanto é analisada, os campos ficam bloqueados para alteração.
+      </div>
     </div>
 
     <!-- ETAPA FINAL: ACEITE VIRTUAL DE CONTRATOS POR CLIQUE (só para fichas Aprovadas) -->
     <div class="secao-contrato" id="secaoContrato">
-      <h3>Etapa Final: Aceite Virtual dos Contratos (Assinatura Eletrônica Simples)</h3>
+      <h3>Aceite de Contratos: Assinatura Eletrônica Simples</h3>
 
       <div id="statusContrato"></div>
 
@@ -823,32 +787,49 @@
       </div>
     </div>
 
-  </div>
+    </div><!-- /ficha-container -->
 
-  <!-- MODAL LEITOR DE MINUTA: única forma de visualizar/baixar cada documento
-       do contrato. O aceite só é liberado depois que o candidato rola o
-       documento até o final (ver JS: pdf.js renderiza em canvases dentro de
-       #modalLeitorCorpo, que é o elemento com scroll monitorado). -->
-  <div class="modal-leitor-overlay" id="modalLeitorOverlay">
-    <div class="modal-leitor-caixa">
-      <div class="modal-leitor-cabecalho">
-        <span class="modal-leitor-titulo" id="modalLeitorTitulo"></span>
-        <div class="modal-leitor-acoes-cabecalho">
-          <a class="btn-baixar-modal" id="modalLeitorBaixar" download>Baixar PDF</a>
-          <button type="button" class="btn-fechar-modal" id="modalLeitorFechar" aria-label="Fechar">&times;</button>
+    <p class="rodape-contato" id="contatoRh" hidden>Dúvidas? Fale com o RH: <a id="contatoRhLink" href="#"></a></p>
+
+      </div><!-- /coluna-principal -->
+    </div><!-- /layout-ficha -->
+
+  </main>
+
+  <!-- CHAT "FALE COM O RH": widget flutuante (visível apenas quando a ficha já foi enviada) -->
+  <div class="secao-chat" id="secaoChat">
+    <div class="chat-painel" id="chatPainel" role="region" aria-label="Fale com o RH">
+      <div class="chat-cabecalho">
+        <span class="avatar chat-avatar" aria-hidden="true">RH</span>
+        <div class="chat-titulos">
+          <h3>Fale com o RH</h3>
+          <span class="chat-sub">Respondemos por aqui</span>
         </div>
+        <button type="button" class="btn-chat-cab" id="btnAtualizarFicha" title="Atualizar ficha e mensagens"><svg class="ic" aria-hidden="true"><use href="#i-atualizar"/></svg><span class="sr-only">Atualizar</span></button>
+        <button type="button" class="btn-chat-cab" id="btnMinimizarChat" aria-label="Minimizar chat" aria-expanded="true"><svg class="ic" aria-hidden="true"><use href="#i-menos"/></svg></button>
       </div>
-      <div class="modal-leitor-corpo" id="modalLeitorCorpo"></div>
-      <div class="modal-leitor-rodape">
-        <span class="aviso-rolagem" id="modalLeitorAviso">Role o documento até o final para habilitar o aceite.</span>
-        <button type="button" class="btn-aceitar-modal" id="modalLeitorAceitar" disabled>Li e Aceito este Termo</button>
+      <div class="chat-corpo">
+        <div class="lista-mensagens" id="listaMensagens" aria-live="polite"></div>
+        <div class="aviso-bloqueio" id="avisoChatEncerrado">Atendimento encerrado. Este processo admissional foi finalizado.</div>
+        <form class="form-chat" id="formChat">
+          <textarea id="campoMensagem" placeholder="Escreva sua mensagem..." aria-label="Mensagem para o RH" required></textarea>
+          <button type="submit" class="btn-enviar-mensagem"><svg class="ic" aria-hidden="true"><use href="#i-enviar"/></svg>Enviar</button>
+        </form>
       </div>
     </div>
+    <button type="button" class="btn-abrir-chat" id="btnAbrirChat" aria-label="Abrir chat Fale com o RH" aria-expanded="false">
+      <svg class="ic" aria-hidden="true"><use href="#i-chat"/></svg>
+    </button>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" defer></script>
+  <script src="/ouvir-pagina.js" defer></script>
   <script>
     const API = '/api';
+
+    // Ícone do sprite SVG inline (decorativo; o texto ao lado é o rótulo).
+    function icone(nome, classe) {
+      return '<svg class="ic ' + (classe || '') + '" aria-hidden="true"><use href="#i-' + nome + '"/></svg>';
+    }
 
     // =========================================================================
     // CONFIGURAÇÃO DOS DOCUMENTOS OBRIGATÓRIOS
@@ -868,13 +849,13 @@
     // do topo da página). Os rótulos nunca mencionam a cor em texto - a
     // indicação de cor é só visual, via a classe CSS do badge.
     const ROTULO_STATUS = {
-      VERMELHO: 'PENDENTE',
-      AMARELO: 'EM ANÁLISE',
-      VERDE: 'APROVADO',
-      EM_ANALISE: 'EM ANÁLISE',
-      PENDENTE_ASSINATURA: 'PENDENTE DE ASSINATURA',
-      REPROVADO: 'REPROVADO',
-      CONTRATACAO_CONCLUIDA: 'CONTRATAÇÃO CONCLUÍDA'
+      VERMELHO: 'Pendente',
+      AMARELO: 'Em análise',
+      VERDE: 'Aprovado',
+      EM_ANALISE: 'Em análise',
+      PENDENTE_ASSINATURA: 'Pendente de assinatura',
+      REPROVADO: 'Reprovado',
+      CONTRATACAO_CONCLUIDA: 'Contratação concluída'
     };
     const CLASSE_BADGE = {
       VERMELHO: '',
@@ -1023,11 +1004,50 @@
       return 'VERMELHO';
     }
 
+    // Configuração pública definida pelo RH. Os padrões (tudo obrigatório,
+    // sem mensagem/e-mail) valem se a consulta falhar - nunca bloqueia a página.
+    let configPublica = { mensagemBoasVindas: '', documentosObrigatorios: {}, emailContatoRh: '' };
+
+    function documentoObrigatorioConfig(tipo) {
+      return configPublica.documentosObrigatorios[tipo] !== false;
+    }
+
+    async function carregarConfiguracoesPublicas() {
+      try {
+        const resposta = await fetch(API + '/configuracoes/publicas');
+        if (!resposta.ok) return;
+        const dados = await resposta.json();
+        configPublica = {
+          mensagemBoasVindas: typeof dados.mensagemBoasVindas === 'string' ? dados.mensagemBoasVindas : '',
+          documentosObrigatorios: dados.documentosObrigatorios && typeof dados.documentosObrigatorios === 'object' ? dados.documentosObrigatorios : {},
+          emailContatoRh: typeof dados.emailContatoRh === 'string' ? dados.emailContatoRh : ''
+        };
+      } catch (erro) {
+        return; // mantém os padrões
+      }
+
+      const card = document.getElementById('cardBoasVindas');
+      const texto = configPublica.mensagemBoasVindas.trim();
+      document.getElementById('textoBoasVindas').textContent = texto;
+      card.hidden = !texto;
+
+      const email = configPublica.emailContatoRh.trim();
+      const contato = document.getElementById('contatoRh');
+      const link = document.getElementById('contatoRhLink');
+      link.textContent = email;
+      link.href = email ? 'mailto:' + email : '#';
+      contato.hidden = !email;
+
+      atualizarBarras();
+      atualizarProgresso();
+    }
+
     // Documentos que o candidato precisa anexar antes de concluir.
     function documentosObrigatoriosFaltando() {
       const faltando = [];
       DOCUMENTOS.forEach((doc) => {
         if (barraDesabilitada(doc.tipo)) return;          // dispensado por regra
+        if (!documentoObrigatorioConfig(doc.tipo)) return; // opcional por configuração do RH
         const jaEnviado = candidato && candidato.documentos
           && candidato.documentos[doc.tipo] && candidato.documentos[doc.tipo].arquivo;
         if (!arquivosPendentes[doc.tipo] && !jaEnviado) faltando.push(doc.titulo);
@@ -1051,9 +1071,11 @@
         cabecalho.type = 'button';
         cabecalho.className = 'barra-cabecalho';
         cabecalho.innerHTML = `
+          ${icone('doc', 'barra-doc-icone')}
           <span class="barra-titulo">${doc.titulo}</span>
+          <span class="rotulo-opcional" data-opcional hidden>Opcional</span>
           <span class="status-badge" data-badge></span>
-          <span class="barra-seta" data-seta>&#9660;</span>
+          <span class="barra-seta" data-seta aria-hidden="true"></span>
         `;
         cabecalho.addEventListener('click', () => alternarBarra(doc.tipo));
 
@@ -1077,7 +1099,7 @@
           linha.className = 'check-linha';
           linha.innerHTML = `
             <input type="checkbox" id="checkCpfIncluso">
-            <label for="checkCpfIncluso" style="margin:0;font-weight:600;">CPF incluso na Identidade</label>
+            <label for="checkCpfIncluso">CPF incluso na Identidade</label>
           `;
           painel.appendChild(linha);
           linha.querySelector('input').addEventListener('change', aoMarcarCpfIncluso);
@@ -1087,8 +1109,9 @@
         dropzone.className = 'dropzone';
         dropzone.dataset.dropzone = '';
         dropzone.innerHTML = `
+          <span class="dropzone-icone">${icone('upload')}</span>
           <div>Arraste o PDF aqui ou <strong>clique para selecionar</strong></div>
-          <div style="margin-top:8px;font-size:12px;">Somente arquivos PDF (até 10 MB)</div>
+          <div class="dropzone-dica">Somente arquivos PDF (até 10 MB)</div>
           <input type="file" accept="application/pdf" data-input>
         `;
         painel.appendChild(dropzone);
@@ -1106,7 +1129,7 @@
         anexo.innerHTML = `
           <span class="arquivo-nome" data-nome></span>
           <button type="button" class="btn-enviar-documento" data-enviar-documento hidden>Enviar</button>
-          <button type="button" class="btn-remover" data-remover title="Remover PDF">&times;</button>
+          <button type="button" class="btn-remover" data-remover title="Remover PDF" aria-label="Remover PDF">${icone('fechar')}</button>
         `;
         anexo.querySelector('[data-remover]').addEventListener('click', () => removerDocumento(doc.tipo));
         anexo.querySelector('[data-enviar-documento]').addEventListener('click', () => enviarDocumentoPendencia(doc.tipo));
@@ -1132,16 +1155,20 @@
         const desabilitada = barraDesabilitada(tipo);
 
         barra.classList.toggle('barra-desabilitada', desabilitada);
+        barra.querySelector('[data-opcional]').hidden = documentoObrigatorioConfig(tipo);
 
         const badge = barra.querySelector('[data-badge]');
-        badge.textContent = 'STATUS: ' + ROTULO_STATUS[st];
+        const htmlBadge = '<span class="sr-only">Status: </span>' + ROTULO_STATUS[st];
+        if (badge.innerHTML !== htmlBadge) badge.innerHTML = htmlBadge;
         badge.className = 'status-badge ' + CLASSE_BADGE[st];
 
+        // O chevron gira por CSS (.barra.ativa); só o cadeado troca o ícone.
         const seta = barra.querySelector('[data-seta]');
-        if (tipo === 'reservista' && desabilitada && !fichaBloqueada) {
-          seta.innerHTML = '&#128274;'; // cadeado
-        } else {
-          seta.innerHTML = barra.classList.contains('ativa') ? '&#9650;' : '&#9660;';
+        const mostrarCadeado = tipo === 'reservista' && desabilitada && !fichaBloqueada;
+        const htmlSeta = mostrarCadeado ? icone('cadeado') : icone('seta-baixo', 'ic-chevron');
+        if (seta.dataset.icone !== (mostrarCadeado ? 'cadeado' : 'chevron')) {
+          seta.innerHTML = htmlSeta;
+          seta.dataset.icone = mostrarCadeado ? 'cadeado' : 'chevron';
         }
 
         const aviso = barra.querySelector('[data-aviso]');
@@ -1224,6 +1251,7 @@
     // condições, sempre reavaliadas juntas.
     function atualizarEstadoBotaoConcluir() {
       const btn = document.getElementById('btnConcluir');
+      if (!candidato) atualizarProgresso(); // anexar/remover PDF muda a etapa 2
       if (!btn || fichaBloqueada) return;
       const faltam = documentosObrigatoriosFaltando();
       const consentimentoOk = document.getElementById('checkConsentimentoFicha').checked;
@@ -1499,7 +1527,7 @@
       if (fichaBloqueada) return;
 
       const mensagem = document.getElementById('mensagemEnvioGeral');
-      mensagem.style.color = '#6c757d';
+      mensagem.style.color = 'var(--tinta-2)';
       mensagem.textContent = '';
 
       if (!checkConsentimentoFicha.checked) {
@@ -1574,11 +1602,11 @@
         window.history.replaceState(null, '', '?id=' + candidatoId);
         exibirPainelChat();
         iniciarAtualizacaoAutomaticaFicha();
-        mensagem.style.color = '#00812a';
+        mensagem.style.color = 'var(--verde-texto)';
         mensagem.textContent = 'Admissão enviada com sucesso!';
       } catch (erro) {
         btn.disabled = false;
-        mensagem.style.color = '#dc3545';
+        mensagem.style.color = 'var(--perigo)';
         mensagem.textContent = 'Erro: ' + erro.message;
       }
     });
@@ -1616,33 +1644,153 @@
     }
 
     // =========================================================================
-    // BADGE GERAL
+    // PROGRESSO DA ADMISSÃO (barra superior) E MENSAGEM HUMANIZADA DE STATUS
+    // Etapas: 1 = Dados, 2 = Documentos, 3 = Contratos. Tudo é derivado dos
+    // dados reais: antes do envio, de uma validação silenciosa (sem alerts/erros
+    // na tela) dos campos e dos PDFs anexados; depois, do status geral devolvido
+    // pelo backend. atualizarBadgeGeral é mantida como ponto de entrada do
+    // carregamento/refresh e apenas delega para atualizarProgresso.
     // =========================================================================
+    function camposPessoaisValidos() {
+      const v = (id) => document.getElementById(id).value.trim();
+      const nome = v('nomeCompleto');
+      const digitos = (id) => v(id).replace(/\D/g, '');
+      const whatsapp = digitos('whatsapp');
+      return [
+        nome.split(' ').filter(Boolean).length >= 2 && !/(.)\1{2,}/i.test(nome),
+        /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v('email')),
+        dataNascimentoValida(digitos('dataNascimento')),
+        digitos('cpf').length === 11,
+        digitos('cep').length === 8,
+        whatsapp.length === 10 || whatsapp.length === 11,
+        !!v('logradouro'), !!v('bairro'), !!v('numero'),
+        !!document.getElementById('genero').value
+      ];
+    }
+
+    function dadosPessoaisPreenchidos() {
+      return camposPessoaisValidos().every(Boolean);
+    }
+
+    // Fração (0 a 1) de documentos obrigatórios já anexados.
+    function fracaoDocumentosAnexados() {
+      const exigidos = DOCUMENTOS.filter((doc) => !barraDesabilitada(doc.tipo) && documentoObrigatorioConfig(doc.tipo));
+      if (!exigidos.length) return 1;
+      return 1 - (documentosObrigatoriosFaltando().length / exigidos.length);
+    }
+
+    const MENSAGENS_STATUS = {
+      INICIO: { classe: '', icone: 'broto', titulo: 'Vamos começar?', texto: 'Preencha seus dados e anexe os documentos. Leva poucos minutos.' },
+      EM_ANALISE: { classe: 'estado-em-analise', icone: 'busca', titulo: 'Tudo certo por aqui!', texto: 'Sua ficha está em análise pela nossa equipe de RH. Avisaremos por aqui assim que houver novidades.' },
+      PENDENTE_ASSINATURA: { classe: 'estado-pendente-assinatura', icone: 'brilho', titulo: 'Boas notícias!', texto: 'Seus documentos foram aprovados. Falta só assinar os contratos para concluir.' },
+      ASSINATURA_ENVIADA: { classe: 'estado-pendente-assinatura', icone: 'caneta', titulo: 'Assinatura recebida', texto: 'Recebemos os seus aceites. Nossa equipe está fazendo a validação final e avisaremos por aqui.' },
+      CONTRATACAO_CONCLUIDA: { classe: 'estado-concluida', icone: 'festa', titulo: 'Contratação concluída!', texto: 'Seja bem-vindo(a) à equipe. Estamos muito felizes em ter você com a gente.' },
+      REPROVADO: { classe: 'estado-reprovado', icone: 'coracao', titulo: 'Agradecemos o seu interesse', texto: 'Neste momento seu processo foi encerrado. Suas informações ficam guardadas conosco e entraremos em contato caso surja uma oportunidade alinhada ao seu perfil.' }
+    };
+    let chaveMensagemStatusAtual = null;
+
+    // Só mexe no DOM quando o estado muda: o refresh de 5 s não reanima o card
+    // nem faz o leitor de tela repetir a mesma mensagem.
+    function renderizarMensagemStatus(chave) {
+      if (chave === chaveMensagemStatusAtual) return;
+      chaveMensagemStatusAtual = chave;
+      const m = MENSAGENS_STATUS[chave];
+      const card = document.getElementById('badgeStatus');
+      card.className = 'card-status ' + m.classe;
+      document.getElementById('statusIcone').innerHTML = icone(m.icone);
+      document.getElementById('statusTitulo').textContent = m.titulo;
+      document.getElementById('statusTexto').textContent = m.texto;
+    }
+
+    function atualizarProgresso() {
+      const linha = document.getElementById('linhaProgresso');
+      if (!linha) return;
+      let percentual; let etapa = 1; let rotuloExtra = ''; let encerrada = false; let chave;
+
+      if (!candidato) {
+        chave = 'INICIO';
+        const campos = camposPessoaisValidos();
+        const f1 = campos.filter(Boolean).length / campos.length;
+        const dadosOk = f1 === 1;
+        const f2 = dadosOk ? fracaoDocumentosAnexados() : 0;
+        percentual = ((f1 + f2) / 3) * 100;
+        etapa = dadosOk ? 2 : 1;
+      } else if (candidato.status === 'REPROVADO') {
+        chave = 'REPROVADO';
+        percentual = (2 / 3) * 100; // a linha para onde estava (documentos analisados)
+        encerrada = true;
+        rotuloExtra = 'Processo encerrado';
+      } else if (candidato.status === 'CONTRATACAO_CONCLUIDA') {
+        chave = 'CONTRATACAO_CONCLUIDA';
+        percentual = 100; etapa = 3; rotuloExtra = 'Concluído';
+      } else if (candidato.status === 'PENDENTE_ASSINATURA') {
+        const docs = (candidato.contrato && candidato.contrato.documentos) || {};
+        const aceitos = CONTRATOS_DOCUMENTOS.filter((d) => docs[d.tipo] && docs[d.tipo].aceite).length;
+        const assinou = !!(candidato.contrato && candidato.contrato.assinaturaConcluida);
+        chave = assinou ? 'ASSINATURA_ENVIADA' : 'PENDENTE_ASSINATURA';
+        percentual = assinou ? 97 : ((2 + aceitos / CONTRATOS_DOCUMENTOS.length) / 3) * 100;
+        etapa = 3;
+      } else { // EM_ANALISE: ficha enviada; documentos sob análise do RH
+        chave = 'EM_ANALISE';
+        percentual = (2 / 3) * 100; etapa = 2;
+      }
+
+      percentual = Math.max(0, Math.min(100, Math.round(percentual)));
+      document.getElementById('linhaProgressoPreenche').style.width = percentual + '%';
+      linha.setAttribute('aria-valuenow', String(percentual));
+      linha.setAttribute('aria-valuetext', percentual + '% concluído');
+      linha.classList.toggle('encerrada', encerrada);
+
+      const textoEtapa = encerrada ? rotuloExtra : (etapa + ' de 3 etapas' + (rotuloExtra ? ' · ' + rotuloExtra : ''));
+      document.getElementById('indicadorEtapas').innerHTML = 'Sua Admissão · <strong>' + textoEtapa + '</strong>';
+
+      renderizarMensagemStatus(chave);
+      renderizarJornada(chave, etapa, encerrada);
+    }
+
+    // "Sua jornada": reaproveita a etapa e a chave de estado já calculadas acima
+    // (nada é recalculado aqui). Só mexe no DOM quando algum estado muda.
+    const NOTAS_JORNADA = {
+      concluido: 'Concluído',
+      atual: 'Em andamento',
+      pendente: 'A fazer',
+      encerrado: 'Processo encerrado'
+    };
+    let chaveJornadaAtual = null;
+
+    function renderizarJornada(chave, etapa, encerrada) {
+      const estados = [1, 2, 3].map((n) => {
+        if (chave === 'CONTRATACAO_CONCLUIDA') return 'concluido';
+        if (encerrada) return n < 3 ? 'concluido' : 'encerrado';
+        if (n < etapa) return 'concluido';
+        return n === etapa ? 'atual' : 'pendente';
+      });
+      const notas = estados.map((estado, i) => {
+        if (estado !== 'atual') return NOTAS_JORNADA[estado];
+        if (i === 1) return 'Em análise pelo RH';
+        if (i === 2) return chave === 'ASSINATURA_ENVIADA' ? 'Aguardando validação do RH' : 'Falta assinar';
+        return NOTAS_JORNADA.atual;
+      });
+      // Antes do envio a etapa 2 é só "em andamento"; "em análise" vale depois que a ficha foi enviada.
+      if (chave === 'INICIO' && estados[1] === 'atual') notas[1] = NOTAS_JORNADA.atual;
+      if (encerrada) notas[1] = 'Analisados pelo RH';
+      const nova = estados.join('|') + '#' + notas.join('|');
+      if (nova === chaveJornadaAtual) return;
+      chaveJornadaAtual = nova;
+      document.querySelectorAll('#listaJornada .passo').forEach((li, i) => {
+        li.dataset.estado = estados[i];
+        if (estados[i] === 'atual') li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
+        li.querySelector('[data-nota]').textContent = notas[i];
+      });
+    }
+
     function atualizarBadgeGeral() {
-      const badge = document.getElementById('badgeStatus');
-      const st = candidato ? candidato.status : 'EM_ANALISE';
-      badge.textContent = 'STATUS: ' + ROTULO_STATUS[st];
-      badge.className = 'status-badge ' + CLASSE_BADGE[st];
+      atualizarProgresso();
     }
 
-    // =========================================================================
-    // BANNER DE DECISÃO FINAL (Aprovado/Reprovado)
-    // =========================================================================
-    function exibirBannerDecisao() {
-      const banner = document.getElementById('bannerDecisao');
-      if (!candidato || !candidato.decisaoFinal) {
-        banner.classList.remove('visivel', 'banner-aprovado', 'banner-reprovado');
-        return;
-      }
-
-      if (candidato.decisaoFinal === 'APROVADO') {
-        banner.className = 'banner-decisao visivel banner-aprovado';
-        banner.textContent = 'Parabéns! Você foi aprovado para a última etapa do processo seletivo! Fique atento ao seu e-mail e WhatsApp para as próximas instruções.';
-      } else {
-        banner.className = 'banner-decisao visivel banner-reprovado';
-        banner.textContent = 'Agradecemos por sua participação, mas decidimos seguir com outro talento. Não desanime! Suas informações ficaram salvas no nosso banco de dados e contataremos caso haja alguma oportunidade alinhada ao seu perfil.';
-      }
-    }
+    ['input', 'change'].forEach((evento) => {
+      document.getElementById('formCandidato').addEventListener(evento, () => { if (!candidato) atualizarProgresso(); });
+    });
 
     // =========================================================================
     // SESSÃO (LOGIN) E AUTOPREENCHIMENTO DE NOME/E-MAIL
@@ -1660,13 +1808,28 @@
       return Object.assign(token ? { Authorization: 'Bearer ' + token } : {}, extra || {});
     }
 
+    // Saudação pessoal: primeiro nome da ficha (se já enviada) ou da sessão.
+    // Sem nome conhecido, mantém o texto genérico do HTML.
+    let nomeSaudacaoAtual = null;
+    function atualizarSaudacao() {
+      const completo = (candidato && candidato.nomeCompleto) || (sessaoUsuario && sessaoUsuario.nome) || '';
+      const primeiro = completo.trim().split(/\s+/)[0] || '';
+      if (primeiro === nomeSaudacaoAtual) return;
+      nomeSaudacaoAtual = primeiro;
+      const nome = primeiro ? primeiro.charAt(0).toLocaleUpperCase('pt-BR') + primeiro.slice(1).toLocaleLowerCase('pt-BR') : '';
+      document.getElementById('saudacaoTitulo').innerHTML = nome
+        ? `Olá, ${escapeHtml(nome)}. Vamos cuidar da sua <em>admissão</em> juntos.`
+        : 'Olá! Vamos cuidar da sua <em>admissão</em> juntos.';
+    }
+
     function renderizarAreaSessao() {
       const area = document.getElementById('areaSessao');
+      atualizarSaudacao();
       if (!sessaoUsuario) {
         area.innerHTML = '<a href="/login.html">Entrar / Criar Conta</a>';
         return;
       }
-      area.innerHTML = `Olá, ${escapeHtml(sessaoUsuario.nome)} <button type="button" id="btnSair">Sair</button>`;
+      area.innerHTML = `Olá, <span class="nome-sessao">${escapeHtml(sessaoUsuario.nome)}</span> <button type="button" id="btnSair">${icone('sair')}Sair</button>`;
       document.getElementById('btnSair').addEventListener('click', () => {
         fetch(API + '/auth/logout', { method: 'POST', headers: cabecalhosAutenticados() }).catch(() => {});
         localStorage.removeItem('onboarding_token');
@@ -1853,6 +2016,24 @@
       if (aviso) aviso.classList.toggle('visivel', bloqueado);
     }
 
+    // Minimizar/expandir o widget (o botão flutuante só aparece minimizado).
+    function definirChatMinimizado(minimizado) {
+      document.getElementById('secaoChat').classList.toggle('minimizado', minimizado);
+      document.getElementById('btnMinimizarChat').setAttribute('aria-expanded', String(!minimizado));
+      document.getElementById('btnAbrirChat').setAttribute('aria-expanded', String(!minimizado));
+      if (!minimizado) {
+        const lista = document.getElementById('listaMensagens');
+        lista.scrollTop = lista.scrollHeight;
+      }
+    }
+    document.getElementById('btnMinimizarChat').addEventListener('click', () => definirChatMinimizado(true));
+    document.getElementById('btnAbrirChat').addEventListener('click', () => {
+      definirChatMinimizado(false);
+      document.getElementById('campoMensagem').focus();
+    });
+    // Em celular o widget começa minimizado para não cobrir a ficha.
+    if (window.matchMedia('(max-width: 560px)').matches) definirChatMinimizado(true);
+
     function exibirPainelChat() {
       document.getElementById('secaoChat').classList.add('visivel');
       renderizarMensagens(candidato.mensagens || []);
@@ -1924,16 +2105,24 @@
         const documento = contrato.documentos[doc.tipo];
         const aceite = documento.aceite;
 
+        // Abre sempre em nova aba: a leitura com trava de rolagem fica em
+        // leitor.html; documentos já assinados abrem direto no visualizador.
+        const href = aceite && documento.arquivoAssinado
+          ? `/visualizador.html?arquivo=${encodeURIComponent(documento.arquivoAssinado)}`
+          : `/leitor.html?id=${encodeURIComponent(candidatoId)}&tipo=${doc.tipo}`;
+
         return `
           <div class="item-documento-contrato">
-            <span class="titulo-documento-contrato">${doc.titulo}</span>
-            <div class="acoes-item-contrato">
-              <button type="button" class="btn-ver-documento" data-ver-documento-contrato="${doc.tipo}">
-                ${aceite ? 'Ver Documento Assinado' : 'Visualizar / Ler Documento'}
-              </button>
+            <div class="linha-principal-contrato">
+              <span class="titulo-documento-contrato">${doc.titulo}</span>
+              <a class="btn-ver-documento" href="${href}" target="_blank" rel="noopener noreferrer">
+                ${icone('doc')}${aceite ? 'Ver documento assinado' : 'Ler e assinar'}
+              </a>
+            </div>
+            <div class="situacao-item-contrato">
               ${aceite
-                ? `<span class="badge-documento-contrato-aceito">&#10003; Aceito (${formatarDataHora(aceite.timestamp)})</span>`
-                : ''
+                ? `<span class="badge-documento-contrato-aceito">${icone('ok')}Assinado em ${formatarDataHora(aceite.timestamp)}</span>${aceite.hash ? `<span class="hash-assinatura">Hash: ${aceite.hash}</span>` : ''}`
+                : '<span class="texto-pendente-contrato">Aguardando a sua assinatura</span>'
               }
             </div>
           </div>
@@ -1942,6 +2131,7 @@
     }
 
     function renderizarSecaoContrato() {
+      atualizarProgresso(); // aceites/assinatura mudam a linha de progresso na hora
       const secao = document.getElementById('secaoContrato');
       if (!candidato || (candidato.status !== 'PENDENTE_ASSINATURA' && candidato.status !== 'CONTRATACAO_CONCLUIDA')) {
         secao.classList.remove('visivel');
@@ -1988,113 +2178,6 @@
     // assinatura eletrônica (Momento 3 da jornada).
     document.getElementById('checkConsentimentoContrato').addEventListener('change', renderizarSecaoContrato);
 
-    // =========================================================================
-    // MODAL LEITOR DE MINUTA (trava de leitura obrigatória)
-    // Única forma de visualizar/baixar um documento do contrato. O botão "Li
-    // e Aceito este Termo" começa desabilitado e só libera quando o
-    // candidato rola o conteúdo renderizado até o final (ou quando o PDF
-    // inteiro já cabe na tela, sem precisar rolar - nesse caso já está "lido
-    // por completo" desde a abertura).
-    // =========================================================================
-    let tipoDocumentoNoModal = null;
-
-    function fecharModalLeitor() {
-      document.getElementById('modalLeitorOverlay').classList.remove('visivel');
-      document.getElementById('modalLeitorCorpo').innerHTML = '';
-      tipoDocumentoNoModal = null;
-    }
-
-    function verificarRolagemModal() {
-      const corpo = document.getElementById('modalLeitorCorpo');
-      const btnAceitar = document.getElementById('modalLeitorAceitar');
-      if (btnAceitar.dataset.jaAceito === 'true') return;
-      const chegouAoFim = corpo.scrollTop + corpo.clientHeight >= corpo.scrollHeight - 24;
-      if (chegouAoFim) {
-        btnAceitar.disabled = false;
-        document.getElementById('modalLeitorAviso').textContent = 'Documento lido até o final - aceite liberado.';
-      }
-    }
-
-    async function abrirModalLeitor(tipo, titulo, urlPdf, jaAceito) {
-      if (window.pdfjsLib && !window.pdfjsLib.GlobalWorkerOptions.workerSrc) {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      }
-      tipoDocumentoNoModal = tipo;
-      document.getElementById('modalLeitorTitulo').textContent = titulo;
-      document.getElementById('modalLeitorBaixar').href = urlPdf;
-
-      const corpo = document.getElementById('modalLeitorCorpo');
-      const btnAceitar = document.getElementById('modalLeitorAceitar');
-      const aviso = document.getElementById('modalLeitorAviso');
-      corpo.innerHTML = '<div class="modal-leitor-carregando">Carregando documento...</div>';
-
-      if (jaAceito) {
-        btnAceitar.hidden = true;
-        btnAceitar.dataset.jaAceito = 'true';
-        aviso.textContent = 'Documento já aceito - disponível apenas para consulta.';
-      } else {
-        btnAceitar.hidden = false;
-        btnAceitar.disabled = true;
-        btnAceitar.dataset.jaAceito = 'false';
-        aviso.textContent = 'Role o documento até o final para habilitar o aceite.';
-      }
-
-      document.getElementById('modalLeitorOverlay').classList.add('visivel');
-
-      try {
-        const pdf = await window.pdfjsLib.getDocument(urlPdf).promise;
-        corpo.innerHTML = '';
-        for (let numeroPagina = 1; numeroPagina <= pdf.numPages; numeroPagina++) {
-          const pagina = await pdf.getPage(numeroPagina);
-          const viewport = pagina.getViewport({ scale: 1.3 });
-          const canvas = document.createElement('canvas');
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
-          await pagina.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-          corpo.appendChild(canvas);
-        }
-        // Após renderizar, reavalia imediatamente: se o documento inteiro já
-        // coube na área visível (sem overflow), o aceite libera na hora.
-        verificarRolagemModal();
-      } catch (erro) {
-        corpo.innerHTML = '<div class="modal-leitor-carregando">Não foi possível carregar o documento.</div>';
-      }
-    }
-
-    document.getElementById('modalLeitorCorpo').addEventListener('scroll', verificarRolagemModal);
-    document.getElementById('modalLeitorFechar').addEventListener('click', fecharModalLeitor);
-    document.getElementById('modalLeitorOverlay').addEventListener('click', (e) => {
-      if (e.target.id === 'modalLeitorOverlay') fecharModalLeitor();
-    });
-
-    document.getElementById('modalLeitorAceitar').addEventListener('click', async () => {
-      if (!candidatoId || !tipoDocumentoNoModal) return;
-      const tipo = tipoDocumentoNoModal;
-      try {
-        const resposta = await fetch('/api/candidato/' + candidatoId + '/contrato/' + tipo + '/aceite', { method: 'POST' });
-        const resultado = await resposta.json();
-        if (!resposta.ok) { alert('Erro: ' + (resultado.erro || 'não foi possível registrar o aceite.')); return; }
-        candidato = resultado.candidato;
-        fecharModalLeitor();
-        renderizarSecaoContrato();
-      } catch (erro) {
-        alert('Falha ao comunicar com o servidor.');
-      }
-    });
-
-    document.getElementById('listaDocumentosContrato').addEventListener('click', (e) => {
-      const botao = e.target.closest('[data-ver-documento-contrato]');
-      if (!botao || !candidato) return;
-      const tipo = botao.dataset.verDocumentoContrato;
-      const doc = CONTRATOS_DOCUMENTOS.find((d) => d.tipo === tipo);
-      const documento = candidato.contrato.documentos[tipo];
-      const jaAceito = !!documento.aceite;
-      const urlPdf = documento.arquivoAssinado
-        ? '/' + documento.arquivoAssinado
-        : `/api/contrato/minuta/${tipo}`;
-      abrirModalLeitor(tipo, doc.titulo, urlPdf, jaAceito);
-    });
-
     document.getElementById('btnConcluirAssinatura').addEventListener('click', async () => {
       if (!candidatoId) return;
       if (!document.getElementById('checkConsentimentoContrato').checked) {
@@ -2128,9 +2211,9 @@
         candidatoId = candidato.id;
 
         preencherFormularioComCandidato(candidato);
+        atualizarSaudacao();
         atualizarBadgeGeral();
         travarCamposFormulario();
-        exibirBannerDecisao();
         exibirPainelChat();
         renderizarSecaoContrato();
         iniciarAtualizacaoAutomaticaFicha();
@@ -2150,6 +2233,8 @@
     // =========================================================================
     async function inicializar() {
       construirBarras();
+      atualizarProgresso();
+      carregarConfiguracoesPublicas(); // sem await: nunca atrasa nem bloqueia a página
 
       const idNaUrl = new URLSearchParams(window.location.search).get('id');
       if (idNaUrl) {
@@ -2163,9 +2248,19 @@
       // Ficha nova (sem id na URL): exige login antes de mostrar o
       // formulário, como já acontece no Painel do RH.
       await exigirSessaoCandidato();
+      atualizarProgresso();
     }
 
     inicializar();
   </script>
+
+  <div vw class="enabled">
+    <div vw-access-button class="active"></div>
+    <div vw-plugin-wrapper>
+      <div class="vw-plugin-top-wrapper"></div>
+    </div>
+  </div>
+  <script src="https://vlibras.gov.br/app/vlibras-plugin.js"></script>
+  <script>if (window.VLibras) { new window.VLibras.Widget('https://vlibras.gov.br/app'); }</script>
 </body>
 </html>

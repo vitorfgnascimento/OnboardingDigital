@@ -209,6 +209,36 @@
       return { status: r.status, corpo: await r.json().catch(() => ({})) };
     }
 
+    async function putJsonRh(caminho, corpo) {
+      await loginRh();
+      const r = await fetch(API + caminho, {
+        method: 'PUT',
+        headers: headersRh({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(corpo)
+      });
+      return { status: r.status, corpo: await r.json().catch(() => ({})) };
+    }
+
+    async function postJsonRh(caminho, corpo) {
+      await loginRh();
+      const r = await fetch(API + caminho, {
+        method: 'POST',
+        headers: headersRh({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(corpo)
+      });
+      return { status: r.status, corpo: await r.json().catch(() => ({})) };
+    }
+
+    async function deleteRh(caminho) {
+      await loginRh();
+      const r = await fetch(API + caminho, { method: 'DELETE', headers: headersRh() });
+      return { status: r.status, corpo: await r.json().catch(() => ({})) };
+    }
+
+    // Etiquetas criadas pelos testes (ids) - removidas no fim para não poluir o catálogo real.
+    window.__etqCriadas = [];
+    window.__sufEtq = Date.now().toString(36);
+
     async function enviarDocumento(id, tipoDocumento, arquivo, extras) {
       const dados = new FormData();
       dados.append('tipoDocumento', tipoDocumento);
@@ -1018,11 +1048,11 @@
         }
       },
       {
-        nome: 'Aceite (clique) do 1º documento registra timestamp, IP e autor (LGPD)',
+        nome: 'Aceite (clique) do 1º documento registra timestamp, IP, autor e hash SHA-256 da assinatura (LGPD)',
         run: async () => {
           const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/contratoTrabalho/aceite', {});
           const aceite = r.corpo.candidato?.contrato?.documentos?.contratoTrabalho?.aceite;
-          const ok = r.status === 200 && !!aceite?.timestamp && !!aceite?.ip && aceite?.por === 'CANDIDATO';
+          const ok = r.status === 200 && !!aceite?.timestamp && !!aceite?.ip && aceite?.por === 'CANDIDATO' && /^[0-9a-f]{64}$/.test(aceite?.hash || '');
           return { ok, detalhe: `status ${r.status}, aceite ${JSON.stringify(aceite)}` };
         }
       },
@@ -1053,11 +1083,30 @@
         }
       },
       {
-        nome: 'RH também pode aceitar um documento do contrato em nome do candidato',
+        nome: 'RH NÃO pode aceitar documento do contrato em nome do candidato (403) e nada é gravado',
         run: async () => {
           const r = await patchRh('/rh/fichas/' + window.__idAuthFicha + '/contrato/termoConfidencialidade/aceitar');
+          const lista = await getRh('/rh/fichas');
+          const documento = lista.corpo.find((f) => f.id === window.__idAuthFicha)?.contrato?.documentos?.termoConfidencialidade;
+          const ok = r.status === 403 && !r.corpo.candidato && !documento?.aceite && !documento?.arquivoAssinado;
+          return { ok, detalhe: `status ${r.status} — ${r.corpo.erro || ''}; documento ${JSON.stringify(documento)}` };
+        }
+      },
+      {
+        nome: 'Aceitar documento do contrato pela rota do RH sem sessão (401) e com sessão de candidato (403) é recusado',
+        run: async () => {
+          const url = API + '/rh/fichas/' + window.__idAuthFicha + '/contrato/termoConfidencialidade/aceitar';
+          const semSessao = await fetch(url, { method: 'PATCH' });
+          const comoCandidato = await fetch(url, { method: 'PATCH', headers: { Authorization: 'Bearer ' + window.__tokenAuth } });
+          return { ok: semSessao.status === 401 && comoCandidato.status === 403, detalhe: `sem sessão ${semSessao.status}, candidato ${comoCandidato.status}` };
+        }
+      },
+      {
+        nome: 'Aceite do 2º documento (termo de confidencialidade) feito pelo próprio candidato registra autor CANDIDATO',
+        run: async () => {
+          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/termoConfidencialidade/aceite', {});
           const documento = r.corpo.candidato?.contrato?.documentos?.termoConfidencialidade;
-          const ok = r.status === 200 && documento?.aceite?.por === 'RH' && !!documento?.arquivoAssinado;
+          const ok = r.status === 200 && documento?.aceite?.por === 'CANDIDATO' && !!documento?.arquivoAssinado;
           return { ok, detalhe: `status ${r.status}, documento ${JSON.stringify(documento)}` };
         }
       },
@@ -1353,6 +1402,532 @@
         run: async () => {
           const r = await fetch(API + '/rh/fichas/' + window.__idAuthFicha + '/pdf');
           return { ok: r.status === 401, detalhe: `status ${r.status}` };
+        }
+      },
+
+      { grupo: 'Banco de Talentos (PATCH .../banco-talentos e .../reativar)' },
+
+      {
+        nome: 'Registra o catálogo de etiquetas existente (para conferir a limpeza ao final)',
+        run: async () => {
+          const r = await getRh('/rh/etiquetas');
+          window.__etqAntes = (Array.isArray(r.corpo) ? r.corpo : []).map((e) => e.id);
+          return { ok: r.status === 200 && Array.isArray(r.corpo), detalhe: `status ${r.status}, ${window.__etqAntes.length} etiqueta(s)` };
+        }
+      },
+
+      {
+        nome: 'Arquivar sem sessão é recusado (401)',
+        run: async () => {
+          const r = await fetch(API + '/rh/fichas/' + window.__idMasculino + '/banco-talentos', {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: '{}'
+          });
+          return { ok: r.status === 401, detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'Arquivar com sessão de candidato é recusado (403)',
+        run: async () => {
+          const r = await fetch(API + '/rh/fichas/' + window.__idMasculino + '/banco-talentos', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + window.__tokenAuth },
+            body: '{}'
+          });
+          return { ok: r.status === 403, detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'Reativar sem sessão é recusado (401)',
+        run: async () => {
+          const r = await fetch(API + '/rh/fichas/' + window.__idMasculino + '/reativar', { method: 'PATCH' });
+          return { ok: r.status === 401, detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'Arquivar ficha inexistente (404)',
+        run: async () => {
+          const r = await patchJsonRh('/rh/fichas/nao-existe/banco-talentos', { tags: [] });
+          return { ok: r.status === 404, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Arquivar com tag que não é texto é recusado (400)',
+        run: async () => {
+          const r = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/banco-talentos', { tags: ['ok', 5] });
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Arquivar com tag acima de 30 caracteres ou mais de 10 tags é recusado (400)',
+        run: async () => {
+          const longa = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/banco-talentos', { tags: ['x'.repeat(31)] });
+          const muitas = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/banco-talentos',
+            { tags: Array.from({ length: 11 }, (_, i) => 'tag' + i) });
+          return { ok: longa.status === 400 && muitas.status === 400, detalhe: `longa ${longa.status}, muitas ${muitas.status}` };
+        }
+      },
+      {
+        nome: 'Arquivar com tags em texto (legado): vira etiquetas cinza no catálogo, sanitiza (trim/vazias/duplicadas sem acento/caixa) e grava bancoTalentosEm',
+        run: async () => {
+          const suf = window.__sufEtq;
+          const antes = (await getRh('/rh/fichas')).corpo.find((f) => f.id === window.__idMasculino);
+          const r = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/banco-talentos',
+            { tags: ['  Logística-' + suf + ' ', '', 'LOGISTICA-' + suf, 'Bom perfil-' + suf] });
+          const c = r.corpo.candidato || {};
+          (c.tags || []).forEach((id) => window.__etqCriadas.push(id));
+          window.__idsTagsBanco = c.tags;
+          const cat = (await getRh('/rh/etiquetas')).corpo;
+          const doCatalogo = (c.tags || []).map((id) => cat.find((e) => e.id === id) || {});
+          const nomesOk = JSON.stringify(doCatalogo.map((e) => e.nome)) === JSON.stringify(['Logística-' + suf, 'Bom perfil-' + suf]);
+          const corOk = doCatalogo.every((e) => e.cor === '#6b7280');
+          const ok = r.status === 200 && c.bancoTalentos === true && nomesOk && corOk && !!c.bancoTalentosEm
+            && c.status === antes.status;
+          return { ok, detalhe: `status ${r.status}, bancoTalentos ${c.bancoTalentos}, nomes ${JSON.stringify(doCatalogo.map((e) => e.nome))}, cores ${JSON.stringify(doCatalogo.map((e) => e.cor))}, em ${c.bancoTalentosEm}, status preservado ${c.status === antes.status}` };
+        }
+      },
+      {
+        nome: 'GET /api/rh/fichas continua devolvendo a ficha arquivada, com a flag e as tags (ids das etiquetas)',
+        run: async () => {
+          const r = await getRh('/rh/fichas');
+          const f = (Array.isArray(r.corpo) ? r.corpo : []).find((x) => x.id === window.__idMasculino) || {};
+          const ok = r.status === 200 && f.bancoTalentos === true && Array.isArray(f.tags) && f.tags.length === 2
+            && JSON.stringify(f.tags) === JSON.stringify(window.__idsTagsBanco);
+          return { ok, detalhe: `status ${r.status}, bancoTalentos ${f.bancoTalentos}, tags ${JSON.stringify(f.tags)}` };
+        }
+      },
+      {
+        nome: 'Arquivar duas vezes é recusado (400)',
+        run: async () => {
+          const r = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/banco-talentos', { tags: [] });
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Ficha arquivada continua acessível por link (GET /api/candidato/:id)',
+        run: async () => {
+          const r = await fetch(API + '/candidato/' + window.__idMasculino);
+          return { ok: r.status === 200, detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'Dashboard em PDF continua sendo gerado com arquivados fora (200, %PDF)',
+        run: async () => {
+          await loginRh();
+          const r = await fetch(API + '/relatorio/dashboard-pdf', { headers: headersRh() });
+          const inicio = (await r.text()).slice(0, 4);
+          return { ok: r.status === 200 && inicio === '%PDF', detalhe: `status ${r.status}, início ${inicio}` };
+        }
+      },
+      {
+        nome: 'Reativar: bancoTalentos volta a false, bancoTalentosEm nulo e as etiquetas são mantidas',
+        run: async () => {
+          const r = await patchRh('/rh/fichas/' + window.__idMasculino + '/reativar');
+          const c = r.corpo.candidato || {};
+          const ok = r.status === 200 && c.bancoTalentos === false && c.bancoTalentosEm === null
+            && JSON.stringify(c.tags) === JSON.stringify(window.__idsTagsBanco);
+          return { ok, detalhe: `status ${r.status}, bancoTalentos ${c.bancoTalentos}, em ${c.bancoTalentosEm}, tags ${JSON.stringify(c.tags)}` };
+        }
+      },
+      {
+        nome: 'Reativar quem não está arquivado é recusado (400)',
+        run: async () => {
+          const r = await patchRh('/rh/fichas/' + window.__idMasculino + '/reativar');
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Reativar ficha inexistente (404)',
+        run: async () => {
+          const r = await patchRh('/rh/fichas/nao-existe/reativar');
+          return { ok: r.status === 404, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+
+      { grupo: 'Etiquetas estilo Trello (CRUD /api/rh/etiquetas, anexo às fichas e Banco de Talentos)' },
+
+      {
+        nome: 'GET /api/rh/etiquetas sem sessão é recusado (401)',
+        run: async () => {
+          const r = await fetch(API + '/rh/etiquetas');
+          return { ok: r.status === 401, detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'POST/PATCH/DELETE de etiquetas e PATCH de etiquetas da ficha sem sessão são recusados (401)',
+        run: async () => {
+          const json = { 'Content-Type': 'application/json' };
+          const rs = await Promise.all([
+            fetch(API + '/rh/etiquetas', { method: 'POST', headers: json, body: JSON.stringify({ cor: '#112233' }) }),
+            fetch(API + '/rh/etiquetas/x', { method: 'PATCH', headers: json, body: '{}' }),
+            fetch(API + '/rh/etiquetas/x', { method: 'DELETE' }),
+            fetch(API + '/rh/fichas/' + window.__idMasculino + '/etiquetas', { method: 'PATCH', headers: json, body: JSON.stringify({ etiquetas: [] }) })
+          ]);
+          const status = rs.map((r) => r.status);
+          return { ok: status.every((x) => x === 401), detalhe: `status ${status.join(', ')}` };
+        }
+      },
+      {
+        nome: 'Todas as rotas de etiquetas com sessão de candidato são recusadas (403)',
+        run: async () => {
+          const h = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + window.__tokenAuth };
+          const rs = await Promise.all([
+            fetch(API + '/rh/etiquetas', { headers: h }),
+            fetch(API + '/rh/etiquetas', { method: 'POST', headers: h, body: JSON.stringify({ cor: '#112233' }) }),
+            fetch(API + '/rh/etiquetas/x', { method: 'PATCH', headers: h, body: '{}' }),
+            fetch(API + '/rh/etiquetas/x', { method: 'DELETE', headers: h }),
+            fetch(API + '/rh/fichas/' + window.__idMasculino + '/etiquetas', { method: 'PATCH', headers: h, body: JSON.stringify({ etiquetas: [] }) })
+          ]);
+          const status = rs.map((r) => r.status);
+          return { ok: status.every((x) => x === 403), detalhe: `status ${status.join(', ')}` };
+        }
+      },
+      {
+        nome: 'Criar etiqueta com nome e cor: 201, cor normalizada em minúsculas e nome com trim',
+        run: async () => {
+          const r = await postJsonRh('/rh/etiquetas', { nome: '  Teste A ' + window.__sufEtq + '  ', cor: '#AABBCC' });
+          const e = r.corpo.etiqueta || {};
+          if (e.id) { window.__etqA = e.id; window.__etqCriadas.push(e.id); }
+          const ok = r.status === 201 && !!e.id && e.nome === 'Teste A ' + window.__sufEtq && e.cor === '#aabbcc' && !!e.criadoEm && !!e.atualizadoEm;
+          return { ok, detalhe: `status ${r.status}, ${JSON.stringify(e)}` };
+        }
+      },
+      {
+        nome: 'Criar etiqueta só com cor (sem nome, como no Trello) é válido: nome vazio',
+        run: async () => {
+          const r = await postJsonRh('/rh/etiquetas', { cor: '#445566' });
+          const e = r.corpo.etiqueta || {};
+          if (e.id) { window.__etqB = e.id; window.__etqCriadas.push(e.id); }
+          const comEspacos = await postJsonRh('/rh/etiquetas', { nome: '    ', cor: '#778899' });
+          if (comEspacos.corpo.etiqueta) window.__etqCriadas.push(comEspacos.corpo.etiqueta.id);
+          const ok = r.status === 201 && e.nome === '' && e.cor === '#445566'
+            && comEspacos.status === 201 && comEspacos.corpo.etiqueta.nome === '';
+          return { ok, detalhe: `sem nome: ${r.status} ${JSON.stringify(e.nome)}; nome só com espaços: ${comEspacos.status}` };
+        }
+      },
+      {
+        nome: 'Criar etiqueta sem cor ou com cor inválida é recusado (400)',
+        run: async () => {
+          const casos = [{ nome: 'x' }, { cor: 'red' }, { cor: '#12345' }, { cor: '#GGGGGG' }, { cor: 123 }, { cor: '' }];
+          const status = [];
+          for (const c of casos) status.push((await postJsonRh('/rh/etiquetas', c)).status);
+          return { ok: status.every((x) => x === 400), detalhe: `status ${status.join(', ')}` };
+        }
+      },
+      {
+        nome: 'Criar etiqueta com nome acima de 30 caracteres ou que não é texto é recusado (400)',
+        run: async () => {
+          const longo = await postJsonRh('/rh/etiquetas', { nome: 'x'.repeat(31), cor: '#112233' });
+          const numero = await postJsonRh('/rh/etiquetas', { nome: 5, cor: '#112233' });
+          return { ok: longo.status === 400 && numero.status === 400, detalhe: `longo ${longo.status}, número ${numero.status}` };
+        }
+      },
+      {
+        nome: 'GET /api/rh/etiquetas lista as etiquetas na ordem de criação (A antes de B)',
+        run: async () => {
+          const r = await getRh('/rh/etiquetas');
+          const ids = (Array.isArray(r.corpo) ? r.corpo : []).map((e) => e.id);
+          const ok = r.status === 200 && ids.includes(window.__etqA) && ids.includes(window.__etqB)
+            && ids.indexOf(window.__etqA) < ids.indexOf(window.__etqB);
+          return { ok, detalhe: `status ${r.status}, ${ids.length} etiqueta(s)` };
+        }
+      },
+      {
+        nome: 'Editar etiqueta: PATCH altera nome e cor e atualiza atualizadoEm',
+        run: async () => {
+          const antes = (await getRh('/rh/etiquetas')).corpo.find((e) => e.id === window.__etqA);
+          await new Promise((res) => setTimeout(res, 20));
+          const r = await patchJsonRh('/rh/etiquetas/' + window.__etqA, { nome: 'Renomeada ' + window.__sufEtq, cor: '#112233' });
+          const e = r.corpo.etiqueta || {};
+          const depois = (await getRh('/rh/etiquetas')).corpo.find((x) => x.id === window.__etqA) || {};
+          const ok = r.status === 200 && e.nome === 'Renomeada ' + window.__sufEtq && e.cor === '#112233'
+            && depois.nome === e.nome && depois.cor === '#112233'
+            && new Date(depois.atualizadoEm) > new Date(antes.atualizadoEm) && depois.criadoEm === antes.criadoEm;
+          return { ok, detalhe: `status ${r.status}, ${JSON.stringify(depois)}` };
+        }
+      },
+      {
+        nome: 'Editar só a cor mantém o nome; editar o nome para vazio é permitido (etiqueta só de cor)',
+        run: async () => {
+          const soCor = await patchJsonRh('/rh/etiquetas/' + window.__etqA, { cor: '#00FF00' });
+          const e1 = soCor.corpo.etiqueta || {};
+          const vazio = await patchJsonRh('/rh/etiquetas/' + window.__etqA, { nome: '' });
+          const e2 = vazio.corpo.etiqueta || {};
+          const ok = soCor.status === 200 && e1.nome === 'Renomeada ' + window.__sufEtq && e1.cor === '#00ff00'
+            && vazio.status === 200 && e2.nome === '' && e2.cor === '#00ff00';
+          return { ok, detalhe: `só cor ${soCor.status} ${JSON.stringify(e1.nome)}, nome vazio ${vazio.status} ${JSON.stringify(e2.nome)}` };
+        }
+      },
+      {
+        nome: 'Editar com cor inválida ou nome acima de 30 caracteres é recusado (400) e nada muda',
+        run: async () => {
+          const cor = await patchJsonRh('/rh/etiquetas/' + window.__etqA, { cor: 'azul' });
+          const nome = await patchJsonRh('/rh/etiquetas/' + window.__etqA, { nome: 'y'.repeat(31) });
+          const atual = (await getRh('/rh/etiquetas')).corpo.find((e) => e.id === window.__etqA) || {};
+          return { ok: cor.status === 400 && nome.status === 400 && atual.cor === '#00ff00' && atual.nome === '', detalhe: `cor ${cor.status}, nome ${nome.status}, atual ${JSON.stringify(atual)}` };
+        }
+      },
+      {
+        nome: 'Editar ou excluir etiqueta inexistente (404)',
+        run: async () => {
+          const p = await patchJsonRh('/rh/etiquetas/nao-existe', { nome: 'x' });
+          const d = await deleteRh('/rh/etiquetas/nao-existe');
+          return { ok: p.status === 404 && d.status === 404, detalhe: `patch ${p.status}, delete ${d.status}` };
+        }
+      },
+      {
+        nome: 'Anexar à ficha: ids válidos viram a lista exata de etiquetas (duplicatas removidas)',
+        run: async () => {
+          const antes = (await getRh('/rh/fichas')).corpo.find((f) => f.id === window.__idMasculino);
+          await new Promise((res) => setTimeout(res, 20));
+          const r = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/etiquetas', { etiquetas: [window.__etqA, window.__etqB, window.__etqA] });
+          const c = r.corpo.candidato || {};
+          const lista = (await getRh('/rh/fichas')).corpo.find((f) => f.id === window.__idMasculino) || {};
+          const ok = r.status === 200 && JSON.stringify(c.tags) === JSON.stringify([window.__etqA, window.__etqB])
+            && JSON.stringify(lista.tags) === JSON.stringify(c.tags)
+            && new Date(c.atualizadoEm) > new Date(antes.atualizadoEm) && c.status === antes.status && c.bancoTalentos === false;
+          return { ok, detalhe: `status ${r.status}, tags ${JSON.stringify(c.tags)}` };
+        }
+      },
+      {
+        nome: 'Anexar com id de etiqueta inexistente é recusado (400) e a ficha não muda',
+        run: async () => {
+          const r = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/etiquetas', { etiquetas: [window.__etqA, 'nao-existe'] });
+          const lista = (await getRh('/rh/fichas')).corpo.find((f) => f.id === window.__idMasculino) || {};
+          const ok = r.status === 400 && JSON.stringify(lista.tags) === JSON.stringify([window.__etqA, window.__etqB]);
+          return { ok, detalhe: `status ${r.status} — ${r.corpo.erro || ''}; tags ${JSON.stringify(lista.tags)}` };
+        }
+      },
+      {
+        nome: 'Anexar lista inválida (ausente, não-lista ou item que não é texto) é recusado (400)',
+        run: async () => {
+          const url = '/rh/fichas/' + window.__idMasculino + '/etiquetas';
+          const rs = [await patchJsonRh(url, {}), await patchJsonRh(url, { etiquetas: 'abc' }), await patchJsonRh(url, { etiquetas: [5] })];
+          const status = rs.map((r) => r.status);
+          return { ok: status.every((x) => x === 400), detalhe: `status ${status.join(', ')}` };
+        }
+      },
+      {
+        nome: 'Anexar a ficha inexistente (404)',
+        run: async () => {
+          const r = await patchJsonRh('/rh/fichas/nao-existe/etiquetas', { etiquetas: [window.__etqA] });
+          return { ok: r.status === 404, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'Anexar mais de 10 etiquetas a uma ficha é recusado (400); exatamente 10 é aceito',
+        run: async () => {
+          const extras = [];
+          for (let i = 0; i < 9; i++) {
+            const r = await postJsonRh('/rh/etiquetas', { cor: '#0a0a0a' });
+            if (r.corpo.etiqueta) { extras.push(r.corpo.etiqueta.id); window.__etqCriadas.push(r.corpo.etiqueta.id); }
+          }
+          const onze = [window.__etqA, window.__etqB, ...extras];
+          const dez = onze.slice(0, 10);
+          const url = '/rh/fichas/' + window.__idMasculino + '/etiquetas';
+          const recusada = await patchJsonRh(url, { etiquetas: onze });
+          const aceita = await patchJsonRh(url, { etiquetas: dez });
+          // volta ao estado anterior e remove as etiquetas extras
+          await patchJsonRh(url, { etiquetas: [window.__etqA, window.__etqB] });
+          for (const id of extras) await deleteRh('/rh/etiquetas/' + id);
+          const ok = extras.length === 9 && recusada.status === 400 && aceita.status === 200 && (aceita.corpo.candidato.tags || []).length === 10;
+          return { ok, detalhe: `11 → ${recusada.status}, 10 → ${aceita.status}` };
+        }
+      },
+      {
+        nome: 'Arquivar com { etiquetas: [ids] }: tags da ficha passam a ser exatamente esses ids',
+        run: async () => {
+          const r = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/banco-talentos', { etiquetas: [window.__etqB] });
+          const c = r.corpo.candidato || {};
+          const ok = r.status === 200 && c.bancoTalentos === true && JSON.stringify(c.tags) === JSON.stringify([window.__etqB]);
+          return { ok, detalhe: `status ${r.status}, tags ${JSON.stringify(c.tags)}` };
+        }
+      },
+      {
+        nome: 'Etiquetas continuam editáveis com a ficha arquivada (qualquer ficha pode receber etiquetas)',
+        run: async () => {
+          const r = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/etiquetas', { etiquetas: [window.__etqA, window.__etqB] });
+          const c = r.corpo.candidato || {};
+          const ok = r.status === 200 && c.bancoTalentos === true && JSON.stringify(c.tags) === JSON.stringify([window.__etqA, window.__etqB]);
+          const rea = await patchRh('/rh/fichas/' + window.__idMasculino + '/reativar');
+          return { ok: ok && rea.status === 200, detalhe: `status ${r.status}, reativar ${rea.status}` };
+        }
+      },
+      {
+        nome: 'Arquivar com id de etiqueta inexistente é recusado (400) e a ficha não é arquivada',
+        run: async () => {
+          const r = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/banco-talentos', { etiquetas: ['nao-existe'] });
+          const f = (await getRh('/rh/fichas')).corpo.find((x) => x.id === window.__idMasculino) || {};
+          return { ok: r.status === 400 && f.bancoTalentos === false, detalhe: `status ${r.status}, bancoTalentos ${f.bancoTalentos}` };
+        }
+      },
+      {
+        nome: 'Arquivar com tags legadas: reaproveita etiqueta existente de mesmo nome (sem acento/caixa) e combina com etiquetas (ids)',
+        run: async () => {
+          const suf = window.__sufEtq;
+          const criada = await postJsonRh('/rh/etiquetas', { nome: 'Reúso ' + suf, cor: '#ff0000' });
+          const idReuso = (criada.corpo.etiqueta || {}).id;
+          if (idReuso) window.__etqCriadas.push(idReuso);
+          const antes = (await getRh('/rh/etiquetas')).corpo.length;
+          const r = await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/banco-talentos',
+            { etiquetas: [window.__etqB], tags: ['REUSO ' + suf, 'Nova legada ' + suf] });
+          const c = r.corpo.candidato || {};
+          const cat = (await getRh('/rh/etiquetas')).corpo;
+          const nova = cat.find((e) => e.nome === 'Nova legada ' + suf);
+          if (nova) window.__etqCriadas.push(nova.id);
+          const reusoIntacta = cat.find((e) => e.id === idReuso) || {};
+          const ok = r.status === 200 && !!nova && cat.length === antes + 1
+            && JSON.stringify(c.tags) === JSON.stringify([window.__etqB, idReuso, nova.id])
+            && reusoIntacta.cor === '#ff0000' && nova.cor === '#6b7280';
+          await patchRh('/rh/fichas/' + window.__idMasculino + '/reativar');
+          return { ok, detalhe: `status ${r.status}, catálogo ${antes} → ${cat.length}, tags ${JSON.stringify(c.tags)}` };
+        }
+      },
+      {
+        nome: 'Normalização/migração: nenhuma ficha guarda tag em texto solto - todo valor de tags é id do catálogo',
+        run: async () => {
+          const cat = (await getRh('/rh/etiquetas')).corpo;
+          const ids = new Set(cat.map((e) => e.id));
+          const fichas = (await getRh('/rh/fichas')).corpo;
+          const soltas = [];
+          fichas.forEach((f) => (f.tags || []).forEach((t) => { if (!ids.has(t)) soltas.push(f.nomeCompleto + ': ' + t); }));
+          return { ok: soltas.length === 0, detalhe: soltas.length ? soltas.slice(0, 5).join(' | ') : `${fichas.length} ficha(s) verificadas` };
+        }
+      },
+      {
+        nome: 'Excluir etiqueta: remove do catálogo e retira o id das fichas que a usavam',
+        run: async () => {
+          await patchJsonRh('/rh/fichas/' + window.__idMasculino + '/etiquetas', { etiquetas: [window.__etqA, window.__etqB] });
+          const r = await deleteRh('/rh/etiquetas/' + window.__etqA);
+          const cat = (await getRh('/rh/etiquetas')).corpo;
+          const f = (await getRh('/rh/fichas')).corpo.find((x) => x.id === window.__idMasculino) || {};
+          const ok = r.status === 200 && r.corpo.fichasAfetadas >= 1 && !cat.some((e) => e.id === window.__etqA)
+            && JSON.stringify(f.tags) === JSON.stringify([window.__etqB]);
+          return { ok, detalhe: `status ${r.status}, fichas afetadas ${r.corpo.fichasAfetadas}, tags da ficha ${JSON.stringify(f.tags)}` };
+        }
+      },
+      {
+        nome: 'Excluir etiqueta já excluída (404)',
+        run: async () => {
+          const r = await deleteRh('/rh/etiquetas/' + window.__etqA);
+          return { ok: r.status === 404, detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'Limpeza: remove todas as etiquetas criadas pelos testes e confere que o catálogo voltou ao que existia',
+        run: async () => {
+          for (const id of window.__etqCriadas) await deleteRh('/rh/etiquetas/' + id);
+          const cat = (await getRh('/rh/etiquetas')).corpo;
+          const ids = cat.map((e) => e.id);
+          const sobrando = ids.filter((id) => !window.__etqAntes.includes(id));
+          const perdidas = window.__etqAntes.filter((id) => !ids.includes(id));
+          const f = (await getRh('/rh/fichas')).corpo.find((x) => x.id === window.__idMasculino) || {};
+          const ok = sobrando.length === 0 && perdidas.length === 0 && (f.tags || []).length === 0;
+          return { ok, detalhe: `sobrando ${sobrando.length}, perdidas ${perdidas.length}, tags da ficha de teste ${JSON.stringify(f.tags)}` };
+        }
+      },
+
+      { grupo: 'Configurações do RH (GET/PUT /api/rh/configuracoes e GET /api/configuracoes/publicas)' },
+
+      {
+        nome: 'GET /api/rh/configuracoes sem sessão é recusado (401)',
+        run: async () => {
+          const r = await fetch(API + '/rh/configuracoes');
+          return { ok: r.status === 401, detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'PUT /api/rh/configuracoes sem sessão é recusado (401)',
+        run: async () => {
+          const r = await fetch(API + '/rh/configuracoes', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+          return { ok: r.status === 401, detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'GET /api/rh/configuracoes autenticado devolve mensagem, 6 documentos e e-mail',
+        run: async () => {
+          const r = await getRh('/rh/configuracoes');
+          window.__configOriginal = r.corpo; // restaurada ao final do grupo
+          const chaves = Object.keys(r.corpo.documentosObrigatorios || {}).sort().join(',');
+          const esperado = ['carteiraTrabalho', 'comprovanteEscolaridade', 'comprovanteResidencia', 'cpf', 'identidade', 'reservista'].join(',');
+          const ok = r.status === 200 && typeof r.corpo.mensagemBoasVindas === 'string' && chaves === esperado
+            && typeof r.corpo.emailContatoRh === 'string';
+          return { ok, detalhe: `status ${r.status}, chaves ${chaves}` };
+        }
+      },
+      {
+        nome: 'PUT com e-mail inválido é recusado (400)',
+        run: async () => {
+          const c = window.__configOriginal;
+          const r = await putJsonRh('/rh/configuracoes', Object.assign({}, c, { emailContatoRh: 'isso-nao-e-email' }));
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'PUT sem nenhum documento obrigatório é recusado (400)',
+        run: async () => {
+          const c = window.__configOriginal;
+          const docs = {};
+          Object.keys(c.documentosObrigatorios).forEach((k) => { docs[k] = false; });
+          const r = await putJsonRh('/rh/configuracoes', Object.assign({}, c, { documentosObrigatorios: docs }));
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'PUT com chave de documento faltando é recusado (400)',
+        run: async () => {
+          const c = window.__configOriginal;
+          const docs = Object.assign({}, c.documentosObrigatorios);
+          delete docs.reservista;
+          const r = await putJsonRh('/rh/configuracoes', Object.assign({}, c, { documentosObrigatorios: docs }));
+          return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
+        }
+      },
+      {
+        nome: 'PUT com valor de documento que não é boolean ou mensagem acima de 500 caracteres é recusado (400)',
+        run: async () => {
+          const c = window.__configOriginal;
+          const docs = Object.assign({}, c.documentosObrigatorios, { cpf: 'sim' });
+          const a = await putJsonRh('/rh/configuracoes', Object.assign({}, c, { documentosObrigatorios: docs }));
+          const b = await putJsonRh('/rh/configuracoes', Object.assign({}, c, { mensagemBoasVindas: 'x'.repeat(501) }));
+          return { ok: a.status === 400 && b.status === 400, detalhe: `valor ${a.status}, mensagem longa ${b.status}` };
+        }
+      },
+      {
+        nome: 'PUT válido persiste e o GET público reflete (sem autenticação, sem campos extras)',
+        run: async () => {
+          const c = window.__configOriginal;
+          const docs = Object.assign({}, c.documentosObrigatorios, { carteiraTrabalho: false });
+          const novo = { mensagemBoasVindas: '  Mensagem de teste automatizado  ', documentosObrigatorios: docs, emailContatoRh: 'rh.teste@exemplo.com' };
+          const put = await putJsonRh('/rh/configuracoes', novo);
+          const pub = await fetch(API + '/configuracoes/publicas');
+          const p = await pub.json().catch(() => ({}));
+          const get = await getRh('/rh/configuracoes');
+          const chavesPub = Object.keys(p).sort().join(',');
+          const ok = put.status === 200 && pub.status === 200
+            && p.mensagemBoasVindas === 'Mensagem de teste automatizado'
+            && p.documentosObrigatorios.carteiraTrabalho === false && p.documentosObrigatorios.identidade === true
+            && p.emailContatoRh === 'rh.teste@exemplo.com'
+            && chavesPub === 'documentosObrigatorios,emailContatoRh,mensagemBoasVindas'
+            && get.corpo.emailContatoRh === 'rh.teste@exemplo.com';
+          return { ok, detalhe: `put ${put.status}, publico ${pub.status}, chaves ${chavesPub}, carteira ${p.documentosObrigatorios && p.documentosObrigatorios.carteiraTrabalho}` };
+        }
+      },
+      {
+        nome: 'PUT com e-mail vazio e mensagem vazia é aceito (campo oculto na ficha)',
+        run: async () => {
+          const c = window.__configOriginal;
+          const r = await putJsonRh('/rh/configuracoes', Object.assign({}, c, { mensagemBoasVindas: '', emailContatoRh: '' }));
+          return { ok: r.status === 200 && r.corpo.mensagemBoasVindas === '' && r.corpo.emailContatoRh === '', detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'Restaura a configuração original do sistema (limpeza)',
+        run: async () => {
+          const c = window.__configOriginal;
+          const r = await putJsonRh('/rh/configuracoes', c);
+          const conferir = await getRh('/rh/configuracoes');
+          const ok = r.status === 200 && JSON.stringify(conferir.corpo) === JSON.stringify(c);
+          return { ok, detalhe: `put ${r.status}, igual ao original: ${JSON.stringify(conferir.corpo) === JSON.stringify(c)}` };
         }
       }
     ];

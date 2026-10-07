@@ -4,673 +4,544 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Onboarding Digital - Painel do RH</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+  <script src="/acessibilidade.js"></script>
+  <link rel="stylesheet" href="/tema.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
-    :root {
-      /* Identidade visual: Verde Intelbras como cor principal da jornada */
-      --verde-intelbras: #00A335;
-      --verde-intelbras-escuro: #00812a;
-      --vermelho: #dc3545;
-      --amarelo: #ffc107;
-      --verde: #28a745;
-      --cinza-borda: #cccccc;
-      --cinza-barra: #f8f9fa;
-      --texto: #2c3e50;
-      /* Paleta dos 4 estados da ficha (status geral do candidato) */
-      --status-em-analise: #F5E40B;
-      --status-pendente-assinatura: #F97316;
-      --status-concluida: #00A335;
-      --status-reprovado: #FF0303;
-    }
-    * { box-sizing: border-box; }
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background-color: #f4f6f9;
-      margin: 0;
-      padding: 30px 15px;
-      color: var(--texto);
-    }
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-      background: #ffffff;
-      padding: 30px;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-    }
-    h2 {
-      color: #1a252f;
-      border-bottom: 2px solid var(--verde-intelbras);
-      padding-bottom: 10px;
-      margin-top: 0;
-    }
-    .barra-topo {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-    .btn-atualizar {
-      background-color: var(--verde-intelbras);
-      color: #ffffff;
-      border: none;
-      padding: 10px 16px;
-      font-size: 14px;
-      font-weight: bold;
-      border-radius: 5px;
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-    .btn-atualizar:hover { background-color: var(--verde-intelbras-escuro); }
-    .acoes-topo { display: flex; gap: 10px; flex-wrap: wrap; }
-    .btn-exportar {
-      background-color: #ffffff;
-      color: var(--verde-intelbras-escuro);
-      border: 1px solid var(--verde-intelbras);
-      padding: 10px 16px;
-      font-size: 14px;
-      font-weight: bold;
-      border-radius: 5px;
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-    .btn-exportar:hover { background-color: rgba(0, 163, 53, 0.08); }
+    :root { --largura-sidebar: 15.5rem; }
+    /* Com texto muito ampliado a barra lateral fica um pouco mais estreita para sobrar área ao conteúdo */
+    html[data-fonte="130"], html[data-fonte="150"] { --largura-sidebar: 13.5rem; }
 
-    /* --- ABAS DO PAINEL (Gestão de Candidatos / Estatísticas & Relatórios) --- */
-    .abas-painel {
+    /* --- BARRA LATERAL EM VERDE-FLORESTA --- */
+    .sidebar {
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      width: var(--largura-sidebar);
+      background: var(--floresta);
+      color: #FBF8F3;
       display: flex;
-      gap: 8px;
-      margin-bottom: 20px;
+      flex-direction: column;
+      padding: 1.5rem 0.875rem 1rem;
+      overflow-y: auto; overflow-x: hidden;
+      z-index: 50;
     }
+    .sidebar :focus-visible { outline-color: #FBF8F3; }
+    .logo { display: flex; align-items: center; gap: 0.625rem; font-family: var(--fonte-titulo); font-weight: 600; font-size: 1.0625rem; color: #FBF8F3; padding: 0.25rem 0.5rem 1.5rem; line-height: 1.15; }
+    .logo .ic-logo { width: 2.25rem; height: 2.25rem; --logo-fundo: #FBF8F3; --logo-broto: var(--floresta); }
+    .nav-painel { display: flex; flex-direction: column; gap: 0.25rem; }
     .btn-aba {
-      background: #ffffff;
-      border: 1px solid var(--cinza-borda);
-      color: var(--texto);
-      padding: 10px 18px;
-      font-size: 14px;
-      font-weight: 600;
-      border-radius: 20px;
-      cursor: pointer;
-      transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+      display: flex; align-items: center; gap: 0.75rem;
+      width: 100%;
+      min-height: 2.75rem;
+      text-align: left;
+      background: transparent;
+      border: none;
+      color: #D6E5DB;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.9375rem; font-weight: 500;
+      border-radius: 0.5rem;
+      transition: background-color 0.15s, color 0.15s;
     }
-    .btn-aba:hover { border-color: var(--verde-intelbras); }
-    .btn-aba.ativo {
-      background-color: var(--verde-intelbras);
-      border-color: var(--verde-intelbras);
-      color: #ffffff;
+    .btn-aba .ic { width: 1.25rem; height: 1.25rem; }
+    .btn-aba:hover { background: rgba(251, 248, 243, 0.08); color: #FBF8F3; }
+    .btn-aba.ativo { background: rgba(251, 248, 243, 0.14); color: #FFFFFF; font-weight: 600; box-shadow: inset 3px 0 0 var(--verde); }
+    .contador-aba { margin-left: auto; min-width: 1.5rem; padding: 0.0625rem 0.5rem; border-radius: 999px; background: rgba(251, 248, 243, 0.16); color: #FBF8F3; font-size: 0.75rem; font-weight: 700; text-align: center; }
+    .contador-aba[hidden] { display: none; }
+    .btn-aba.ativo .contador-aba { background: var(--verde); color: var(--tinta-botao); }
+
+    .sidebar-rodape { margin-top: auto; padding-top: 1rem; border-top: 1px solid rgba(251, 248, 243, 0.18); display: flex; flex-direction: column; gap: 0.875rem; }
+    .area-sessao { display: flex; align-items: center; gap: 0.625rem; padding: 0 0.25rem; min-width: 0; }
+    .area-sessao .avatar { --av-bg: #F6E1C6; --av-fg: #6A3C0A; }
+    .sessao-textos { display: flex; flex-direction: column; min-width: 0; font-size: 0.8125rem; color: #CFE3D6; line-height: 1.3; }
+    .sessao-textos strong { color: #FBF8F3; font-size: 0.9375rem; font-weight: 600; overflow-wrap: anywhere; }
+    .btn-sair {
+      display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+      min-height: var(--alvo);
+      background: transparent;
+      border: 1px solid rgba(251, 248, 243, 0.32);
+      color: #FBF8F3;
+      font-weight: 600; font-size: 0.9375rem;
+      border-radius: 0.5rem;
     }
+    .btn-sair:hover { background: rgba(251, 248, 243, 0.12); }
+    .topo-mobile { display: none; }
+    .overlay-sidebar { display: none; }
+
+    /* --- ÁREA DE CONTEÚDO --- */
+    .conteudo { margin-left: var(--largura-sidebar); padding: 2rem 2.25rem 3rem; max-width: 92rem; }
+    .barra-topo { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 0.75rem 1rem; margin-bottom: 1.25rem; }
+    .barra-topo p.subtitulo { margin: 0.25rem 0 0; color: var(--tinta-2); }
+    .acoes-topo { display: flex; gap: 0.625rem; flex-wrap: wrap; }
     .secao-aba[hidden] { display: none; }
 
-    /* --- DASHBOARD DE ADMISSÕES --- */
-    .dashboard-admissoes {
-      margin-bottom: 30px;
-      padding-bottom: 20px;
-      border-bottom: 2px solid #e6e9ee;
+    .btn-atualizar, .btn-reativar, .btn-aceitar-documento, .btn-validar-contrato, .btn-aprovar-candidato,
+    .btn-confirmar-decisao, .btn-enviar-mensagem, .btn-modal.primario {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+      min-height: 2.5rem;
+      padding: 0.375rem 1rem;
+      background: var(--verde);
+      color: var(--tinta-botao);
+      border: 1px solid transparent;
+      border-radius: var(--r-controle);
+      font-weight: 600; font-size: 0.9375rem; line-height: 1.2;
+      transition: background-color 0.15s, color 0.15s;
     }
-    .dash-filtros {
-      display: flex;
-      align-items: flex-end;
-      flex-wrap: wrap;
-      gap: 14px;
-      margin: 14px 0 20px;
+    .btn-atualizar:hover:not(:disabled), .btn-reativar:hover:not(:disabled), .btn-aceitar-documento:hover:not(:disabled),
+    .btn-validar-contrato:hover:not(:disabled), .btn-aprovar-candidato:hover:not(:disabled), .btn-confirmar-decisao:hover:not(:disabled),
+    .btn-enviar-mensagem:hover:not(:disabled), .btn-modal.primario:hover:not(:disabled) { background: var(--verde-hover); color: #FFFFFF; }
+    .btn-atualizar:disabled, .btn-reativar:disabled, .btn-modal.primario:disabled, .btn-validar-contrato:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .btn-exportar, .btn-acao, .btn-modal, .btn-pdf, .btn-decisao.btn-talentos-decisao, .btn-imprimir {
+      display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+      min-height: 2.5rem;
+      padding: 0.375rem 1rem;
+      background: var(--papel);
+      color: var(--tinta);
+      border: 1px solid #D9D2C5;
+      border-radius: var(--r-controle);
+      font-weight: 600; font-size: 0.9375rem; line-height: 1.2;
+      text-decoration: none;
+      transition: background-color 0.15s, border-color 0.15s;
     }
-    .dash-filtros label {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      font-size: 12px;
-      font-weight: 600;
-      color: #6c757d;
-    }
-    .dash-filtros input,
-    .dash-filtros select {
-      padding: 8px 10px;
-      border: 1px solid var(--cinza-borda);
-      border-radius: 5px;
-      font-size: 13px;
-      font-family: inherit;
-    }
-    .dash-kpis {
+    .btn-exportar:hover:not(:disabled), .btn-acao:hover:not(:disabled), .btn-modal:hover:not(:disabled), .btn-pdf:hover,
+    .btn-decisao.btn-talentos-decisao:hover, .btn-imprimir:hover { background: var(--menta); border-color: var(--verde-hover); }
+    .btn-acao { min-height: 2.25rem; padding: 0.25rem 0.75rem; font-size: 0.875rem; }
+    .btn-acao:disabled, .btn-modal:disabled { opacity: 0.55; }
+    .btn-modal.primario { background: var(--verde); color: var(--tinta-botao); border-color: transparent; }
+    .btn-modal.primario:hover:not(:disabled) { background: var(--verde-hover); border-color: transparent; }
+    .btn-copiar-link.copiado { background: var(--floresta); border-color: var(--floresta); color: #FBF8F3; }
+
+    /* --- FAIXA DE MÉTRICAS (uma só, sem caixas) --- */
+    .faixa-metricas {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 14px;
-      margin-bottom: 22px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border-top: 1px solid var(--borda);
+      border-bottom: 1px solid var(--borda);
+      margin-bottom: 2rem;
     }
-    .dash-kpi-card {
-      border: 1px solid var(--cinza-borda);
-      border-left: 5px solid #1a252f;
-      border-radius: 8px;
-      padding: 14px 16px;
-      background: var(--cinza-barra);
+    .metrica { padding: 1.125rem 1.5rem 1.25rem; border-left: 1px solid var(--borda); }
+    .metrica:first-child { border-left: none; padding-left: 0.25rem; }
+    .metrica-valor { font-family: var(--fonte-titulo); font-weight: 500; font-size: 2.75rem; line-height: 1; color: var(--floresta); font-variant-numeric: lining-nums; }
+    .metrica-rotulo { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; font-size: 0.875rem; font-weight: 600; color: var(--tinta-2); }
+    .metrica-rotulo::before { content: ''; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--ponto, #B9B1A2); flex: 0 0 auto; }
+    .metrica-analise { --ponto: var(--status-em-analise); }
+    .metrica-pendente { --ponto: var(--status-pendente-assinatura); }
+    .metrica-concluido { --ponto: var(--status-concluida); }
+    .metrica-analise .metrica-rotulo::before { box-shadow: 0 0 0 1px rgba(90, 79, 0, 0.35); }
+
+    /* --- BUSCA E FILTROS --- */
+    .barra-busca { margin-top: 0.25rem; }
+    .campo-busca-wrap { position: relative; max-width: 24rem; }
+    .campo-busca-wrap .ic { position: absolute; left: 0.875rem; top: 50%; transform: translateY(-50%); color: var(--tinta-2); pointer-events: none; }
+    .campo-busca { width: 100%; padding-left: 2.75rem !important; }
+    .barra-filtros { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.875rem 0 1rem; }
+    .btn-filtro {
+      min-height: 2.25rem;
+      background: var(--papel);
+      border: 1px solid #D9D2C5;
+      color: var(--tinta);
+      padding: 0.25rem 0.875rem;
+      font-size: 0.875rem; font-weight: 600;
+      border-radius: 999px;
+      transition: background-color 0.15s, border-color 0.15s, color 0.15s;
     }
-    .dash-kpi-concluidas { border-left-color: var(--status-concluida); }
-    .dash-kpi-em-analise { border-left-color: var(--status-em-analise); }
-    .dash-kpi-pendente-assinatura { border-left-color: var(--status-pendente-assinatura); }
-    .dash-kpi-reprovadas { border-left-color: var(--status-reprovado); }
-    .dash-kpi-rotulo {
-      font-size: 12px;
-      color: #6c757d;
-      font-weight: 600;
-      margin-bottom: 6px;
+    .btn-filtro:hover { border-color: var(--verde-hover); background: var(--menta); }
+    .btn-filtro.ativo { background: var(--floresta); border-color: var(--floresta); color: #FBF8F3; }
+
+    /* --- TABELA DE CANDIDATOS --- */
+    /* Cada ficha é um cartão próprio: linhas separadas por um vão visível, sem zebrado. */
+    .tabela-wrap { overflow-x: auto; margin-top: 0.5rem; padding-bottom: 0.25rem; }
+    table { width: 100%; min-width: 50rem; border-collapse: separate; border-spacing: 0 0.75rem; font-size: 0.9375rem; }
+    thead th { color: var(--tinta-2); text-align: left; padding: 0 1rem 0.25rem; font-weight: 600; font-size: 0.8125rem; white-space: nowrap; }
+    tbody td { padding: 1.375rem 1rem; background: var(--papel); border-top: 1px solid var(--borda); border-bottom: 1px solid var(--borda); vertical-align: middle; transition: background-color 0.15s; }
+    tbody td:first-child { border-left: 1px solid var(--borda); border-radius: 0.875rem 0 0 0.875rem; padding-left: 1.25rem; }
+    tbody td:last-child { border-right: 1px solid var(--borda); border-radius: 0 0.875rem 0.875rem 0; padding-right: 1.25rem; }
+    tbody td:first-child:last-child { border-radius: 0.875rem; }
+    tbody tr:hover > td { background: var(--menta); }
+    .vazio { text-align: center; padding: 2.5rem 1rem; color: var(--tinta-2); }
+    .nome-celula { display: flex; align-items: center; gap: 0.75rem; min-width: 13rem; }
+    .nome-bloco { min-width: 0; display: flex; flex-direction: column; gap: 0.1875rem; align-items: flex-start; }
+    .nome-candidato { display: inline-block; font-weight: 600; cursor: pointer; user-select: none; -webkit-user-select: none; border-radius: 0.25rem; color: var(--tinta); }
+    .nome-candidato:hover { color: var(--verde-texto); text-decoration: underline; }
+    .acoes { display: flex; gap: 0.5rem; flex-wrap: wrap; min-width: 11rem; }
+    #corpoTabela .acoes { min-width: 14rem; }
+    #corpoTabela > tr > td:nth-child(2), #corpoTabela > tr > td:nth-child(3), #corpoTalentos td:nth-child(2) { white-space: nowrap; }
+    .contato-talento { display: flex; flex-direction: column; gap: 0.125rem; font-size: 0.875rem; color: var(--tinta-2); }
+    .vazio-amigavel { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+    .vazio-amigavel .ic { width: 2rem; height: 2rem; color: var(--tinta-3); }
+
+    .grade-documentos { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.75rem; }
+    .item-documento { display: flex; flex-direction: column; align-items: stretch; justify-content: space-between; gap: 0.625rem; min-height: 6.5rem; background: var(--papel); border: 1px solid var(--borda); border-radius: 0.75rem; padding: 0.75rem 0.875rem; font-size: 0.875rem; }
+    .item-documento-linha-principal { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; }
+    .item-documento-titulo { font-weight: 600; font-size: 0.9375rem; flex: 1 1 auto; min-width: 0; }
+    .item-documento-linha-principal > .btn-pdf, .item-documento-linha-principal > .item-documento-situacao { flex: 0 0 auto; margin-left: auto; }
+    .hash-assinatura { display: block; margin-top: 0.25rem; font-family: ui-monospace, Consolas, monospace; font-size: 0.75rem; word-break: break-all; color: var(--tinta-2); }
+    .item-documento-situacao { font-size: 0.8125rem; color: var(--tinta-2); }
+    .btn-pdf { min-height: 2.25rem; min-width: 10.5rem; justify-content: center; padding: 0.25rem 0.75rem; font-size: 0.8125rem; white-space: nowrap; }
+    .acoes-documento { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+    .secao-contrato-rh .item-documento { min-height: 9rem; } /* mesma altura com ou sem hash */
+    .btn-aceitar-documento { min-height: 2.25rem; padding: 0.25rem 0.75rem; font-size: 0.8125rem; }
+    .badge-documento-aceito { display: inline-flex; align-items: center; gap: 0.375rem; color: var(--verde-texto); font-size: 0.8125rem; font-weight: 600; }
+    .btn-marcar-pendencia {
+      min-height: 2.25rem;
+      background: none;
+      border: 1px solid var(--perigo-borda);
+      color: var(--perigo);
+      padding: 0.25rem 0.75rem;
+      font-size: 0.8125rem; font-weight: 600;
+      border-radius: var(--r-controle);
     }
-    .dash-kpi-valor {
-      font-size: 24px;
-      font-weight: bold;
-      color: var(--texto);
+    .btn-marcar-pendencia:hover { background: var(--perigo-fundo); }
+    .form-pendencia { display: flex; flex-direction: column; gap: 0.5rem; }
+    .form-pendencia[hidden] { display: none; }
+    .form-pendencia textarea { width: 100%; font-size: 0.875rem; padding: 0.5rem 0.625rem; resize: vertical; min-height: 4rem; }
+    .form-pendencia .acoes-form { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    .btn-confirmar-pendencia { min-height: 2.25rem; background: var(--perigo); color: #fff; border: 0; padding: 0.25rem 0.875rem; font-size: 0.8125rem; font-weight: 600; border-radius: var(--r-controle); }
+    .btn-confirmar-pendencia:hover { background: #8A1B14; }
+    .btn-cancelar-pendencia { min-height: 2.25rem; background: var(--papel); border: 1px solid #D9D2C5; color: var(--tinta); padding: 0.25rem 0.875rem; font-size: 0.8125rem; font-weight: 600; border-radius: var(--r-controle); }
+    .btn-cancelar-pendencia:hover { background: var(--creme-2); }
+    .aviso-pendencia-ativa { background: var(--perigo-fundo); border: 1px solid var(--perigo-borda); padding: 0.5rem 0.625rem; font-size: 0.8125rem; color: #6E1A13; border-radius: 0.5rem; }
+
+    .secao-decisao, .secao-contrato-rh, .secao-auditoria-lgpd, .secao-chat, .secao-impressao { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid var(--linha); }
+    .secao-titulo { font-family: var(--fonte-titulo); font-weight: 600; font-size: 1.0625rem; color: var(--floresta); margin-bottom: 0.75rem; }
+    .btn-decisao { min-height: 2.5rem; padding: 0.375rem 1rem; font-size: 0.9375rem; font-weight: 600; border-radius: var(--r-controle); margin: 0 0.375rem 0.375rem 0; }
+    .btn-reprovar-candidato { background: var(--papel); color: var(--perigo); border: 1px solid var(--perigo-borda); }
+    .btn-reprovar-candidato:hover { background: var(--perigo-fundo); }
+    .btn-decisao:disabled { opacity: 0.5; cursor: not-allowed; }
+    .confirmar-decisao { display: flex; align-items: center; flex-wrap: wrap; gap: 0.625rem; font-size: 0.9375rem; font-weight: 500; padding: 0.75rem 0.875rem; background: var(--creme-2); border-radius: 0.625rem; }
+    .confirmar-decisao[hidden] { display: none; }
+    .badge-decisao { display: inline-flex; align-items: center; padding: 0.1875rem 0.75rem; border-radius: 999px; font-weight: 600; font-size: 0.8125rem; margin: 0 0.5rem 0.375rem 0; }
+    .badge-decisao-aprovado { background: #E0F3E7; color: #0B5A27; }
+    .badge-decisao-reprovado { background: #FDE6E4; color: #9B0A0A; }
+
+    .status-contrato-rh { font-size: 0.9375rem; padding: 0.625rem 0.875rem; border-radius: 0.625rem; margin: 0.75rem 0; }
+    .status-contrato-rh.info { background: var(--menta); color: #1F3A2A; }
+    .status-contrato-rh.aviso { background: #FDF8CF; color: #4A4100; }
+    .status-contrato-rh.sucesso { background: #E0F3E7; color: #0B4F23; font-weight: 600; }
+
+    .linha-auditoria-lgpd { display: flex; flex-wrap: wrap; gap: 0.375rem; font-size: 0.875rem; margin-bottom: 0.375rem; }
+    .rotulo-auditoria-lgpd { font-weight: 600; }
+    .valor-auditoria-ok { color: var(--verde-texto); }
+    .valor-auditoria-pendente { color: var(--tinta-2); font-style: italic; }
+
+    /* Chat RH <-> candidato */
+    .lista-mensagens { max-height: 14rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; padding-right: 0.25rem; }
+    .mensagem { max-width: 80%; padding: 0.5rem 0.75rem; border-radius: 1rem; font-size: 0.875rem; }
+    .mensagem-rh { align-self: flex-end; background: var(--menta-2); border-bottom-right-radius: 0.25rem; }
+    .mensagem-candidato { align-self: flex-start; background: var(--papel); border: 1px solid var(--borda); border-bottom-left-radius: 0.25rem; }
+    .mensagem-cabecalho { font-size: 0.75rem; font-weight: 600; color: var(--tinta-2); margin-bottom: 0.1875rem; }
+    .mensagem-vazia { font-size: 0.875rem; color: var(--tinta-2); }
+    .form-chat { display: flex; gap: 0.5rem; align-items: flex-end; }
+    .form-chat textarea { flex: 1; min-width: 0; font-size: 0.9375rem; padding: 0.5rem 0.75rem; resize: vertical; min-height: 2.75rem; }
+
+    /* --- CONFIGURAÇÕES: seções limpas com divisores finos --- */
+    #formConfig, #cardEtiquetasConfig { max-width: 58rem; }
+    .card-config { display: grid; grid-template-columns: minmax(12rem, 1fr) minmax(0, 2fr); gap: 1rem 2.5rem; padding: 1.75rem 0; border-top: 1px solid var(--borda); }
+    .card-config h3 { font-size: 1.1875rem; margin: 0 0 0.375rem; }
+    .card-config .ajuda { margin: 0; font-size: 0.9375rem; color: var(--tinta-2); }
+    .card-config textarea, .card-config input[type="email"] { width: 100%; }
+    .card-config textarea { min-height: 6.5rem; resize: vertical; }
+    .contador-caracteres { display: block; text-align: right; font-size: 0.8125rem; color: var(--tinta-2); margin-top: 0.25rem; }
+    .contador-caracteres.excedeu { color: var(--perigo); font-weight: 700; }
+    .previa-boas-vindas { margin-top: 1rem; }
+    .previa-boas-vindas .rotulo { font-size: 0.8125rem; font-weight: 600; color: var(--tinta-2); margin-bottom: 0.375rem; }
+    .previa-card { background: var(--papel); border: 1px solid var(--borda); border-radius: 0.875rem 0.875rem 0.875rem 0.25rem; padding: 0.875rem 1.125rem; font-size: 0.9375rem; white-space: pre-wrap; word-break: break-word; }
+    .previa-card.vazia { background: var(--creme-2); color: var(--tinta-2); font-style: italic; }
+    .lista-docs-config { display: flex; flex-direction: column; }
+    .linha-doc-config { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.625rem 0; border-bottom: 1px solid var(--linha); font-size: 0.9375rem; }
+    .linha-doc-config:last-child { border-bottom: none; }
+    .linha-doc-config label { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; min-height: var(--alvo); }
+    .linha-doc-config input[type="checkbox"] { width: 1.25rem; height: 1.25rem; }
+    .campo-erro-texto { font-size: 0.875rem; color: var(--perigo); margin-top: 0.375rem; }
+    .campo-erro-texto[hidden] { display: none; }
+    .rodape-config { display: flex; align-items: center; flex-wrap: wrap; gap: 0.75rem; padding: 1.25rem 0 0; border-top: 1px solid var(--borda); }
+    .msg-erro-inline { margin-top: 0.625rem; font-size: 0.9375rem; color: #7E1A14; background: var(--perigo-fundo); border: 1px solid var(--perigo-borda); padding: 0.5rem 0.75rem; border-radius: 0.5rem; }
+    .msg-sucesso-inline { font-size: 0.9375rem; color: #0B4F23; background: #E0F3E7; border: 1px solid #BEE3CB; padding: 0.5rem 0.75rem; border-radius: 0.5rem; }
+    .msg-erro-inline[hidden], .msg-sucesso-inline[hidden] { display: none; }
+    .cfg-controles { min-width: 0; }
+    .cabecalho-card-etq { display: contents; }
+    .lista-etq-config { display: flex; flex-direction: column; margin-top: 0.875rem; }
+    .linha-etq-config { display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0; border-bottom: 1px solid var(--linha); }
+    .linha-etq-config:last-child { border-bottom: none; }
+    .linha-etq-config .chips-etq { flex: 1; min-width: 0; }
+    .linha-etq-config .uso { font-size: 0.875rem; color: var(--tinta-2); white-space: nowrap; }
+    .linha-etq-config .chip-etq { min-height: 1.75rem; font-size: 0.875rem; }
+    .linha-etq-config .chip-etq.barra { height: 0.75rem; min-height: 0.75rem; width: 3.5rem; }
+
+    /* --- ETIQUETAS COLORIDAS (as cores vêm do catálogo) --- */
+    .chips-etq { display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; }
+    .chips-etq:empty { display: none; }
+    .chip-etq { display: inline-flex; align-items: center; max-width: 100%; min-height: 1.375rem; padding: 0.125rem 0.625rem; border-radius: 0.375rem; font-size: 0.8125rem; font-weight: 600; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .14); }
+    .chip-etq.compacto { min-height: 1.125rem; padding: 0.0625rem 0.5rem; font-size: 0.75rem; }
+    .chip-etq.barra { width: 2.5rem; min-width: 2.5rem; height: 0.5rem; min-height: 0.5rem; padding: 0; }
+    .chip-etq.barra.compacto { width: 2rem; min-width: 2rem; }
+    .chips-lista { margin-top: 0.125rem; }
+    .filtro-etiquetas { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; margin: 0.875rem 0 0; }
+    .filtro-etiquetas[hidden] { display: none; }
+    .filtro-etiquetas .rotulo-filtro { font-size: 0.8125rem; font-weight: 600; color: var(--tinta-2); margin-right: 0.25rem; }
+    .btn-filtro-etq { background: transparent; border: 2px solid transparent; border-radius: 0.5rem; padding: 0.125rem; min-height: var(--alvo); display: inline-flex; align-items: center; }
+    .btn-filtro-etq[aria-pressed="true"] { border-color: var(--tinta); }
+    .btn-limpar-filtro-etq { background: none; border: none; color: var(--verde-texto); font-weight: 600; font-size: 0.875rem; text-decoration: underline; min-height: var(--alvo); }
+
+    /* --- ESTATÍSTICAS --- */
+    .dash-filtros { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 0.875rem; margin: 0.25rem 0 1.5rem; }
+    .dash-filtros label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8125rem; font-weight: 600; color: var(--tinta-2); }
+    .dash-filtros input, .dash-filtros select { font-size: 0.9375rem; min-height: 2.5rem; padding: 0.375rem 0.625rem; }
+    .dash-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border-top: 1px solid var(--borda); border-bottom: 1px solid var(--borda); margin-bottom: 1.75rem; }
+    .dash-kpi-card { padding: 1rem 1.25rem; border-left: 1px solid var(--borda); }
+    .dash-kpi-card:first-child { border-left: none; padding-left: 0.25rem; }
+    .dash-kpi-rotulo { display: flex; align-items: flex-start; gap: 0.5rem; min-height: 2.75em; font-size: 0.875rem; line-height: 1.3; color: var(--tinta-2); font-weight: 600; margin-bottom: 0.375rem; }
+    .dash-kpi-rotulo::before { content: ""; width: 0.5rem; height: 0.5rem; margin-top: 0.3em; border-radius: 50%; background: var(--ponto, #B9B1A2); flex: 0 0 auto; }
+    .dash-kpi-concluidas { --ponto: var(--status-concluida); }
+    .dash-kpi-em-analise { --ponto: var(--status-em-analise); }
+    .dash-kpi-pendente-assinatura { --ponto: var(--status-pendente-assinatura); }
+    .dash-kpi-reprovadas { --ponto: var(--status-reprovado); }
+    .dash-kpi-valor { font-family: var(--fonte-titulo); font-weight: 500; font-size: 2.25rem; line-height: 1.05; color: var(--floresta); }
+    .dash-kpi-percentual { font-size: 0.875rem; font-weight: 600; color: var(--verde-texto); margin-top: 0.125rem; }
+    .dash-graficos { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+    .dash-grafico-wrap { background: var(--papel); border: 1px solid var(--borda); border-radius: 0.875rem; padding: 1.25rem; min-width: 0; }
+    .dash-grafico-wrap h3 { margin: 0 0 0.75rem; font-size: 1.125rem; }
+
+    /* --- PÁGINA INDIVIDUAL DO CANDIDATO (#/candidato/<id>) --- */
+    body.modo-candidato .faixa-metricas { display: none; }
+    .pc-voltar { margin-bottom: 1rem; }
+    .pagina-candidato { display: flex; flex-direction: column; gap: 1.25rem; }
+    .pc-card { background: var(--papel); border: 1px solid var(--borda); border-radius: 0.875rem; padding: 1.5rem; }
+    .pc-titulo-secao { margin: 0 0 0.875rem; font-size: 1.1875rem; }
+    .pc-cabecalho { display: flex; flex-direction: column; gap: 1rem; background: var(--creme-2); border-radius: 1.125rem 1.125rem 1.125rem 0.375rem; border-color: var(--linha); }
+    .pc-titulo-linha { display: flex; align-items: center; flex-wrap: wrap; gap: 0.875rem; }
+    .avatar-grande { width: 4rem; height: 4rem; font-size: 1.25rem; }
+    .pc-nome { margin: 0; font-size: 2rem; word-break: break-word; }
+    .pc-nome:focus { outline: none; }
+    .selo-banco { background: var(--creme); border: 1px solid var(--borda); color: #4B473F; font-size: 0.8125rem; font-weight: 600; padding: 0.1875rem 0.75rem; border-radius: 999px; }
+    .pc-acoes { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .pc-acoes .btn-acao { min-height: 2.5rem; padding: 0.375rem 1rem; font-size: 0.9375rem; }
+    .pc-dados { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 1rem 1.5rem; margin: 0; }
+    .pc-dados > div { min-width: 0; }
+    .pc-dados dt { font-size: 0.8125rem; font-weight: 600; color: var(--tinta-2); margin-bottom: 0.125rem; }
+    .pc-dados dd { margin: 0; word-break: break-word; }
+    .pc-dados .largo { grid-column: 1 / -1; }
+    .pc-etq-topo { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.75rem; }
+    .pc-etq-topo .pc-titulo-secao { margin: 0; }
+    .pc-etq .chips-etq:empty { display: block; font-size: 0.9375rem; color: var(--tinta-2); }
+    .pc-etq .chips-etq:empty::before { content: attr(data-vazio); }
+    .pc-etq .chip-etq { min-height: 1.75rem; font-size: 0.875rem; }
+    .pc-etq .chip-etq.barra { min-height: 0.625rem; height: 0.625rem; width: 3.5rem; }
+    .pc-colunas { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+    .pc-coluna { display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
+    .pc-card .secao-decisao, .pc-card .secao-contrato-rh, .pc-card .secao-auditoria-lgpd, .pc-card .secao-chat { margin-top: 0; padding-top: 0; border-top: none; }
+    .pc-card .lista-mensagens { max-height: 22rem; }
+    .pc-vazio { text-align: center; padding: 3rem 1.5rem; }
+    .pc-vazio p { color: var(--tinta-2); margin: 0 0 1rem; }
+
+    /* --- MODAIS E AVISOS --- */
+    .modal-fundo { position: fixed; inset: 0; z-index: 100; background: rgba(23, 33, 27, .55); display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .modal-fundo[hidden] { display: none; }
+    .modal-fundo.empilhado { z-index: 120; }
+    .modal-caixa { background: var(--papel); border: 1px solid var(--borda); border-radius: 1.125rem 1.125rem 1.125rem 0.5rem; box-shadow: 0 16px 48px rgba(15, 30, 22, .3); padding: 1.5rem; width: 100%; max-width: 28.75rem; max-height: calc(100vh - 2rem); overflow-y: auto; }
+    .modal-caixa.larga { max-width: 32.5rem; }
+    .modal-caixa h3 { margin: 0 0 0.5rem; font-size: 1.375rem; }
+    .modal-caixa p { margin: 0 0 0.875rem; color: var(--tinta-2); }
+    .modal-caixa label { display: block; margin-bottom: 0.375rem; }
+    .modal-caixa input[type="text"] { width: 100%; }
+    .modal-caixa small { display: block; margin-top: 0.375rem; font-size: 0.875rem; color: var(--tinta-2); }
+    .modal-acoes { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.25rem; }
+    .modal-acoes[hidden] { display: none; }
+    .modal-acoes .espaco { margin-right: auto; }
+    .btn-modal.perigo { background: var(--perigo); border-color: var(--perigo); color: #ffffff; }
+    .btn-modal.perigo:hover:not(:disabled) { background: #8A1B14; border-color: #8A1B14; }
+    .btn-modal.perigo-contorno { color: var(--perigo); border-color: var(--perigo-borda); }
+    .btn-modal.perigo-contorno:hover:not(:disabled) { background: var(--perigo-fundo); border-color: var(--perigo); }
+    .toast-rh { position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 130; max-width: 22.5rem; padding: 0.75rem 1rem; border-radius: 0.75rem 0.75rem 0.25rem 0.75rem; font-size: 0.9375rem; font-weight: 600; color: #FBF8F3; background: var(--tinta); box-shadow: 0 10px 30px rgba(15, 30, 22, .3); }
+    .toast-rh.sucesso { background: var(--floresta); }
+    .toast-rh.erro { background: var(--perigo); }
+    .toast-rh[hidden] { display: none; }
+
+    .etq-lista { display: flex; flex-direction: column; gap: 0.375rem; margin: 0.75rem 0; max-height: 18.75rem; overflow-y: auto; padding: 0.125rem; }
+    .etq-linha { display: flex; align-items: center; gap: 0.5rem; }
+    .etq-linha label.etq-marca { flex: 1; min-width: 0; display: flex; align-items: center; gap: 0.625rem; margin: 0; font-weight: 400; cursor: pointer; min-height: var(--alvo); }
+    .etq-linha .etq-chip-wrap { flex: 1; min-width: 0; display: flex; }
+    .etq-linha .chip-etq { flex: 1; min-height: 2rem; font-size: 0.9375rem; border-radius: 0.375rem; }
+    .etq-linha .chip-etq.barra { width: auto; min-width: 0; height: 2rem; }
+    .etq-linha input[type="checkbox"] { width: 1.25rem; height: 1.25rem; flex: 0 0 auto; }
+    .btn-icone { flex: 0 0 auto; width: var(--alvo); height: var(--alvo); display: inline-flex; align-items: center; justify-content: center; background: var(--papel); border: 1px solid #D9D2C5; border-radius: 0.5rem; color: var(--tinta); }
+    .btn-icone:hover { background: var(--menta); border-color: var(--verde-hover); }
+    .etq-vazio { font-size: 0.9375rem; color: var(--tinta-2); padding: 0.625rem 0.125rem; }
+    .rotulo-campo { font-size: 0.875rem; font-weight: 600; margin: 1rem 0 0.375rem; }
+    .paleta { display: grid; grid-template-columns: repeat(auto-fill, minmax(2.875rem, 1fr)); gap: 0.375rem; }
+    .cor-opcao { height: 2.5rem; border-radius: 0.375rem; border: none; display: grid; place-items: center; box-shadow: inset 0 0 0 1px rgba(15, 23, 42, .14); }
+    .cor-opcao[aria-pressed="true"] { outline: 3px solid var(--tinta); outline-offset: 1px; }
+    .linha-cor-livre { display: flex; align-items: center; gap: 0.625rem; margin-top: 0.75rem; }
+    .linha-cor-livre label { margin: 0; }
+    .linha-cor-livre input[type="color"] { width: 2.75rem; height: 2.25rem; padding: 0; border: 1px solid #D9D2C5; border-radius: 0.375rem; background: var(--papel); cursor: pointer; }
+    .previa-etq { margin-top: 0.875rem; display: flex; align-items: center; gap: 0.625rem; font-size: 0.875rem; font-weight: 600; color: var(--tinta-2); }
+    .previa-etq .chip-etq { font-size: 0.9375rem; min-height: 1.875rem; }
+    .previa-etq .chip-etq.barra { height: 0.875rem; min-height: 0.875rem; }
+    .confirmar-excluir-etq { margin-top: 0.875rem; padding: 0.75rem 0.875rem; border-radius: 0.625rem; background: var(--perigo-fundo); border: 1px solid var(--perigo-borda); color: #6E1A13; font-size: 0.9375rem; }
+    .confirmar-excluir-etq[hidden] { display: none; }
+    .confirmar-excluir-etq .modal-acoes { margin-top: 0.625rem; }
+    .modal-talentos-etq { display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
+    .modal-talentos-etq .chips-etq:empty { display: block; font-size: 0.9375rem; color: var(--tinta-2); }
+    .modal-talentos-etq .chips-etq:empty::before { content: attr(data-vazio); }
+
+    /* --- TABLET E CELULAR: menu recolhível --- */
+    @media (max-width: 1100px) {
+      .pc-colunas { grid-template-columns: 1fr; }
+      .card-config { grid-template-columns: 1fr; }
     }
-    .dash-kpi-percentual {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--verde-intelbras-escuro);
-      margin-top: 2px;
-    }
-    .dash-graficos {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-    }
-    .dash-grafico-wrap {
-      border: 1px solid var(--cinza-borda);
-      border-radius: 8px;
-      padding: 14px;
-    }
-    .dash-grafico-wrap h3 {
-      margin: 0 0 10px;
-      font-size: 14px;
-      color: #1a252f;
-    }
-    @media (max-width: 860px) {
-      .dash-kpis { grid-template-columns: repeat(2, 1fr); }
+    @media (max-width: 900px) {
+      .topo-mobile { display: flex; align-items: center; gap: 0.75rem; position: sticky; top: 0; z-index: 40; background: var(--floresta); color: #FBF8F3; padding: 0.5rem 1rem; }
+      .topo-mobile .logo { padding: 0; font-size: 1.125rem; }
+      .topo-mobile :focus-visible { outline-color: #FBF8F3; }
+      .btn-hamburguer { width: var(--alvo); height: var(--alvo); display: inline-flex; align-items: center; justify-content: center; background: rgba(251, 248, 243, 0.12); border: 1px solid rgba(251, 248, 243, 0.3); border-radius: 0.5rem; color: #FBF8F3; }
+      .sidebar { width: min(var(--largura-sidebar), 86vw); transform: translateX(-100%); transition: transform 0.2s ease; }
+      .sidebar.aberta { transform: translateX(0); box-shadow: 4px 0 24px rgba(15, 30, 22, .35); }
+      .overlay-sidebar.visivel { display: block; position: fixed; inset: 0; background: rgba(23, 33, 27, .5); z-index: 45; }
+      .conteudo { margin-left: 0; padding: 1.25rem 1rem 2rem; }
+      .faixa-metricas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .metrica { border-left: none; padding: 1rem 0.5rem; }
+      .metrica:nth-child(even) { border-left: 1px solid var(--borda); padding-left: 1.25rem; }
+      .metrica:nth-child(n+3) { border-top: 1px solid var(--borda); }
+      .metrica-valor { font-size: 2.25rem; }
+      .btn-filtro, .btn-atualizar, .btn-exportar, .btn-acao { min-height: var(--alvo); }
+      .dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .dash-kpi-card { border-left: none; padding: 0.875rem 0.5rem; border-top: 1px solid var(--borda); }
+      .dash-kpi-card:nth-child(-n+2) { border-top: none; }
+      .dash-kpi-card:nth-child(even) { border-left: 1px solid var(--borda); padding-left: 1.25rem; }
       .dash-graficos { grid-template-columns: 1fr; }
     }
-
-    /* --- TABELA DE GESTÃO --- */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-      font-size: 13px;
+    @media (max-width: 600px) {
+      .pc-card { padding: 1rem; }
+      .pc-nome { font-size: 1.625rem; }
+      .pc-etq-topo { flex-wrap: wrap; }
+      .toast-rh { left: 1rem; right: 1rem; max-width: none; }
     }
-    thead th {
-      background-color: #1a252f;
-      color: #ffffff;
-      text-align: left;
-      padding: 10px;
-      font-weight: 600;
-    }
-    tbody td {
-      padding: 10px;
-      border-bottom: 1px solid #e6e9ee;
-      vertical-align: middle;
-    }
-    tbody tr:hover {
-      background-color: #f8f9fb;
-    }
-    .badge {
-      display: inline-block;
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-weight: bold;
-      font-size: 11px;
-      color: #ffffff;
-      white-space: nowrap;
-    }
-    .badge-em-analise          { background-color: var(--status-em-analise); }
-    .badge-pendente-assinatura { background-color: var(--status-pendente-assinatura); }
-    .badge-concluida           { background-color: var(--status-concluida); }
-    .badge-reprovado           { background-color: var(--status-reprovado); }
-
-    .acoes {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-    .btn-acao {
-      border: none;
-      padding: 6px 10px;
-      font-size: 12px;
-      font-weight: bold;
-      border-radius: 4px;
-      cursor: pointer;
-      color: #ffffff;
-    }
-    .btn-pendente { background-color: var(--vermelho); }
-    .btn-pendente:hover { background-color: #b02a37; }
-    .btn-analise  { background-color: var(--amarelo); color: #212529; }
-    .btn-analise:hover  { background-color: #e0a800; }
-    .btn-aprovar  { background-color: var(--verde); }
-    .btn-aprovar:hover  { background-color: #218838; }
-    .btn-acao:disabled {
-      opacity: 0.45;
-      cursor: not-allowed;
-    }
-    .vazio {
-      text-align: center;
-      padding: 30px;
-      color: #6c757d;
-    }
-
-    /* --- BARRA SUPERIOR DE NAVEGAÇÃO ENTRE TELAS --- */
-    .barra-navegacao {
-      display: flex;
-      justify-content: flex-end;
-      margin-bottom: 10px;
-    }
-    .area-sessao {
-      flex: 1;
-      font-size: 13px;
-      color: #6c757d;
-    }
-    .area-sessao button {
-      background: none;
-      border: none;
-      color: var(--vermelho);
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      padding: 0;
-      margin-left: 6px;
-      text-decoration: underline;
-    }
-
-    /* --- CARD "CONTRATO ASSINADO" --- */
-    .secao-contrato-rh {
-      margin-top: 16px;
-      padding-top: 14px;
-      border-top: 1px solid var(--cinza-borda);
-    }
-    .status-contrato-rh {
-      font-size: 12px;
-      padding: 8px 10px;
-      border-radius: 4px;
-      margin-bottom: 10px;
-    }
-    .status-contrato-rh.info { background: rgba(0, 163, 53, 0.1); color: #00812a; }
-    .status-contrato-rh.aviso { background: rgba(255, 193, 7, 0.15); color: #7a5c00; }
-    .status-contrato-rh.sucesso { background: rgba(40, 167, 69, 0.15); color: #14532d; font-weight: 700; }
-    .btn-validar-contrato {
-      background-color: var(--verde-intelbras);
-      color: #ffffff;
-      border: none;
-      padding: 8px 14px;
-      font-size: 12px;
-      font-weight: bold;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .btn-validar-contrato:hover { background-color: var(--verde-intelbras-escuro); }
-
-    /* --- TRILHA DE AUDITORIA E CONFORMIDADE LGPD --- */
-    .secao-auditoria-lgpd {
-      margin-top: 16px;
-      padding-top: 14px;
-      border-top: 1px solid var(--cinza-borda);
-    }
-    .linha-auditoria-lgpd {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      font-size: 12px;
-      margin-bottom: 6px;
-    }
-    .rotulo-auditoria-lgpd { font-weight: 700; }
-    .valor-auditoria-ok { color: var(--verde-intelbras-escuro); }
-    .valor-auditoria-pendente { color: #6c757d; font-style: italic; }
-
-    /* --- BOTÃO "VER DOCUMENTOS" E LINHA DE DETALHES EXPANSÍVEL --- */
-    .btn-documentos { background-color: #1a252f; }
-    .btn-documentos:hover { background-color: #0f151b; }
-
-    /* --- BOTÃO "COPIAR LINK" --- */
-    .btn-copiar-link {
-      background: none;
-      border: 1px solid var(--cinza-borda);
-      color: var(--texto);
-    }
-    .btn-copiar-link:hover { background-color: #f4f6f9; }
-    .btn-copiar-link.copiado {
-      background-color: var(--verde-intelbras);
-      border-color: var(--verde-intelbras);
-      color: #ffffff;
-    }
-
-    .linha-detalhes td {
-      background: var(--cinza-barra);
-      padding: 16px 18px;
-    }
-    .linha-detalhes[hidden] { display: none; }
-
-    .grade-documentos {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 10px;
-    }
-    .item-documento {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-      background: #ffffff;
-      border: 1px solid var(--cinza-borda);
-      border-radius: 6px;
-      padding: 10px 12px;
-      font-size: 12px;
-    }
-    .item-documento-titulo { font-weight: 600; }
-    .item-documento-situacao {
-      font-size: 11px;
-      color: #6c757d;
-    }
-    .btn-pdf {
-      flex: 0 0 auto;
-      background-color: var(--verde-intelbras);
-      color: #ffffff;
-      border: none;
-      padding: 6px 10px;
-      font-size: 11px;
-      font-weight: bold;
-      border-radius: 4px;
-      cursor: pointer;
-      text-decoration: none;
-      white-space: nowrap;
-    }
-    .btn-pdf:hover { background-color: var(--verde-intelbras-escuro); }
-
-    .item-documento {
-      flex-direction: column;
-      align-items: stretch;
-      gap: 8px;
-    }
-    .item-documento-linha-principal {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-    }
-
-    /* --- BADGE DE DECISÃO FINAL (na linha principal da tabela) --- */
-    .badge-decisao {
-      display: inline-block;
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-weight: bold;
-      font-size: 11px;
-      color: #ffffff;
-      white-space: nowrap;
-      margin-left: 6px;
-    }
-    .badge-decisao-aprovado { background-color: var(--verde); }
-    .badge-decisao-reprovado { background-color: var(--vermelho); }
-
-    /* --- AÇÕES INDIVIDUAIS DO DOCUMENTO (Aceitar / Marcar pendência) --- */
-    .acoes-documento {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      align-items: center;
-    }
-    .btn-aceitar-documento {
-      background-color: var(--verde);
-      color: #ffffff;
-      border: none;
-      padding: 4px 10px;
-      font-size: 11px;
-      font-weight: bold;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .btn-aceitar-documento:hover { background-color: #218838; }
-    .badge-documento-aceito {
-      color: var(--verde);
-      font-size: 11px;
-      font-weight: bold;
-    }
-
-    /* --- PENDÊNCIA DE DOCUMENTO --- */
-    .btn-marcar-pendencia {
-      background: none;
-      border: 1px solid var(--vermelho);
-      color: var(--vermelho);
-      padding: 4px 8px;
-      font-size: 11px;
-      font-weight: bold;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .btn-marcar-pendencia:hover { background-color: rgba(220, 53, 69, 0.08); }
-    .form-pendencia { display: flex; flex-direction: column; gap: 6px; }
-    .form-pendencia[hidden] { display: none; }
-    .form-pendencia textarea {
-      width: 100%;
-      font-size: 12px;
-      font-family: inherit;
-      padding: 6px 8px;
-      border: 1px solid var(--cinza-borda);
-      border-radius: 4px;
-      resize: vertical;
-      min-height: 50px;
-    }
-    .form-pendencia .acoes-form { display: flex; gap: 6px; }
-    .btn-confirmar-pendencia {
-      background-color: var(--vermelho);
-      color: #ffffff;
-      border: none;
-      padding: 6px 10px;
-      font-size: 11px;
-      font-weight: bold;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .btn-cancelar-pendencia {
-      background: none;
-      border: 1px solid var(--cinza-borda);
-      color: #6c757d;
-      padding: 6px 10px;
-      font-size: 11px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .aviso-pendencia-ativa {
-      background: rgba(220, 53, 69, 0.08);
-      border-left: 3px solid var(--vermelho);
-      padding: 6px 8px;
-      font-size: 11px;
-      color: #7a1220;
-      border-radius: 4px;
-    }
-
-    /* --- DECISÃO FINAL --- */
-    .secao-decisao {
-      margin-top: 16px;
-      padding-top: 14px;
-      border-top: 1px solid var(--cinza-borda);
-    }
-    .secao-titulo {
-      font-size: 13px;
-      font-weight: 700;
-      margin-bottom: 8px;
-    }
-    .btn-decisao {
-      border: none;
-      padding: 8px 14px;
-      font-size: 12px;
-      font-weight: bold;
-      border-radius: 4px;
-      cursor: pointer;
-      color: #ffffff;
-      margin-right: 8px;
-    }
-    .btn-aprovar-candidato { background-color: var(--verde); }
-    .btn-aprovar-candidato:hover { background-color: #218838; }
-    .btn-reprovar-candidato { background-color: var(--vermelho); }
-    .btn-reprovar-candidato:hover { background-color: #b02a37; }
-    .btn-decisao:disabled { opacity: 0.45; cursor: not-allowed; }
-    .btn-confirmar-decisao { background-color: var(--verde-intelbras); }
-    .btn-confirmar-decisao:hover { background-color: var(--verde-intelbras-escuro); }
-    .confirmar-decisao {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 10px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-    .confirmar-decisao[hidden] { display: none; }
-
-    /* --- CHAT RH <-> CANDIDATO --- */
-    .secao-chat {
-      margin-top: 16px;
-      padding-top: 14px;
-      border-top: 1px solid var(--cinza-borda);
-    }
-    .lista-mensagens {
-      max-height: 180px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-bottom: 10px;
-      padding-right: 4px;
-    }
-    .mensagem {
-      max-width: 80%;
-      padding: 8px 10px;
-      border-radius: 8px;
-      font-size: 12px;
-    }
-    .mensagem-rh {
-      align-self: flex-end;
-      background: rgba(0, 163, 53, 0.12);
-    }
-    .mensagem-candidato {
-      align-self: flex-start;
-      background: #eef0f2;
-    }
-    .mensagem-cabecalho {
-      font-size: 10px;
-      font-weight: 700;
-      color: #6c757d;
-      margin-bottom: 3px;
-    }
-    .mensagem-vazia { font-size: 12px; color: #6c757d; }
-    .form-chat { display: flex; gap: 8px; }
-    .form-chat textarea {
-      flex: 1;
-      font-size: 12px;
-      font-family: inherit;
-      padding: 8px 10px;
-      border: 1px solid var(--cinza-borda);
-      border-radius: 4px;
-      resize: vertical;
-      min-height: 40px;
-    }
-    .btn-enviar-mensagem {
-      background-color: var(--verde-intelbras);
-      color: #ffffff;
-      border: none;
-      padding: 0 16px;
-      font-size: 12px;
-      font-weight: bold;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .btn-enviar-mensagem:hover { background-color: var(--verde-intelbras-escuro); }
-
-    /* --- BUSCA POR NOME OU CPF --- */
-    .barra-busca { margin-top: 20px; }
-    .campo-busca {
-      width: 100%;
-      max-width: 360px;
-      padding: 10px 14px;
-      font-size: 14px;
-      border: 1px solid var(--cinza-borda);
-      border-radius: 20px;
-      outline: none;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-    .campo-busca:focus {
-      border-color: var(--verde-intelbras);
-      box-shadow: 0 0 0 3px rgba(0, 163, 53, 0.15);
-    }
-
-    /* --- FILTROS POR DECISÃO --- */
-    .barra-filtros {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin: 10px 0;
-    }
-    .btn-filtro {
-      background: #ffffff;
-      border: 1px solid var(--cinza-borda);
-      color: var(--texto);
-      padding: 7px 14px;
-      font-size: 12px;
-      font-weight: 600;
-      border-radius: 20px;
-      cursor: pointer;
-      transition: background-color 0.2s, border-color 0.2s, color 0.2s;
-    }
-    .btn-filtro:hover { border-color: var(--verde-intelbras); }
-    .btn-filtro.ativo {
-      background-color: var(--verde-intelbras);
-      border-color: var(--verde-intelbras);
-      color: #ffffff;
-    }
-
-    /* --- SETA INDICADORA DE EXPANSÃO --- */
-    .seta-expandir {
-      display: inline-block;
-      margin-left: 6px;
-      transition: transform 0.2s ease;
-    }
-    .btn-documentos[aria-expanded="true"] .seta-expandir { transform: rotate(180deg); }
-
-    /* --- IMPRESSÃO / PDF DA FICHA INDIVIDUAL --- */
-    .secao-impressao {
-      margin-top: 16px;
-      padding-top: 14px;
-      border-top: 1px solid var(--cinza-borda);
-    }
-    .btn-imprimir {
-      background-color: #1a252f;
-      color: #ffffff;
-      border: none;
-      padding: 8px 14px;
-      font-size: 12px;
-      font-weight: bold;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .btn-imprimir:hover { background-color: #0f151b; }
   </style>
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+    <defs>
+      <symbol id="i-logo" viewBox="0 0 40 40"><path style="fill:var(--logo-fundo,#0F3D2A)" d="M21 2.5c10 .4 17.5 7.2 17 17.6C37.5 31 30 37.8 19.8 37.5 9.5 37 2 30 2.4 19.5 2.8 9.2 11 2.1 21 2.500z"/><path d="M20 30V20.5" fill="none" style="stroke:var(--logo-broto,#FBF8F3)" stroke-width="2.4" stroke-linecap="round"/><path d="M20.5 21c0-5.2 3-8.2 8.2-8.2 0 5.2-3 8.2-8.2 8.200z" fill="#00A335"/><path d="M19.5 25c0-4.2-2.6-6.7-7-6.7 0 4.2 2.6 6.7 7 6.7z" style="fill:var(--logo-broto,#FBF8F3)"/></symbol>
+      <symbol id="i-doc" viewBox="0 0 24 24"><path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></symbol>
+      <symbol id="i-caneta" viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.500a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14.5 6.500l3 3"/><path d="M12 21h8"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.500l2.7 2.700L16 9.5"/></symbol>
+      <symbol id="i-pessoa" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.4 7-5.400s6.2 1.8 7 5.4"/></symbol>
+      <symbol id="i-pessoas" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.2"/><path d="M3 19.500c.6-3.2 3-4.8 6-4.800s5.4 1.6 6 4.8"/><path d="M16 5.600a3 3 0 0 1 0 5.8"/><path d="M18 15.200c1.8.6 2.9 2 3.2 4.3"/></symbol>
+      <symbol id="i-alerta" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.500v5"/><path d="M12 16.200v.1"/></symbol>
+      <symbol id="i-fechar" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+      <symbol id="i-seta-esq" viewBox="0 0 24 24"><path d="M14.5 6l-6 6 6 6"/></symbol>
+      <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+      <symbol id="i-relogio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.200l3.3 2"/></symbol>
+      <symbol id="i-busca" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.500L20 20"/></symbol>
+      <symbol id="i-coracao" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-7.5-10.200A4.3 4.3 0 0 1 12 7.200a4.3 4.3 0 0 1 7.5 2.600C19.5 15.4 12 20 12 20z"/></symbol>
+      <symbol id="i-broto" viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 13c0-4.2 2.6-6.8 7-6.8 0 4.2-2.6 6.8-7 6.800z"/><path d="M12 16.500c0-3.4-2.2-5.5-6-5.5 0 3.4 2.2 5.5 6 5.500z"/></symbol>
+      <symbol id="i-brilho" viewBox="0 0 24 24"><path d="M11 3.500l1.9 5.1 5.1 1.9-5.1 1.900L11 17.500l-1.9-5.100L4 10.500l5.1-1.900z"/><path d="M18.5 16.500v3.500M16.750 18.250h3.5"/></symbol>
+      <symbol id="i-festa" viewBox="0 0 24 24"><path d="M5 20l4.2-11.2 6.9 6.900z"/><path d="M13 4.500l.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6z"/><path d="M18 10.500l.5 1.2 1.2.5-1.2.5-.5 1.2-.5-1.2-1.2-.5 1.2-.5z"/></symbol>
+      <symbol id="i-alto-falante" viewBox="0 0 24 24"><path d="M11 5L6.5 9h-3v6h3L11 19z"/><path d="M15.5 9.200a4 4 0 0 1 0 5.6"/><path d="M18.2 6.600a7.6 7.6 0 0 1 0 10.8"/></symbol>
+      <symbol id="i-parar" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5"/></symbol>
+      <symbol id="i-engrenagem" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><circle cx="12" cy="12" r="6.8"/><path d="M12 2.500v2.200M12 19.300v2.200M2.5 12h2.200M19.3 12h2.200M5.3 5.300l1.5 1.500M17.2 17.200l1.5 1.500M18.7 5.300l-1.5 1.500M6.8 17.200l-1.5 1.5"/></symbol>
+      <symbol id="i-pasta" viewBox="0 0 24 24"><path d="M3.5 7.500A1.5 1.5 0 0 1 5 6h4.200l2 2.300H19a1.5 1.5 0 0 1 1.5 1.500v7.700A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.500z"/></symbol>
+      <symbol id="i-grafico" viewBox="0 0 24 24"><path d="M4 4v16h16"/><rect x="7.5" y="11" width="3" height="6" rx=".8"/><rect x="13" y="7" width="3" height="10" rx=".8"/></symbol>
+      <symbol id="i-sair" viewBox="0 0 24 24"><path d="M10 4H6.500A1.5 1.5 0 0 0 5 5.500v13A1.5 1.5 0 0 0 6.5 20H10"/><path d="M14.5 8l4 4-4 4"/><path d="M18.5 12h-9"/></symbol>
+      <symbol id="i-etiqueta" viewBox="0 0 24 24"><path d="M3.5 12.200V5.500A1.5 1.5 0 0 1 5 4h6.700l8 8-7.7 7.700z"/><circle cx="8.3" cy="8.3" r="1.2"/></symbol>
+      <symbol id="i-lixeira" viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M9.5 7V4.800h5V7"/><path d="M6.8 7l.8 12.200h8.800L17.2 7"/><path d="M10 11v5M14 11v5"/></symbol>
+      <symbol id="i-lapis" viewBox="0 0 24 24"><path d="M4 20l.9-4L16 4.900a2 2 0 0 1 2.8 2.800L7.7 18.800z"/><path d="M14.3 6.600l2.8 2.8"/></symbol>
+      <symbol id="i-mais" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-menos" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 12.200c0 3.8-3.6 6.8-8 6.8-1.2 0-2.3-.2-3.3-.6L4 20l1.2-3.600C4.4 15.3 4 13.8 4 12.2 4 8.4 7.6 5.4 12 5.400s8 3 8 6.800z"/></symbol>
+      <symbol id="i-atualizar" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 0 1-13 5"/><path d="M4.5 12a7.5 7.5 0 0 1 13-5"/><path d="M17.5 3.500v4h-4"/><path d="M6.5 20.500v-4h4"/></symbol>
+      <symbol id="i-cadeado" viewBox="0 0 24 24"><rect x="5.5" y="10.5" width="13" height="9.5" rx="2"/><path d="M8.5 10.500V8a3.5 3.5 0 0 1 7 0v2.5"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V5"/><path d="M7.5 9.500L12 5l4.5 4.5"/><path d="M5 15.500V18a1.5 1.5 0 0 0 1.5 1.500h11A1.5 1.5 0 0 0 19 18v-2.5"/></symbol>
+      <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l2.8-2.800a4 4 0 0 0-5.7-5.700L11.7 6.6"/><path d="M14 10a4 4 0 0 0-5.7 0l-2.8 2.800a4 4 0 0 0 5.7 5.700l1.1-1.1"/></symbol>
+      <symbol id="i-baixar" viewBox="0 0 24 24"><path d="M12 5v11"/><path d="M7.5 12L12 16.5 16.5 12"/><path d="M5 19.500h14"/></symbol>
+          <symbol id="i-ok" viewBox="0 0 24 24"><path d="M5.5 12.5l4.2 4.2L18.5 7.5"/></symbol>
+      <symbol id="i-enviar" viewBox="0 0 24 24"><path d="M20.5 3.5L10 14"/><path d="M20.5 3.5l-6.5 17-3.5-7-7-3.5z"/></symbol>
+    </defs>
+  </svg>
 
-  <div class="container">
-    <div class="barra-navegacao">
-      <span class="area-sessao" id="areaSessaoRh"></span>
+  <!-- Barra superior só em telas estreitas: botão que abre a sidebar recolhível -->
+  <header class="topo-mobile">
+    <button type="button" class="btn-hamburguer" id="btnMenu" aria-label="Abrir menu" aria-controls="sidebar" aria-expanded="false">
+      <svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg>
+    </button>
+    <div class="logo">
+      <svg class="ic ic-logo" aria-hidden="true" style="--logo-fundo:#FBF8F3;--logo-broto:#0F3D2A"><use href="#i-logo"/></svg>
+      <span>Onboarding Digital</span>
+    </div>
+  </header>
+  <div class="overlay-sidebar" id="overlaySidebar"></div>
+
+  <aside class="sidebar" id="sidebar" aria-label="Navegação principal">
+    <div class="logo">
+      <svg class="ic ic-logo" aria-hidden="true"><use href="#i-logo"/></svg>
+      <span>Onboarding Digital</span>
     </div>
 
-    <!-- ABAS DO PAINEL -->
-    <div class="abas-painel" role="tablist" aria-label="Seções do painel do RH">
-      <button type="button" class="btn-aba ativo" data-aba="gestao" role="tab" aria-selected="true">Gestão de Candidatos</button>
-      <button type="button" class="btn-aba" data-aba="estatisticas" role="tab" aria-selected="false">Estatísticas &amp; Relatórios</button>
+    <!-- ABAS DO PAINEL (data-aba é usado pelo JS) -->
+    <nav class="nav-painel abas-painel" aria-label="Seções do painel do RH">
+      <button type="button" class="btn-aba ativo" data-aba="gestao" aria-current="page">
+        <svg class="ic" aria-hidden="true"><use href="#i-pessoas"/></svg>
+        Gestão de Candidatos</button>
+      <button type="button" class="btn-aba" data-aba="talentos">
+        <svg class="ic" aria-hidden="true"><use href="#i-pasta"/></svg>
+        Banco de Talentos <span class="contador-aba" id="contadorTalentos" hidden>0</span></button>
+      <button type="button" class="btn-aba" data-aba="estatisticas">
+        <svg class="ic" aria-hidden="true"><use href="#i-grafico"/></svg>
+        Estatísticas</button>
+      <button type="button" class="btn-aba" data-aba="config">
+        <svg class="ic" aria-hidden="true"><use href="#i-engrenagem"/></svg>
+        Configurações</button>
+    </nav>
+
+    <div class="sidebar-rodape">
+      <span class="area-sessao" id="areaSessaoRh"></span>
+      <div class="grupo-acess grupo-acess--escuro" data-acessibilidade-slot data-ouvir-ignorar></div>
+      <button type="button" class="btn-sair" onclick="sairDoPainelRh()"><svg class="ic" aria-hidden="true"><use href="#i-sair"/></svg>Sair</button>
+    </div>
+  </aside>
+
+  <main class="conteudo">
+    <!-- FAIXA DE MÉTRICAS (calculada de ultimasFichasCarregadas) -->
+    <div class="faixa-metricas" aria-label="Resumo das fichas">
+      <div class="metrica metrica-total">
+        <div class="metrica-valor" id="cardTotal">0</div>
+        <div class="metrica-rotulo">Total de Fichas</div>
+      </div>
+      <div class="metrica metrica-analise">
+        <div class="metrica-valor" id="cardEmAnalise">0</div>
+        <div class="metrica-rotulo">Em Análise</div>
+      </div>
+      <div class="metrica metrica-pendente">
+        <div class="metrica-valor" id="cardPendentes">0</div>
+        <div class="metrica-rotulo">Pendentes de Assinatura</div>
+      </div>
+      <div class="metrica metrica-concluido">
+        <div class="metrica-valor" id="cardConcluidos">0</div>
+        <div class="metrica-rotulo">Concluídos</div>
+      </div>
     </div>
 
     <!-- ABA: GESTÃO DE CANDIDATOS -->
     <section class="secao-aba" id="abaGestao" aria-label="Gestão de Candidatos">
       <div class="barra-topo">
-        <h2>Painel do RH - Processos Admissionais</h2>
+        <div>
+          <h2>Processos admissionais</h2>
+          <p class="subtitulo">Acompanhe fichas, documentos e contratos em andamento.</p>
+        </div>
         <div class="acoes-topo">
-          <button class="btn-atualizar" id="btnAtualizar" type="button">Atualizar lista</button>
+          <button class="btn-atualizar" id="btnAtualizar" type="button"><svg class="ic" aria-hidden="true"><use href="#i-atualizar"/></svg>Atualizar lista</button>
         </div>
       </div>
 
       <!-- BUSCA POR NOME OU CPF -->
       <div class="barra-busca">
-        <input type="search" id="campoBusca" class="campo-busca" placeholder="Buscar por nome ou CPF..." aria-label="Buscar candidato por nome ou CPF">
+        <div class="campo-busca-wrap">
+          <svg class="ic" aria-hidden="true"><use href="#i-busca"/></svg>
+          <input type="search" id="campoBusca" class="campo-busca" placeholder="Buscar por nome ou CPF..." aria-label="Buscar candidato por nome ou CPF">
+        </div>
       </div>
 
       <!-- FILTROS POR STATUS -->
@@ -683,8 +554,9 @@
       </div>
 
       <!-- TABELA DE GESTÃO DAS FICHAS -->
+      <div class="tabela-wrap">
       <table>
-        <caption class="visually-hidden" style="text-align:left; padding-bottom:8px; font-weight:600;">
+        <caption class="sr-only">
           Fichas de candidatos recebidas
         </caption>
         <thead>
@@ -700,16 +572,134 @@
           <tr><td colspan="5" class="vazio">Carregando fichas...</td></tr>
         </tbody>
       </table>
+      </div>
+    </section>
+
+    <!-- ABA: BANCO DE TALENTOS (candidatos arquivados) -->
+    <section class="secao-aba" id="abaTalentos" aria-label="Banco de Talentos" hidden>
+      <div class="barra-topo">
+        <div>
+          <h2 id="tituloTalentos">Banco de Talentos</h2>
+          <p class="subtitulo">Candidatos guardados para novas oportunidades.</p>
+        </div>
+      </div>
+
+      <div class="barra-busca">
+        <div class="campo-busca-wrap">
+          <svg class="ic" aria-hidden="true"><use href="#i-busca"/></svg>
+          <input type="search" id="campoBuscaTalentos" class="campo-busca" placeholder="Buscar por nome, CPF ou etiqueta..." aria-label="Buscar no Banco de Talentos por nome, CPF ou etiqueta">
+        </div>
+        <div class="filtro-etiquetas" id="filtroEtiquetasTalentos" role="group" aria-label="Filtrar por etiqueta" hidden></div>
+      </div>
+
+      <div class="tabela-wrap">
+        <table>
+          <caption class="sr-only">
+            Candidatos arquivados no Banco de Talentos
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Nome do Candidato</th>
+              <th scope="col">CPF</th>
+              <th scope="col">Contato</th>
+              <th scope="col">Status Atual</th>
+              <th scope="col">Arquivado em</th>
+              <th scope="col">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="corpoTalentos">
+            <tr><td colspan="6" class="vazio">Nada por aqui ainda. Quem você guardar no Banco de Talentos aparece nesta lista.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- VISÃO: PÁGINA INDIVIDUAL DO CANDIDATO (rh.html#/candidato/<id>) -->
+    <section class="secao-aba" id="abaCandidato" aria-label="Página do candidato" hidden>
+      <div id="paginaCandidato"></div>
+    </section>
+
+    <!-- ABA: CONFIGURAÇÕES -->
+    <section class="secao-aba" id="abaConfig" aria-label="Configurações" hidden>
+      <div class="barra-topo">
+        <div>
+          <h2>Configurações</h2>
+          <p class="subtitulo">Ajuste o que o candidato vê e o que é exigido na ficha.</p>
+        </div>
+      </div>
+
+      <form id="formConfig" novalidate>
+        <div class="card-config">
+          <div class="cfg-texto">
+            <h3>Mensagem de boas-vindas</h3>
+            <p class="ajuda">Exibida em destaque no topo da ficha do candidato. Deixe em branco para não exibir nenhuma mensagem.</p>
+          </div>
+          <div class="cfg-controles">
+            <label for="cfgMensagem" class="sr-only">Mensagem de boas-vindas</label>
+            <textarea id="cfgMensagem" rows="4" placeholder="Escreva uma mensagem de boas-vindas para o candidato..."></textarea>
+            <span class="contador-caracteres" id="cfgContador">0/500</span>
+            <div class="previa-boas-vindas">
+              <div class="rotulo">Prévia (como o candidato verá)</div>
+              <div class="previa-card" id="cfgPrevia"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-config">
+          <div class="cfg-texto">
+            <h3>Documentos obrigatórios</h3>
+            <p class="ajuda">Documento não obrigatório continua disponível para envio, mas aparece como "Opcional" e não impede o candidato de concluir. O Certificado de Reservista continua sendo exigido apenas de candidatos do gênero Masculino, e o CPF deixa de ser exigido quando o candidato marca "CPF incluso na Identidade" - essas regras valem por cima desta configuração.</p>
+          </div>
+          <div class="cfg-controles">
+            <div class="lista-docs-config" id="cfgListaDocs"></div>
+            <div class="campo-erro-texto" id="cfgErroDocs" role="alert" hidden></div>
+          </div>
+        </div>
+
+        <div class="card-config">
+          <div class="cfg-texto">
+            <h3>E-mail de contato do RH</h3>
+            <p class="ajuda">Exibido ao candidato como "Dúvidas? Fale com o RH". Deixe em branco para ocultar.</p>
+          </div>
+          <div class="cfg-controles">
+            <label for="cfgEmail" class="sr-only">E-mail de contato do RH</label>
+            <input type="email" id="cfgEmail" placeholder="rh@suaempresa.com.br" autocomplete="off">
+            <div class="campo-erro-texto" id="cfgErroEmail" role="alert" hidden></div>
+          </div>
+        </div>
+
+        <div class="rodape-config">
+          <button type="submit" class="btn-atualizar" id="cfgSalvar">Salvar configurações</button>
+          <div class="msg-sucesso-inline" id="cfgSucesso" role="status" hidden></div>
+          <div class="msg-erro-inline" id="cfgErro" role="alert" hidden style="margin-top:0;"></div>
+        </div>
+      </form>
+
+      <div class="card-config" id="cardEtiquetasConfig" style="margin-top:1.75rem;">
+        <div class="cabecalho-card-etq">
+          <div class="cfg-texto">
+            <h3>Etiquetas</h3>
+            <p class="ajuda">Catálogo de etiquetas (cor + nome opcional) para marcar as fichas de interesse. Editar ou excluir aqui vale para todas as fichas que usam a etiqueta.</p>
+          </div>
+          <div class="cfg-controles">
+            <button type="button" class="btn-atualizar" id="cfgNovaEtiqueta"><svg class="ic" aria-hidden="true"><use href="#i-mais"/></svg>Nova etiqueta</button>
+            <div class="lista-etq-config" id="cfgListaEtiquetas"></div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- ABA: ESTATÍSTICAS & RELATÓRIOS -->
     <section class="secao-aba" id="abaEstatisticas" aria-label="Estatísticas e Relatórios" hidden>
       <div class="dashboard-admissoes" aria-label="Dashboard de Admissões">
         <div class="barra-topo">
-          <h2>Dashboard de Admissões</h2>
+          <div>
+            <h2>Dashboard de Admissões</h2>
+            <p class="subtitulo">Como as admissões estão caminhando, no período que você escolher.</p>
+          </div>
           <div class="acoes-topo">
-            <button class="btn-exportar" id="btnExportarCsv" type="button">Exportar Relatório (Excel)</button>
-            <button class="btn-exportar" id="btnExportarDashboardPdf" type="button">Exportar Dashboard (PDF)</button>
+            <button class="btn-exportar" id="btnExportarCsv" type="button"><svg class="ic" aria-hidden="true"><use href="#i-baixar"/></svg>Exportar Relatório (Excel)</button>
+            <button class="btn-exportar" id="btnExportarDashboardPdf" type="button"><svg class="ic" aria-hidden="true"><use href="#i-baixar"/></svg>Exportar Dashboard (PDF)</button>
           </div>
         </div>
 
@@ -773,10 +763,101 @@
         </div>
       </div>
     </section>
+  </main>
+
+  <!-- MODAL: mover candidato para o Banco de Talentos (substitui window.prompt) -->
+  <div class="modal-fundo" id="modalTalentos" hidden>
+    <div class="modal-caixa" role="dialog" aria-modal="true" aria-labelledby="modalTalentosTitulo">
+      <h3 id="modalTalentosTitulo">Mover para o Banco de Talentos</h3>
+      <p id="modalTalentosTexto"></p>
+      <form id="formModalTalentos" novalidate>
+        <div class="rotulo-campo" id="modalTalentosEtqRotulo" style="margin-top:0;">Etiquetas (opcional)</div>
+        <div class="modal-talentos-etq">
+          <div class="chips-etq" id="modalTalentosChips" data-vazio="Nenhuma etiqueta escolhida" aria-labelledby="modalTalentosEtqRotulo"></div>
+          <button type="button" class="btn-modal" id="modalTalentosEscolher">Escolher etiquetas</button>
+        </div>
+        <small>Escolha etiquetas existentes ou crie novas. Máximo de 10 por ficha.</small>
+        <div class="msg-erro-inline" id="modalTalentosErro" role="alert" hidden></div>
+        <div class="modal-acoes">
+          <button type="button" class="btn-modal" id="modalTalentosCancelar">Cancelar</button>
+          <button type="submit" class="btn-modal primario" id="modalTalentosConfirmar">Confirmar</button>
+        </div>
+      </form>
+    </div>
   </div>
+  <!-- MODAL: etiquetas (componente único, aberto de vários lugares) -->
+  <div class="modal-fundo empilhado" id="modalEtiquetas" hidden>
+    <div class="modal-caixa larga" role="dialog" aria-modal="true" aria-labelledby="etqTitulo">
+      <h3 id="etqTitulo">Etiquetas</h3>
+      <p id="etqSubtitulo"></p>
+
+      <div id="etqVistaLista">
+        <label for="etqBusca">Buscar etiquetas</label>
+        <input type="text" id="etqBusca" placeholder="Buscar por nome..." autocomplete="off">
+        <div class="etq-lista" id="etqLista"></div>
+        <button type="button" class="btn-modal" id="etqNova"><svg class="ic" aria-hidden="true"><use href="#i-mais"/></svg>Criar uma nova etiqueta</button>
+      </div>
+
+      <form id="etqVistaEditor" novalidate hidden>
+        <label for="etqNome">Nome (opcional)</label>
+        <input type="text" id="etqNome" maxlength="30" autocomplete="off" placeholder="Ex.: Bom perfil">
+        <small>Deixe em branco para uma etiqueta só de cor. Até 30 caracteres.</small>
+        <div class="rotulo-campo" id="etqRotuloCor">Cor</div>
+        <div class="paleta" id="etqPaleta" role="group" aria-labelledby="etqRotuloCor"></div>
+        <div class="linha-cor-livre">
+          <label for="etqCorLivre">Cor personalizada</label>
+          <input type="color" id="etqCorLivre" value="#6b7280">
+        </div>
+        <div class="previa-etq">Prévia: <span id="etqPrevia"></span></div>
+        <div class="confirmar-excluir-etq" id="etqConfirmarExcluir" role="alert" hidden>
+          <span id="etqConfirmarExcluirTexto"></span>
+          <div class="modal-acoes">
+            <button type="button" class="btn-modal" id="etqExcluirNao">Cancelar</button>
+            <button type="button" class="btn-modal perigo" id="etqExcluirSim">Sim, excluir</button>
+          </div>
+        </div>
+        <div class="modal-acoes">
+          <button type="button" class="btn-modal perigo-contorno espaco" id="etqExcluir" hidden><svg class="ic" aria-hidden="true"><use href="#i-lixeira"/></svg>Excluir</button>
+          <button type="button" class="btn-modal" id="etqCancelarEditor">Cancelar</button>
+          <button type="submit" class="btn-modal primario" id="etqSalvar">Salvar</button>
+        </div>
+      </form>
+
+      <div class="msg-erro-inline" id="etqErro" role="alert" hidden></div>
+      <div class="modal-acoes" id="etqAcoesLista">
+        <button type="button" class="btn-modal primario" id="etqConcluir">Concluir</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast-rh" id="toastRh" role="status" hidden></div>
 
   <script>
     const API = '/api';
+
+    // Ícone do sprite SVG inline (decorativo; o texto ao lado é o rótulo).
+    function icone(nome, classe) {
+      return '<svg class="ic ' + (classe || '') + '" aria-hidden="true"><use href="#i-' + nome + '"/></svg>';
+    }
+
+    // Avatar de iniciais com cor estável derivada do nome (tons quentes, contraste AA).
+    const PALETA_AVATARES = [
+      ['#F6E1C6', '#6A3C0A'], ['#F2D3CC', '#7A2A1A'], ['#DDE8CF', '#36521C'],
+      ['#D6E4E3', '#1F4C4A'], ['#E8DCEF', '#4F2F63'], ['#F4E7B9', '#5E4A00']
+    ];
+    function iniciais(nome) {
+      const partes = String(nome || '').trim().split(/\s+/).filter(Boolean);
+      if (!partes.length) return '?';
+      const primeira = partes[0].charAt(0);
+      const ultima = partes.length > 1 ? partes[partes.length - 1].charAt(0) : '';
+      return (primeira + ultima).toLocaleUpperCase('pt-BR');
+    }
+    function avatarHtml(nome, classeExtra) {
+      const texto = String(nome || '');
+      let hash = 0;
+      for (let i = 0; i < texto.length; i++) hash = (hash * 31 + texto.charCodeAt(i)) >>> 0;
+      const [fundo, tinta] = PALETA_AVATARES[hash % PALETA_AVATARES.length];
+      return `<span class="avatar ${classeExtra || ''}" style="--av-bg:${fundo};--av-fg:${tinta}" aria-hidden="true">${escapeHtml(iniciais(texto))}</span>`;
+    }
 
     // =========================================================================
     // ACESSO RESTRITO AO PAINEL DO RH: exige uma sessão válida com tipo 'rh'.
@@ -815,7 +896,7 @@
         }
         nomeUsuarioRh = corpo.usuario.nome || 'RH';
         document.getElementById('areaSessaoRh').innerHTML =
-          `RH: ${escapeHtml(corpo.usuario.nome)} <button type="button" onclick="sairDoPainelRh()">Sair</button>`;
+          `${avatarHtml(corpo.usuario.nome)}<span class="sessao-textos"><strong>${escapeHtml(corpo.usuario.nome)}</strong>Equipe de RH</span>`;
         return true;
       } catch (erro) {
         window.location.href = '/login.html';
@@ -827,18 +908,19 @@
     // é o estado inicial/intermediário da ficha; PENDENTE_ASSINATURA,
     // REPROVADO e CONTRATACAO_CONCLUIDA são estados finais e definitivos,
     // atribuídos ao status geral da ficha assim que o RH decide o processo.
+    // As classes est-* (tema.css) pintam a bolinha e o fundo tingido da etiqueta.
     const CLASSE_BADGE = {
-      EM_ANALISE: 'badge-em-analise',
-      PENDENTE_ASSINATURA: 'badge-pendente-assinatura',
-      REPROVADO: 'badge-reprovado',
-      CONTRATACAO_CONCLUIDA: 'badge-concluida'
+      EM_ANALISE: 'est-em-analise',
+      PENDENTE_ASSINATURA: 'est-pendente',
+      REPROVADO: 'est-reprovado',
+      CONTRATACAO_CONCLUIDA: 'est-concluida'
     };
 
     const ROTULO_STATUS = {
-      EM_ANALISE: 'EM ANÁLISE',
-      PENDENTE_ASSINATURA: 'PENDENTE DE ASSINATURA',
-      REPROVADO: 'REPROVADO',
-      CONTRATACAO_CONCLUIDA: 'CONTRATAÇÃO CONCLUÍDA'
+      EM_ANALISE: 'Em análise',
+      PENDENTE_ASSINATURA: 'Pendente de assinatura',
+      REPROVADO: 'Reprovado',
+      CONTRATACAO_CONCLUIDA: 'Contratação concluída'
     };
 
     // Normaliza valores legados de status (de antes da consolidação para 4
@@ -849,7 +931,7 @@
     function getStatusBadge(status) {
       const statusAtual = STATUS_LEGADO[status] || status;
       return {
-        classe: CLASSE_BADGE[statusAtual] || 'badge-em-analise',
+        classe: CLASSE_BADGE[statusAtual] || 'est-em-analise',
         rotulo: ROTULO_STATUS[statusAtual] || ROTULO_STATUS.EM_ANALISE
       };
     }
@@ -878,6 +960,13 @@
       return div.innerHTML;
     }
 
+    // Configuração geral do RH (carregada uma vez; null enquanto não chegar -
+    // nesse caso todos os documentos são tratados como obrigatórios).
+    let configuracoesRh = null;
+    function documentoObrigatorio(tipo) {
+      return !(configuracoesRh && configuracoesRh.documentosObrigatorios && configuracoesRh.documentosObrigatorios[tipo] === false);
+    }
+
     // Monta o card de cada documento obrigatório: link para o PDF real, situação
     // (Não exigido/Pendente) e a ação de marcar pendência / aviso de pendência ativa.
     function montarGradeDocumentos(ficha) {
@@ -899,6 +988,8 @@
             situacao = 'Não exigido';
           } else if (doc.tipo === 'cpf' && ficha.cpfInclusoNaIdentidade) {
             situacao = 'Não exigido (incluso na Identidade)';
+          } else if (!documentoObrigatorio(doc.tipo)) {
+            situacao = 'Opcional (não enviado)';
           }
           linhaPrincipal = `
             <span class="item-documento-titulo">${doc.titulo}</span>
@@ -924,7 +1015,7 @@
             areaPendencia = `
               <div class="acoes-documento">
                 ${aceito
-                  ? '<span class="badge-documento-aceito">&#10003; Documento aceito</span>'
+                  ? `<span class="badge-documento-aceito">${icone('ok')}Documento aceito</span>`
                   : `<button type="button" class="btn-aceitar-documento" data-aceitar-documento="${ficha.id}:${doc.tipo}">Aceitar Documento</button>`
                 }
                 <button type="button" class="btn-marcar-pendencia" data-abrir-pendencia="${ficha.id}" data-tipo="${doc.tipo}">
@@ -962,13 +1053,15 @@
           <div data-botoes-decisao="${ficha.id}" ${decidido ? 'hidden' : ''}>
             <button type="button" class="btn-decisao btn-aprovar-candidato" data-abrir-decisao="${ficha.id}:APROVADO">Aprovar Candidato</button>
             <button type="button" class="btn-decisao btn-reprovar-candidato" data-abrir-decisao="${ficha.id}:REPROVADO">Reprovar Candidato</button>
+            <button type="button" class="btn-decisao btn-talentos-decisao" data-mover-talentos="${ficha.id}">Enviar para o Banco de Talentos</button>
           </div>
           <div class="confirmar-decisao" data-confirmar-decisao="${ficha.id}" hidden>
             <span data-texto-confirmar-decisao></span>
             <button type="button" class="btn-decisao btn-confirmar-decisao" data-confirmar-decisao-sim="${ficha.id}">Confirmar</button>
             <button type="button" class="btn-cancelar-pendencia" data-cancelar-decisao="${ficha.id}">Cancelar</button>
           </div>
-          ${decidido ? `<span class="badge-decisao badge-decisao-${decidido.toLowerCase()}">${decidido} em ${formatarData(ficha.decisaoFinalEm)}</span>` : ''}
+          ${decidido ? `<span class="badge-decisao badge-decisao-${decidido.toLowerCase()}">${decidido} em ${formatarData(ficha.decisaoFinalEm)}</span>
+          <button type="button" class="btn-decisao btn-talentos-decisao" data-mover-talentos="${ficha.id}">Enviar para o Banco de Talentos</button>` : ''}
         </div>
       `;
     }
@@ -982,10 +1075,9 @@
     ];
 
     // Monta o card "Contrato de Trabalho - Aceite Digital" - só aparece para
-    // fichas Aprovadas (ou já com a contratação concluída). Reaproveita o
-    // mesmo layout dos cards de documento (grade-documentos): "Visualizar/
-    // Baixar PDF", "Aceitar Documento" e o indicador "Assinado via Aceite
-    // Digital", um por documento da lista.
+    // fichas Aprovadas (ou já com a contratação concluída). O aceite de cada
+    // documento é ato exclusivo do candidato: aqui o RH só acompanha o estado
+    // real (assinado ou aguardando) e valida a contratação no fim.
     function montarSecaoContrato(ficha) {
       if (ficha.status !== 'PENDENTE_ASSINATURA' && ficha.status !== 'CONTRATACAO_CONCLUIDA') return '';
 
@@ -994,22 +1086,23 @@
       const itensDocumentos = CONTRATOS_DOCUMENTOS.map((doc) => {
         const documento = contrato.documentos?.[doc.tipo] || {};
         const aceite = documento.aceite;
-        const areaAcoes = aceite
-          ? `<span class="badge-documento-aceito">&#10003; Assinado via Aceite Digital (${aceite.por === 'RH' ? 'RH' : 'Candidato'}, ${formatarData(aceite.timestamp)})</span>`
-          : `<button type="button" class="btn-aceitar-documento" data-aceitar-contrato="${ficha.id}:${doc.tipo}">Aceitar Documento</button>`;
+        const situacao = aceite
+          ? `<span class="badge-documento-aceito">${icone('ok')}${aceite.por === 'RH' ? 'Aceite registrado pelo RH' : 'Assinado pelo candidato'} em ${formatarData(aceite.timestamp)}</span>`
+          : '<span class="item-documento-situacao">Aguardando assinatura do candidato</span>';
         // Antes do aceite, o link aponta para a minuta genérica; depois do
         // aceite, para o PDF já carimbado com a assinatura eletrônica.
-        const linkPdf = documento.arquivoAssinado
-          ? `/visualizador.html?arquivo=${encodeURIComponent(documento.arquivoAssinado)}`
-          : `/api/contrato/minuta/${doc.tipo}`;
+        const link = aceite && documento.arquivoAssinado
+          ? { href: `/visualizador.html?arquivo=${encodeURIComponent(documento.arquivoAssinado)}`, rotulo: 'Ver documento assinado' }
+          : { href: `/api/contrato/minuta/${doc.tipo}`, rotulo: 'Ver minuta' };
 
         return `
           <div class="item-documento">
             <div class="item-documento-linha-principal">
               <span class="item-documento-titulo">${doc.titulo}</span>
-              <a class="btn-pdf" href="${linkPdf}" target="_blank" rel="noopener noreferrer">Visualizar/Baixar PDF</a>
+              <a class="btn-pdf" href="${link.href}" target="_blank" rel="noopener noreferrer">${link.rotulo}</a>
             </div>
-            <div class="acoes-documento">${areaAcoes}</div>
+            <div class="acoes-documento">${situacao}</div>
+            ${aceite && aceite.hash ? `<span class="hash-assinatura">Hash da assinatura (SHA-256): ${escapeHtml(aceite.hash)}</span>` : ''}
           </div>
         `;
       }).join('');
@@ -1020,9 +1113,10 @@
       if (ficha.status === 'CONTRATACAO_CONCLUIDA') {
         statusHtml = `<div class="status-contrato-rh sucesso">Contratação concluída em ${formatarData(contrato.validacaoRh?.timestamp)}.</div>`;
       } else if (!contrato.assinaturaConcluida) {
-        statusHtml = '<div class="status-contrato-rh aviso">Aguardando o candidato aceitar todos os documentos e concluir a assinatura digital.</div>';
+        statusHtml = '<div class="status-contrato-rh aviso">Disponível depois que o candidato assinar todos os documentos e concluir a assinatura digital.</div>';
+        botaoValidar = '<button type="button" class="btn-validar-contrato" disabled>Validar Contratação</button>';
       } else {
-        statusHtml = `<div class="status-contrato-rh info">Assinatura digital concluída em ${formatarData(contrato.assinaturaConcluida.timestamp)} (CPF ${escapeHtml(contrato.assinaturaConcluida.cpf || '-')}, hash ${escapeHtml((contrato.assinaturaConcluida.hash || '').slice(0, 12))}...).</div>`;
+        statusHtml = `<div class="status-contrato-rh info">Assinatura digital concluída em ${formatarData(contrato.assinaturaConcluida.timestamp)} (CPF ${escapeHtml(contrato.assinaturaConcluida.cpf || '-')}, IP ${escapeHtml(contrato.assinaturaConcluida.ip || '-')}).<span class="hash-assinatura">Hash dos documentos (SHA-256): ${escapeHtml(contrato.assinaturaConcluida.hash || '-')}</span></div>`;
         botaoValidar = `<button type="button" class="btn-validar-contrato" data-validar-contrato="${ficha.id}">Validar Contratação</button>`;
       }
 
@@ -1135,8 +1229,8 @@
     }
 
     // Copia o link direto da Ficha do Candidato (?id=) para a área de transferência.
-    async function copiarLinkCandidato(id, botao) {
-      const link = `${window.location.origin}/index.html?id=${id}`;
+    async function copiarLinkCandidato(id, botao, linkPersonalizado) {
+      const link = linkPersonalizado || `${window.location.origin}/index.html?id=${id}`;
       let copiado = false;
 
       if (navigator.clipboard && window.isSecureContext) {
@@ -1235,6 +1329,17 @@
     let chartStatusDistribuicao = null;
     let chartAdesaoEtapas = null;
 
+    // Chart.js mede fonte em px: converte a partir da fonte raiz para respeitar o A-/A+.
+    const COR_TEXTO_GRAFICO = '#6B665E';
+    function fonteGrafico(rem) {
+      const raizPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      return { family: "'Figtree', system-ui, 'Segoe UI', sans-serif", size: Math.round(rem * raizPx) };
+    }
+    // Ao mudar o tamanho do texto, redesenha os gráficos com a fonte nova.
+    window.addEventListener('onboarding:fonte', () => {
+      if (!document.getElementById('abaEstatisticas').hidden) renderizarDashboard();
+    });
+
     function renderizarGraficoStatus(fichas) {
       const contagem = { EM_ANALISE: 0, PENDENTE_ASSINATURA: 0, REPROVADO: 0, CONTRATACAO_CONCLUIDA: 0 };
       fichas.forEach((f) => { if (contagem[f.status] !== undefined) contagem[f.status]++; });
@@ -1248,9 +1353,13 @@
         type: 'doughnut',
         data: {
           labels: chaves.map((s) => ROTULO_STATUS[s]),
-          datasets: [{ data: chaves.map((s) => contagem[s]), backgroundColor: chaves.map((s) => CORES_STATUS_DASHBOARD[s]) }]
+          datasets: [{ data: chaves.map((s) => contagem[s]), backgroundColor: chaves.map((s) => CORES_STATUS_DASHBOARD[s]), borderColor: '#FFFFFF', borderWidth: 3, hoverOffset: 4 }]
         },
-        options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } } } }
+        options: {
+          responsive: true,
+          cutout: '62%',
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, boxHeight: 12, usePointStyle: true, pointStyle: 'circle', padding: 14, color: COR_TEXTO_GRAFICO, font: fonteGrafico(0.875) } } }
+        }
       });
     }
 
@@ -1272,12 +1381,18 @@
               CORES_STATUS_DASHBOARD.PENDENTE_ASSINATURA,
               CORES_STATUS_DASHBOARD.CONTRATACAO_CONCLUIDA
             ],
-            minBarLength: 4
+            minBarLength: 4,
+            borderRadius: 6,
+            borderSkipped: false,
+            maxBarThickness: 56
           }]
         },
         options: {
           responsive: true,
-          scales: { y: { beginAtZero: true, max: 100, ticks: { callback: (v) => `${v}%` } } },
+          scales: {
+            y: { beginAtZero: true, max: 100, grid: { color: '#EFE9DF' }, border: { display: false }, ticks: { color: COR_TEXTO_GRAFICO, font: fonteGrafico(0.8125), callback: (v) => `${v}%` } },
+            x: { grid: { display: false }, ticks: { color: COR_TEXTO_GRAFICO, font: fonteGrafico(0.8125) } }
+          },
           plugins: { legend: { display: false } }
         }
       });
@@ -1286,7 +1401,7 @@
     // Recalcula KPIs e redesenha os gráficos a partir do cache local de
     // fichas, aplicando os filtros do dashboard - não faz nenhuma requisição.
     function renderizarDashboard() {
-      const fichas = aplicarFiltrosDashboard(ultimasFichasCarregadas);
+      const fichas = aplicarFiltrosDashboard(fichasAtivas());
       const dados = calcularKpisDashboard(fichas);
 
       document.getElementById('dashKpiTotal').textContent = dados.total;
@@ -1303,12 +1418,19 @@
       renderizarGraficoEtapas(dados);
     }
 
-    // Ids das fichas com o painel de detalhes aberto, para restaurar após cada recarga.
-    const detalhesExpandidos = new Set();
+    // Cards de resumo do topo: contagens sobre TODAS as fichas em cache (sem filtros).
+    function atualizarCardsResumo() {
+      const fichas = fichasAtivas(); // arquivados (Banco de Talentos) não contam
+      const contar = (s) => fichas.filter((f) => f.status === s).length;
+      document.getElementById('cardTotal').textContent = fichas.length;
+      document.getElementById('cardEmAnalise').textContent = contar('EM_ANALISE');
+      document.getElementById('cardPendentes').textContent = contar('PENDENTE_ASSINATURA');
+      document.getElementById('cardConcluidos').textContent = contar('CONTRATACAO_CONCLUIDA');
+    }
 
-    // Polling (HTTP) do chat, um intervalo por ficha com o painel expandido -
-    // candidatoId -> { intervalId, ultimoTimestamp }. Mantido só enquanto o
-    // painel daquela ficha estiver visível, para não gerar consultas à toa.
+    // Polling (HTTP) do chat da página individual aberta -
+    // 'p:<id>' -> { id, intervalId, ultimoTimestamp }. Mantido só enquanto a
+    // página estiver aberta, para não gerar consultas à toa.
     // Preferido a uma conexão SSE mantida aberta porque funciona de forma
     // segura em ambiente serverless (Vercel): cada consulta é uma
     // requisição curta e independente, sem depender de uma conexão HTTP de
@@ -1316,9 +1438,10 @@
     const INTERVALO_POLLING_CHAT_MS = 3000;
     const chatPollingRh = new Map();
 
-    async function consultarNovasMensagensRh(id) {
-      const estado = chatPollingRh.get(id);
+    async function consultarNovasMensagensRh(chave) {
+      const estado = chatPollingRh.get(chave);
       if (!estado) return;
+      const id = estado.id;
       try {
         const params = estado.ultimoTimestamp ? `?apos=${encodeURIComponent(estado.ultimoTimestamp)}` : '';
         const r = await fetch(`/api/candidato/${id}/mensagens${params}`);
@@ -1327,19 +1450,19 @@
         if (!mensagens || !mensagens.length) return;
         mensagens.forEach((m) => { estado.ultimoTimestamp = m.timestamp; });
         const listaAtualizada = mensagens.reduce((acc, m) => adicionarMensagemAoCache(id, m) || acc, null);
-        if (listaAtualizada) atualizarChatInline(id, listaAtualizada);
+        if (listaAtualizada) atualizarChatInline(id, listaAtualizada, false);
       } catch (erro) {
         // Falha silenciosa - a próxima consulta periódica tenta de novo.
       }
     }
 
-    function abrirChatPollingRh(id) {
-      if (chatPollingRh.has(id)) return;
+    function abrirChatPollingRh(id, chave = id) {
+      if (chatPollingRh.has(chave)) return;
       const ficha = ultimasFichasCarregadas.find((f) => f.id === id);
       const mensagensAtuais = (ficha && ficha.mensagens) || [];
       const ultimoTimestamp = mensagensAtuais.length ? mensagensAtuais[mensagensAtuais.length - 1].timestamp : null;
-      const intervalId = setInterval(() => consultarNovasMensagensRh(id), INTERVALO_POLLING_CHAT_MS);
-      chatPollingRh.set(id, { intervalId, ultimoTimestamp });
+      const intervalId = setInterval(() => consultarNovasMensagensRh(chave), INTERVALO_POLLING_CHAT_MS);
+      chatPollingRh.set(chave, { id, intervalId, ultimoTimestamp });
     }
 
     function fecharChatPollingRh(id) {
@@ -1348,11 +1471,6 @@
         clearInterval(estado.intervalId);
         chatPollingRh.delete(id);
       }
-    }
-
-    function fecharTodosChatPollingRh() {
-      chatPollingRh.forEach((estado) => clearInterval(estado.intervalId));
-      chatPollingRh.clear();
     }
 
     // Adiciona (com deduplicação por id) uma mensagem recebida via SSE ao
@@ -1365,6 +1483,10 @@
       ficha.mensagens.push(mensagem);
       return ficha.mensagens;
     }
+
+    // Fichas ativas (Gestão) x arquivadas (Banco de Talentos): o backend devolve todas.
+    function fichasAtivas() { return ultimasFichasCarregadas.filter((f) => !f.bancoTalentos); }
+    function fichasArquivadas() { return ultimasFichasCarregadas.filter((f) => f.bancoTalentos); }
 
     // Filtro ativo: 'TODOS' | 'EM_ANALISE' | 'PENDENTE_ASSINATURA' | 'REPROVADO' | 'CONTRATACAO_CONCLUIDA'.
     let filtroAtual = 'TODOS';
@@ -1422,16 +1544,35 @@
         const todasAsFichas = await resposta.json();
 
         if (!Array.isArray(todasAsFichas)) {
-          corpo.innerHTML = '<tr><td colspan="5" class="vazio">Falha ao carregar fichas.</td></tr>';
+          corpo.innerHTML = '<tr><td colspan="5" class="vazio">Não conseguimos carregar as fichas. Tente de novo em instantes.</td></tr>';
           return;
         }
 
         ultimasFichasCarregadas = todasAsFichas;
+        fichasJaCarregadas = true;
         renderizarTabela();
         renderizarDashboard();
+        atualizarCardsResumo();
+        atualizarChipsNaTela(); // inclui Banco de Talentos e as contagens do catálogo
+        renderizarPaginaCandidato();
       } catch (erro) {
-        corpo.innerHTML = '<tr><td colspan="5" class="vazio">Falha ao carregar fichas.</td></tr>';
+        corpo.innerHTML = '<tr><td colspan="5" class="vazio">Não conseguimos carregar as fichas. Tente de novo em instantes.</td></tr>';
       }
+    }
+
+    // Célula do nome: duplo clique/Enter abre a página do candidato; os chips
+    // das etiquetas ficam abaixo do nome (somente leitura).
+    function montarCelulaNome(f) {
+      const nome = f.nomeCompleto || '-';
+      return `<div class="nome-celula">
+        ${avatarHtml(f.nomeCompleto)}
+        <div class="nome-bloco">
+          <span class="nome-candidato" role="link" tabindex="0" data-nome-candidato="${escapeHtml(f.id)}"
+                title="Clique duas vezes para abrir a página do candidato"
+                aria-label="${escapeHtml(nome)} - abrir página do candidato">${escapeHtml(nome)}</span>
+          <div class="chips-etq chips-lista" data-chips-ficha="${escapeHtml(f.id)}" data-compacto="1">${montarChipsDaFicha(f, true)}</div>
+        </div>
+      </div>`;
     }
 
     // Redesenha a tabela a partir do cache local, aplicando busca e filtro de
@@ -1439,85 +1580,32 @@
     function renderizarTabela() {
       const corpo = document.getElementById('corpoTabela');
 
-      // A tabela é reconstruída do zero a cada chamada - fecha todas as
-      // conexões SSE existentes e reabre apenas para as fichas que continuam
-      // com o painel de detalhes expandido, evitando conexões vazadas.
-      fecharTodosChatPollingRh();
-
-      const fichas = ordenarFichas(aplicarFiltro(aplicarBusca(ultimasFichasCarregadas)));
+      const fichas = ordenarFichas(aplicarFiltro(aplicarBusca(fichasAtivas())));
 
       if (fichas.length === 0) {
-        corpo.innerHTML = '<tr><td colspan="5" class="vazio">Nenhuma ficha encontrada para esta busca/filtro.</td></tr>';
+        corpo.innerHTML = `<tr><td colspan="5" class="vazio"><div class="vazio-amigavel">${icone('busca')}<span>Nada por aqui com essa busca ou esse filtro.</span></div></td></tr>`;
         return;
       }
 
-      corpo.innerHTML = '';
-
-      fichas.forEach((f) => {
-          const tr = document.createElement('tr');
-
-          const { classe: classeBadge, rotulo } = getStatusBadge(f.status);
-
-          const expandidoAgora = detalhesExpandidos.has(f.id);
-
-          tr.innerHTML = `
-            <td>${f.nomeCompleto || '-'}</td>
-            <td>${f.cpf || '-'}</td>
+      corpo.innerHTML = fichas.map((f) => {
+        const { classe: classeBadge, rotulo } = getStatusBadge(f.status);
+        const id = escapeHtml(f.id);
+        const nome = escapeHtml(f.nomeCompleto || 'candidato');
+        return `
+          <tr>
+            <td>${montarCelulaNome(f)}</td>
+            <td>${escapeHtml(f.cpf || '-')}</td>
             <td>${formatarData(f.criadoEm)}</td>
             <td><span class="badge ${classeBadge}">${rotulo}</span></td>
             <td>
-              <div class="acoes" role="group" aria-label="Ações de ${f.nomeCompleto || 'candidato'}">
-                <button class="btn-acao btn-documentos" data-expandir="${f.id}" type="button"
-                        aria-expanded="${expandidoAgora}">Documentos <span class="seta-expandir">&#9660;</span></button>
-                <button class="btn-acao btn-copiar-link" data-copiar-link="${f.id}" type="button">Copiar link</button>
+              <div class="acoes" role="group" aria-label="Ações de ${nome}">
+                <a class="btn-acao btn-documentos" href="rh.html#/candidato/${encodeURIComponent(f.id)}/documentos" target="_blank" rel="noopener noreferrer"
+                   aria-label="Documentos de ${nome} (abre em nova aba)">Documentos</a>
+                <button class="btn-acao btn-copiar-link" data-copiar-link="${id}" type="button">Copiar link</button>
               </div>
             </td>
-          `;
-          corpo.appendChild(tr);
-
-          const trDetalhes = document.createElement('tr');
-          trDetalhes.className = 'linha-detalhes';
-          trDetalhes.dataset.detalhesDe = f.id;
-          trDetalhes.hidden = !expandidoAgora;
-          trDetalhes.innerHTML = `
-            <td colspan="5">
-              <div class="grade-documentos">${montarGradeDocumentos(f)}</div>
-              ${f.status === 'CONTRATACAO_CONCLUIDA' ? `
-              <div class="secao-impressao">
-                <button type="button" class="btn-imprimir" data-imprimir="${f.id}">Imprimir/Gerar PDF da Ficha</button>
-              </div>
-              ` : ''}
-              ${montarSecaoDecisao(f)}
-              ${montarSecaoContrato(f)}
-              ${montarSecaoAuditoriaLgpd(f)}
-              ${montarSecaoChat(f)}
-            </td>
-          `;
-          corpo.appendChild(trDetalhes);
-
-          if (expandidoAgora) abrirChatPollingRh(f.id);
-        });
-    }
-
-    // Mostra/esconde a linha de documentos de uma ficha (e lembra o estado entre recargas).
-    // Abrir uma ficha é um dos momentos em que a migração visual entre "Não
-    // avaliados" e "Em Análise" deve aparecer, então recarrega a lista do
-    // backend ao expandir (não ao recolher).
-    function alternarDetalhes(id, botao) {
-      const trDetalhes = document.querySelector(`tr[data-detalhes-de="${id}"]`);
-      if (!trDetalhes) return;
-      const estavaEscondido = trDetalhes.hidden;
-
-      trDetalhes.hidden = !trDetalhes.hidden;
-      botao.setAttribute('aria-expanded', String(!trDetalhes.hidden));
-      if (trDetalhes.hidden) {
-        detalhesExpandidos.delete(id);
-        fecharChatPollingRh(id);
-      } else {
-        detalhesExpandidos.add(id);
-      }
-
-      if (estavaEscondido) carregarFichas();
+          </tr>`;
+      }).join('');
     }
 
     // Atualiza a entrada de uma ficha no cache local (não redesenha nada sozinha).
@@ -1526,29 +1614,12 @@
       if (indice !== -1) ultimasFichasCarregadas[indice] = fichaAtualizada;
     }
 
-    // Redesenha só o conteúdo interno do painel de detalhes já aberto de uma
-    // ficha (grade de documentos + decisão final), sem tocar na linha
-    // principal da tabela (badge de status, grupo Não avaliados/Em Análise).
-    // Isso é proposital: a migração visual entre "Não avaliados" e "Em
-    // Análise" só deve aparecer quando a lista for atualizada de verdade
-    // (Atualizar lista, trocar de aba de filtro, ou abrir outra ficha).
+    // Redesenha a página individual da ficha quando ela é a que está aberta,
+    // sem tocar na linha da lista (a migração visual de grupo só deve
+    // aparecer quando a lista for atualizada de verdade).
     function atualizarPainelDetalhesInline(fichaAtualizada) {
-      const trDetalhes = document.querySelector(`tr[data-detalhes-de="${fichaAtualizada.id}"]`);
-      if (!trDetalhes) return;
+      if (paginaCandidatoId === fichaAtualizada.id) renderizarPaginaCandidato();
 
-      const grade = trDetalhes.querySelector('.grade-documentos');
-      if (grade) grade.innerHTML = montarGradeDocumentos(fichaAtualizada);
-
-      const secaoDecisao = trDetalhes.querySelector('.secao-decisao');
-      if (secaoDecisao) secaoDecisao.outerHTML = montarSecaoDecisao(fichaAtualizada);
-
-      const secaoContrato = trDetalhes.querySelector('.secao-contrato-rh');
-      const novoHtmlContrato = montarSecaoContrato(fichaAtualizada);
-      if (secaoContrato && novoHtmlContrato) secaoContrato.outerHTML = novoHtmlContrato;
-      else if (secaoContrato) secaoContrato.remove();
-
-      const secaoAuditoria = trDetalhes.querySelector('.secao-auditoria-lgpd');
-      if (secaoAuditoria) secaoAuditoria.outerHTML = montarSecaoAuditoriaLgpd(fichaAtualizada);
     }
 
     // RH marca um documento já enviado como pendente, com justificativa obrigatória.
@@ -1627,25 +1698,6 @@
       }
     }
 
-    // RH aceita um documento do contrato em nome do candidato (mesma ação
-    // "Aceitar Documento" usada nos demais cards do painel).
-    async function aceitarDocumentoContrato(id, tipo) {
-      try {
-        const resposta = await fetch(`/api/rh/fichas/${id}/contrato/${tipo}/aceitar`, { method: 'PATCH', headers: cabecalhosRh() });
-        const resultado = await resposta.json();
-
-        if (!resposta.ok) {
-          alert('Erro: ' + (resultado.erro || 'não foi possível aceitar o documento.'));
-          return;
-        }
-
-        atualizarFichaEmCache(resultado.candidato);
-        atualizarPainelDetalhesInline(resultado.candidato);
-      } catch (erro) {
-        alert('Falha ao comunicar com o servidor.');
-      }
-    }
-
     // RH valida o contrato assinado e conclui a contratação (status terminal).
     async function validarContrato(id) {
       try {
@@ -1663,20 +1715,20 @@
       }
     }
 
-    // Atualiza só a lista de mensagens de uma ficha já expandida, sem recarregar
-    // a tabela inteira (evita o "salto" de rolagem ao enviar uma mensagem).
-    function atualizarChatInline(id, mensagens) {
-      const trDetalhes = document.querySelector(`tr[data-detalhes-de="${id}"]`);
-      if (!trDetalhes) return;
-
-      const lista = trDetalhes.querySelector('.lista-mensagens');
+    // Atualiza só a lista de mensagens da página individual, sem recarregar
+    // a tela inteira. "limparCampo" só é true
+    // após o RH enviar uma mensagem - nunca apaga o que ele está digitando
+    // quando chega uma mensagem do candidato.
+    function atualizarChatInline(id, mensagens, limparCampo = true) {
+      const pagina = document.getElementById('paginaCandidato');
+      if (paginaCandidatoId !== id || !pagina) return;
+      const lista = pagina.querySelector('.lista-mensagens');
       if (lista) {
         lista.innerHTML = montarListaMensagensHtml(mensagens);
         lista.scrollTop = lista.scrollHeight;
       }
-
-      const campo = trDetalhes.querySelector('[data-campo-mensagem]');
-      if (campo) {
+      const campo = pagina.querySelector('[data-campo-mensagem]');
+      if (campo && limparCampo) {
         campo.value = '';
         campo.focus();
       }
@@ -1704,11 +1756,14 @@
       }
     }
 
-    // Delegação de eventos: captura os cliques nos botões de ação da tabela.
-    document.getElementById('corpoTabela').addEventListener('click', (e) => {
-      const btnExpandir = e.target.closest('[data-expandir]');
-      if (btnExpandir) {
-        alternarDetalhes(btnExpandir.dataset.expandir, btnExpandir);
+    // Delegação de eventos: cliques nos botões de ação da página individual
+    // e da coluna de ações da lista.
+    function tratarCliqueDetalhes(e) {
+      const raiz = e.target.closest('#paginaCandidato') || document;
+
+      const btnMoverTalentos = e.target.closest('[data-mover-talentos]');
+      if (btnMoverTalentos) {
+        abrirModalTalentos(btnMoverTalentos.dataset.moverTalentos);
         return;
       }
 
@@ -1731,13 +1786,6 @@
         return;
       }
 
-      const btnAceitarContrato = e.target.closest('[data-aceitar-contrato]');
-      if (btnAceitarContrato) {
-        const [idFicha, tipo] = btnAceitarContrato.dataset.aceitarContrato.split(':');
-        aceitarDocumentoContrato(idFicha, tipo);
-        return;
-      }
-
       const btnValidarContrato = e.target.closest('[data-validar-contrato]');
       if (btnValidarContrato) {
         validarContrato(btnValidarContrato.dataset.validarContrato);
@@ -1753,7 +1801,7 @@
 
       const btnAbrirPendencia = e.target.closest('[data-abrir-pendencia]');
       if (btnAbrirPendencia) {
-        const form = document.querySelector(
+        const form = raiz.querySelector(
           `[data-form-pendencia="${btnAbrirPendencia.dataset.abrirPendencia}:${btnAbrirPendencia.dataset.tipo}"]`
         );
         if (form) { form.hidden = false; btnAbrirPendencia.hidden = true; }
@@ -1763,8 +1811,8 @@
       const btnCancelarPendencia = e.target.closest('[data-cancelar-pendencia]');
       if (btnCancelarPendencia) {
         const [idFicha, tipo] = btnCancelarPendencia.dataset.cancelarPendencia.split(':');
-        const form = document.querySelector(`[data-form-pendencia="${idFicha}:${tipo}"]`);
-        const btnAbrir = document.querySelector(`[data-abrir-pendencia="${idFicha}"][data-tipo="${tipo}"]`);
+        const form = raiz.querySelector(`[data-form-pendencia="${idFicha}:${tipo}"]`);
+        const btnAbrir = raiz.querySelector(`[data-abrir-pendencia="${idFicha}"][data-tipo="${tipo}"]`);
         if (form) form.hidden = true;
         if (btnAbrir) btnAbrir.hidden = false;
         return;
@@ -1773,8 +1821,8 @@
       const btnAbrirDecisao = e.target.closest('[data-abrir-decisao]');
       if (btnAbrirDecisao) {
         const [idFicha, decisao] = btnAbrirDecisao.dataset.abrirDecisao.split(':');
-        const botoes = document.querySelector(`[data-botoes-decisao="${idFicha}"]`);
-        const confirmacao = document.querySelector(`[data-confirmar-decisao="${idFicha}"]`);
+        const botoes = raiz.querySelector(`[data-botoes-decisao="${idFicha}"]`);
+        const confirmacao = raiz.querySelector(`[data-confirmar-decisao="${idFicha}"]`);
         if (botoes) botoes.hidden = true;
         if (confirmacao) {
           confirmacao.hidden = false;
@@ -1789,8 +1837,8 @@
       const btnCancelarDecisao = e.target.closest('[data-cancelar-decisao]');
       if (btnCancelarDecisao) {
         const idFicha = btnCancelarDecisao.dataset.cancelarDecisao;
-        const botoes = document.querySelector(`[data-botoes-decisao="${idFicha}"]`);
-        const confirmacao = document.querySelector(`[data-confirmar-decisao="${idFicha}"]`);
+        const botoes = raiz.querySelector(`[data-botoes-decisao="${idFicha}"]`);
+        const confirmacao = raiz.querySelector(`[data-confirmar-decisao="${idFicha}"]`);
         if (confirmacao) confirmacao.hidden = true;
         if (botoes) botoes.hidden = false;
         return;
@@ -1799,14 +1847,14 @@
       const btnConfirmarDecisao = e.target.closest('[data-confirmar-decisao-sim]');
       if (btnConfirmarDecisao) {
         const idFicha = btnConfirmarDecisao.dataset.confirmarDecisaoSim;
-        const confirmacao = document.querySelector(`[data-confirmar-decisao="${idFicha}"]`);
+        const confirmacao = raiz.querySelector(`[data-confirmar-decisao="${idFicha}"]`);
         const decisao = confirmacao ? confirmacao.dataset.decisaoEscolhida : null;
         if (decisao) decidirCandidato(idFicha, decisao);
       }
-    });
+    }
 
-    // Delegação de eventos: captura o envio dos formulários (pendência e chat) da tabela.
-    document.getElementById('corpoTabela').addEventListener('submit', (e) => {
+    // Delegação de eventos: envio dos formulários (pendência e chat).
+    function tratarSubmitDetalhes(e) {
       const formPendencia = e.target.closest('[data-form-pendencia]');
       if (formPendencia) {
         e.preventDefault();
@@ -1826,18 +1874,23 @@
         if (!texto) return;
         enviarMensagemRH(idFicha, texto);
       }
-    });
+    }
 
     // Enter envia a mensagem do chat; Shift+Enter continua quebrando linha (delegado,
     // já que cada ficha tem seu próprio textarea, criado dinamicamente).
-    document.getElementById('corpoTabela').addEventListener('keydown', (e) => {
+    function tratarTeclaDetalhes(e) {
+      if (tratarTeclaNome(e)) return;
       const campo = e.target.closest('[data-campo-mensagem]');
       if (!campo) return;
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         campo.closest('[data-form-chat]').requestSubmit();
       }
-    });
+    }
+
+    document.getElementById('corpoTabela').addEventListener('click', (e) => { if (!tratarCliqueFicha(e)) tratarCliqueDetalhes(e); });
+    document.getElementById('corpoTabela').addEventListener('submit', tratarSubmitDetalhes);
+    document.getElementById('corpoTabela').addEventListener('keydown', tratarTeclaDetalhes);
 
     // Filtro por status: alterna o botão ativo e recarrega a lista do backend.
     document.querySelector('.barra-filtros').addEventListener('click', (e) => {
@@ -1931,18 +1984,28 @@
     document.querySelector('.abas-painel').addEventListener('click', (e) => {
       const botao = e.target.closest('[data-aba]');
       if (!botao) return;
-      const aba = botao.dataset.aba;
-
-      document.querySelectorAll('.btn-aba').forEach((b) => {
-        const ativa = b === botao;
-        b.classList.toggle('ativo', ativa);
-        b.setAttribute('aria-selected', String(ativa));
-      });
-      document.getElementById('abaGestao').hidden = aba !== 'gestao';
-      document.getElementById('abaEstatisticas').hidden = aba !== 'estatisticas';
-
-      if (aba === 'estatisticas') renderizarDashboard();
+      // Sair da página individual por um link da sidebar: limpa o hash sem criar histórico.
+      if (paginaCandidatoId !== null) {
+        sairDaPaginaCandidato();
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+      mostrarAba(botao.dataset.aba);
+      fecharSidebar();
     });
+
+    // Sidebar recolhível em telas estreitas (< 900px).
+    function fecharSidebar() {
+      document.getElementById('sidebar').classList.remove('aberta');
+      document.getElementById('overlaySidebar').classList.remove('visivel');
+      document.getElementById('btnMenu').setAttribute('aria-expanded', 'false');
+    }
+    document.getElementById('btnMenu').addEventListener('click', () => {
+      const aberta = document.getElementById('sidebar').classList.toggle('aberta');
+      document.getElementById('overlaySidebar').classList.toggle('visivel', aberta);
+      document.getElementById('btnMenu').setAttribute('aria-expanded', String(aberta));
+    });
+    document.getElementById('overlaySidebar').addEventListener('click', fecharSidebar);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') fecharSidebar(); });
 
     // Carrega o painel assim que a página abre (só depois de confirmar a sessão de RH).
     // Atualização automática do painel: o candidato age (envia documento,
@@ -1953,24 +2016,48 @@
     const INTERVALO_ATUALIZACAO_FICHAS_MS = 5000;
 
     function assinaturaDaFicha(f) {
-      return `${f.status}|${f.atualizadoEm || f.criadoEm}`;
+      const tags = Array.isArray(f.tags) ? f.tags.join(',') : '';
+      return `${f.status}|${f.atualizadoEm || f.criadoEm}|${f.bancoTalentos ? 1 : 0}|${tags}`;
     }
 
     async function atualizarFichasSilenciosamente() {
       if (document.hidden) return;
       try {
-        const resposta = await fetch('/api/rh/fichas', { headers: cabecalhosRh() });
-        if (!resposta.ok) return;
-        const novas = await resposta.json();
-        if (!Array.isArray(novas)) return;
+        const [respostaFichas, respostaEtiquetas] = await Promise.all([
+          fetch('/api/rh/fichas', { headers: cabecalhosRh() }),
+          fetch('/api/rh/etiquetas', { headers: cabecalhosRh() })
+        ]);
+
+        // Catálogo de etiquetas (id+nome+cor+atualizadoEm): renomear/recolorir em outra aba aparece aqui.
+        let catalogoMudou = false;
+        if (respostaEtiquetas.ok) {
+          const lista = await respostaEtiquetas.json();
+          if (Array.isArray(lista) && assinaturaDoCatalogo(lista) !== assinaturaDoCatalogo(etiquetasCatalogo)) {
+            etiquetasCatalogo = lista;
+            catalogoMudou = true;
+          }
+        }
+
+        let novas = null;
+        if (respostaFichas.ok) {
+          const corpo = await respostaFichas.json();
+          if (Array.isArray(corpo)) novas = corpo;
+        }
+        if (!novas) { if (catalogoMudou) atualizarChipsNaTela(); return; }
 
         const antigas = new Map(ultimasFichasCarregadas.map((f) => [f.id, f]));
         const alteradas = novas.filter((f) => !antigas.has(f.id) || assinaturaDaFicha(antigas.get(f.id)) !== assinaturaDaFicha(f));
-        const estruturaMudou = novas.length !== antigas.size || novas.some((f) => !antigas.has(f.id));
-        if (!alteradas.length && !estruturaMudou) return;
+        // Arquivar/reativar em outra aba também muda a estrutura da lista de Gestão.
+        const estruturaMudou = novas.length !== antigas.size || novas.some((f) => !antigas.has(f.id))
+          || novas.some((f) => antigas.has(f.id) && !!antigas.get(f.id).bancoTalentos !== !!f.bancoTalentos);
+        if (!alteradas.length && !estruturaMudou) {
+          if (catalogoMudou) atualizarChipsNaTela();
+          return;
+        }
 
         ultimasFichasCarregadas = novas;
         renderizarDashboard();
+        atualizarCardsResumo();
 
         const campoAtivo = document.activeElement;
         const digitando = campoAtivo && /^(INPUT|TEXTAREA)$/.test(campoAtivo.tagName)
@@ -1978,28 +2065,1142 @@
 
         if (estruturaMudou && !digitando) {
           renderizarTabela();
-          return;
-        }
-
-        alteradas.forEach((f) => {
-          const trDetalhes = document.querySelector(`tr[data-detalhes-de="${f.id}"]`);
-          if (!trDetalhes) return;
-          const badge = trDetalhes.previousElementSibling && trDetalhes.previousElementSibling.querySelector('.badge');
-          if (badge) {
+        } else {
+          // Atualiza só o selo de status das linhas alteradas (a lista em si não é redesenhada).
+          alteradas.forEach((f) => {
+            const badge = document.querySelector(`[data-nome-candidato="${CSS.escape(f.id)}"]`)?.closest('tr')?.querySelector('.badge');
+            if (!badge) return;
             const { classe, rotulo } = getStatusBadge(f.status);
             badge.className = `badge ${classe}`;
             badge.textContent = rotulo;
-          }
-          if (detalhesExpandidos.has(f.id)) atualizarPainelDetalhesInline(f);
-        });
+          });
+        }
+
+        // Chips (inclui Banco de Talentos e Configurações) e a página individual aberta (seções + chat).
+        atualizarChipsNaTela();
+        renderizarPaginaCandidato();
       } catch (erro) {
         // Falha de rede momentânea - a próxima consulta periódica tenta de novo.
       }
     }
 
+    // =========================================================================
+    // BANCO DE TALENTOS
+    // =========================================================================
+    function normalizarTexto(texto) {
+      return String(texto == null ? '' : texto).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    }
+
+    let toastTimer = null;
+    function mostrarFeedback(mensagem, tipo) {
+      const toast = document.getElementById('toastRh');
+      toast.textContent = mensagem;
+      toast.className = `toast-rh ${tipo || 'sucesso'}`;
+      toast.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toast.hidden = true; }, 4000);
+    }
+
+    // Redesenha tudo que depende da separação ativas x arquivadas.
+    function atualizarTelasAposMudanca() {
+      renderizarTabela();
+      renderizarDashboard();
+      atualizarCardsResumo();
+      renderizarTalentos();
+      renderizarPaginaCandidato();
+    }
+
+    // Etiquetas escolhidas como filtro na aba Banco de Talentos (qualquer uma delas).
+    const filtroEtiquetasTalentos = new Set();
+
+    function renderizarTalentos() {
+      const arquivadas = fichasArquivadas();
+      const contador = document.getElementById('contadorTalentos');
+      contador.textContent = arquivadas.length;
+      contador.hidden = arquivadas.length === 0;
+      document.getElementById('tituloTalentos').textContent = `Banco de Talentos (${arquivadas.length})`;
+
+      // Filtro por etiqueta: só oferece as etiquetas em uso no Banco (e descarta as que sumiram).
+      const usadas = etiquetasCatalogo.filter((e) => arquivadas.some((f) => Array.isArray(f.tags) && f.tags.includes(e.id)));
+      [...filtroEtiquetasTalentos].forEach((id) => { if (!usadas.some((e) => e.id === id)) filtroEtiquetasTalentos.delete(id); });
+      const areaFiltro = document.getElementById('filtroEtiquetasTalentos');
+      areaFiltro.hidden = usadas.length === 0;
+      definirHtmlSeMudou(areaFiltro, usadas.length ? `<span class="rotulo-filtro">Filtrar por etiqueta:</span>` + usadas.map((e) =>
+        `<button type="button" class="btn-filtro-etq" data-filtro-etq="${escapeHtml(e.id)}" aria-pressed="${filtroEtiquetasTalentos.has(e.id)}"
+                 aria-label="Filtrar por ${escapeHtml(rotuloDaEtiqueta(e))}">${chipEtiquetaHtml(e, true)}</button>`).join('')
+        + (filtroEtiquetasTalentos.size ? '<button type="button" class="btn-limpar-filtro-etq" data-limpar-filtro-etq>Limpar filtro</button>' : '') : '');
+
+      const termo = normalizarTexto(document.getElementById('campoBuscaTalentos').value.trim());
+      const termoDigitos = termo.replace(/\D/g, '');
+      const filtradas = arquivadas.filter((f) => {
+        if (filtroEtiquetasTalentos.size && !idsValidosDaFicha(f).some((id) => filtroEtiquetasTalentos.has(id))) return false;
+        if (!termo) return true;
+        const cpfDigitos = (f.cpf || '').replace(/\D/g, '');
+        return normalizarTexto(f.nomeCompleto).includes(termo)
+          || (termoDigitos.length > 0 && cpfDigitos.includes(termoDigitos))
+          || etiquetasDaFicha(f).some((e) => normalizarTexto(e.nome).includes(termo));
+      }).sort((a, b) => new Date(b.bancoTalentosEm || 0) - new Date(a.bancoTalentosEm || 0));
+
+      const corpo = document.getElementById('corpoTalentos');
+      if (filtradas.length === 0) {
+        corpo.innerHTML = `<tr><td colspan="6" class="vazio"><div class="vazio-amigavel">${icone('pasta')}<span>${arquivadas.length === 0
+          ? 'Nada por aqui ainda. Quem você guardar no Banco de Talentos aparece nesta lista.'
+          : 'Ninguém encontrado para esta busca. Tente outro nome, CPF ou etiqueta.'}</span></div></td></tr>`;
+        return;
+      }
+
+      corpo.innerHTML = filtradas.map((f) => {
+        const { classe, rotulo } = getStatusBadge(f.status);
+        const id = escapeHtml(f.id);
+        return `
+          <tr>
+            <td>${montarCelulaNome(f)}</td>
+            <td>${escapeHtml(f.cpf || '-')}</td>
+            <td><div class="contato-talento"><span>${escapeHtml(f.email || '-')}</span><span>${escapeHtml(f.whatsapp || '-')}</span></div></td>
+            <td><span class="badge ${classe}">${rotulo}</span></td>
+            <td>${formatarData(f.bancoTalentosEm)}</td>
+            <td>
+              <div class="acoes">
+                <button type="button" class="btn-acao btn-abrir-pagina" data-abrir-pagina="${id}">Abrir página</button>
+                <button type="button" class="btn-acao btn-etiquetas-linha" data-abrir-etiquetas="${id}">Etiquetas</button>
+                <button type="button" class="btn-acao btn-reativar" data-reativar="${id}">Reativar Candidato</button>
+              </div>
+            </td>
+          </tr>`;
+      }).join('');
+    }
+
+    document.getElementById('filtroEtiquetasTalentos').addEventListener('click', (e) => {
+      const botao = e.target.closest('[data-filtro-etq]');
+      if (botao) {
+        const id = botao.dataset.filtroEtq;
+        if (filtroEtiquetasTalentos.has(id)) filtroEtiquetasTalentos.delete(id); else filtroEtiquetasTalentos.add(id);
+        renderizarTalentos();
+        const novo = document.querySelector(`[data-filtro-etq="${CSS.escape(id)}"]`);
+        if (novo) novo.focus();
+        return;
+      }
+      if (e.target.closest('[data-limpar-filtro-etq]')) {
+        filtroEtiquetasTalentos.clear();
+        renderizarTalentos();
+      }
+    });
+
+    document.getElementById('campoBuscaTalentos').addEventListener('input', renderizarTalentos);
+
+    document.getElementById('corpoTalentos').addEventListener('click', tratarCliqueFicha);
+
+    // Modal de tags ao arquivar. Guarda o id da ficha em andamento.
+    let fichaParaArquivarId = null;
+    let elementoFocoAnterior = null;
+
+    function abrirModalTalentos(id) {
+      const ficha = ultimasFichasCarregadas.find((f) => f.id === id);
+      if (!ficha) return;
+      fichaParaArquivarId = id;
+      elementoFocoAnterior = document.activeElement;
+      document.getElementById('modalTalentosTexto').textContent =
+        `Mover ${ficha.nomeCompleto || 'este candidato'} para o Banco de Talentos? Ele sairá da lista de Gestão e das estatísticas, sem alterar o status da ficha.`;
+      // Começa com as etiquetas que a ficha já tem (o servidor substitui a lista inteira).
+      etiquetasBanco = new Set(idsValidosDaFicha(ficha));
+      renderizarChipsBanco();
+      document.getElementById('modalTalentosErro').hidden = true;
+      const confirmar = document.getElementById('modalTalentosConfirmar');
+      confirmar.disabled = false;
+      confirmar.textContent = 'Confirmar';
+      document.getElementById('modalTalentos').hidden = false;
+      document.getElementById('modalTalentosEscolher').focus();
+    }
+
+    function fecharModalTalentos() {
+      document.getElementById('modalTalentos').hidden = true;
+      fichaParaArquivarId = null;
+      if (elementoFocoAnterior && elementoFocoAnterior.focus) elementoFocoAnterior.focus();
+    }
+
+    document.getElementById('modalTalentosCancelar').addEventListener('click', fecharModalTalentos);
+    document.getElementById('modalTalentos').addEventListener('click', (e) => {
+      if (e.target.id === 'modalTalentos') fecharModalTalentos();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !etq.aberto && !document.getElementById('modalTalentos').hidden) fecharModalTalentos();
+    });
+
+    document.getElementById('formModalTalentos').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const erroEl = document.getElementById('modalTalentosErro');
+      const confirmar = document.getElementById('modalTalentosConfirmar');
+      const etiquetas = [...etiquetasBanco];
+
+      if (etiquetas.length > MAX_ETIQUETAS_FICHA) { erroEl.textContent = `Use no máximo ${MAX_ETIQUETAS_FICHA} etiquetas.`; erroEl.hidden = false; return; }
+
+      erroEl.hidden = true;
+      confirmar.disabled = true;
+      confirmar.textContent = 'Movendo...';
+      try {
+        const resposta = await fetch(`/api/rh/fichas/${fichaParaArquivarId}/banco-talentos`, {
+          method: 'PATCH',
+          headers: cabecalhosRh({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ etiquetas })
+        });
+        const resultado = await resposta.json().catch(() => ({}));
+        if (resposta.status === 401 || resposta.status === 403) { window.location.href = '/login.html'; return; }
+        if (!resposta.ok) {
+          erroEl.textContent = resultado.erro || 'Não foi possível mover o candidato.';
+          erroEl.hidden = false;
+          confirmar.disabled = false;
+          confirmar.textContent = 'Confirmar';
+          return;
+        }
+        const id = fichaParaArquivarId;
+        atualizarFichaEmCache(resultado.candidato);
+        elementoFocoAnterior = null; // a linha deixa de existir
+        fecharModalTalentos();
+        atualizarTelasAposMudanca();
+        if (paginaCandidatoId === id) {
+          const titulo = document.getElementById('pcNome');
+          if (titulo) titulo.focus({ preventScroll: true });
+        }
+        mostrarFeedback('Candidato movido para o Banco de Talentos.', 'sucesso');
+      } catch (erro) {
+        erroEl.textContent = 'Falha ao comunicar com o servidor.';
+        erroEl.hidden = false;
+        confirmar.disabled = false;
+        confirmar.textContent = 'Confirmar';
+      }
+    });
+
+    // =========================================================================
+    // ETIQUETAS (estilo Trello): catálogo global com cor + nome opcional. A
+    // ficha guarda só os ids (ficha.tags); ids que não existem mais no
+    // catálogo (ou textos soltos de dados antigos) são ignorados ao exibir.
+    // =========================================================================
+    const PALETA_ETIQUETAS = [
+      { nome: 'Verde', cor: '#61bd4f' }, { nome: 'Amarelo', cor: '#f2d600' }, { nome: 'Laranja', cor: '#ff9f1a' },
+      { nome: 'Vermelho', cor: '#eb5a46' }, { nome: 'Roxo', cor: '#c377e0' }, { nome: 'Azul', cor: '#0079bf' },
+      { nome: 'Azul-claro', cor: '#00c2e0' }, { nome: 'Lima', cor: '#51e898' }, { nome: 'Rosa', cor: '#ff78cb' },
+      { nome: 'Cinza', cor: '#6b7280' }, { nome: 'Preto', cor: '#344563' }
+    ];
+    const COR_ETIQUETA_PADRAO = '#6b7280';
+    const COR_TEXTO_ESCURO = '#1e293b';
+    const MAX_ETIQUETAS_FICHA = 10;
+    let etiquetasCatalogo = [];
+
+    function corSegura(cor) { return /^#[0-9a-f]{6}$/i.test(cor || '') ? cor : COR_ETIQUETA_PADRAO; }
+
+    function nomeDaCor(cor) {
+      const c = String(cor || '').toLowerCase();
+      const p = PALETA_ETIQUETAS.find((x) => x.cor === c);
+      return p ? p.nome.toLowerCase() : `personalizada ${c}`;
+    }
+
+    function luminanciaRelativa(hex) {
+      const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+      if (!m) return 0.5;
+      const [r, g, b] = [m[1], m[2], m[3]].map((h) => {
+        const v = parseInt(h, 16) / 255;
+        return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+
+    // Texto branco ou escuro, o que tiver maior contraste (WCAG) com o fundo.
+    function corTextoSobre(hex) {
+      const l = luminanciaRelativa(hex);
+      const contrasteBranco = 1.05 / (l + 0.05);
+      const contrasteEscuro = (l + 0.05) / (luminanciaRelativa(COR_TEXTO_ESCURO) + 0.05);
+      return contrasteBranco >= contrasteEscuro ? '#ffffff' : COR_TEXTO_ESCURO;
+    }
+
+    function rotuloDaEtiqueta(e) {
+      return e.nome || `Etiqueta sem nome (${nomeDaCor(e.cor)})`;
+    }
+
+    // Chip colorido com o nome; sem nome vira uma barrinha de cor (como no Trello).
+    function chipEtiquetaHtml(e, compacto) {
+      const cor = corSegura(e.cor);
+      const classeCompacto = compacto ? ' compacto' : '';
+      if (e.nome) {
+        return `<span class="chip-etq${classeCompacto}" style="background:${cor};color:${corTextoSobre(cor)}" title="${escapeHtml(e.nome)}">${escapeHtml(e.nome)}</span>`;
+      }
+      const descricao = `Etiqueta sem nome, cor ${nomeDaCor(cor)}`;
+      return `<span class="chip-etq barra${classeCompacto}" style="background:${cor}" role="img" aria-label="${escapeHtml(descricao)}" title="${escapeHtml(descricao)}"></span>`;
+    }
+
+    function fichaPorId(id) { return ultimasFichasCarregadas.find((f) => f.id === id); }
+
+    function etiquetaPorId(id) { return etiquetasCatalogo.find((e) => e.id === id); }
+
+    // Etiquetas da ficha que existem no catálogo (ignora ids órfãos e textos soltos).
+    function etiquetasDaFicha(f) {
+      const ids = Array.isArray(f.tags) ? f.tags : [];
+      return ids.map(etiquetaPorId).filter(Boolean);
+    }
+
+    function idsValidosDaFicha(f) { return etiquetasDaFicha(f).map((e) => e.id); }
+
+    function montarChipsDaFicha(f, compacto) {
+      return etiquetasDaFicha(f).map((e) => chipEtiquetaHtml(e, compacto)).join('');
+    }
+
+    function contarFichasComEtiqueta(id) {
+      return ultimasFichasCarregadas.filter((f) => Array.isArray(f.tags) && f.tags.includes(id)).length;
+    }
+
+    // Só mexe no DOM se o HTML mudou (preserva foco e estado entre atualizações).
+    function definirHtmlSeMudou(el, html) {
+      if (!el || el._html === html) return false;
+      el.innerHTML = html;
+      el._html = html;
+      return true;
+    }
+
+    function assinaturaDoCatalogo(lista) {
+      return lista.map((e) => `${e.id}|${e.nome}|${e.cor}|${e.atualizadoEm}`).join(';');
+    }
+
+    // Chamada autenticada à API de etiquetas; lança Error com a mensagem do servidor.
+    async function chamarApiRh(url, metodo, corpo) {
+      const resposta = await fetch(url, {
+        method: metodo,
+        headers: cabecalhosRh(corpo ? { 'Content-Type': 'application/json' } : {}),
+        body: corpo ? JSON.stringify(corpo) : undefined
+      });
+      const dados = await resposta.json().catch(() => ({}));
+      if (resposta.status === 401 || resposta.status === 403) { window.location.href = '/login.html'; throw new Error('Sessão expirada.'); }
+      if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível concluir a operação.');
+      return dados;
+    }
+
+    async function carregarEtiquetas() {
+      try {
+        const lista = await chamarApiRh('/api/rh/etiquetas', 'GET');
+        if (!Array.isArray(lista)) return;
+        etiquetasCatalogo = lista;
+        atualizarChipsNaTela();
+      } catch (erro) {
+        // Sem catálogo, as fichas simplesmente aparecem sem etiquetas até a próxima tentativa.
+      }
+    }
+
+    // Redesenha, no lugar, tudo que mostra etiquetas (chips das linhas, da
+    // página do candidato, Banco de Talentos, Configurações e modais abertos).
+    function atualizarChipsNaTela() {
+      document.querySelectorAll('[data-chips-ficha]').forEach((el) => {
+        const f = fichaPorId(el.dataset.chipsFicha);
+        if (!f) return;
+        definirHtmlSeMudou(el, montarChipsDaFicha(f, el.dataset.compacto === '1'));
+      });
+      renderizarTalentos();
+      renderizarCatalogoConfig();
+      renderizarChipsBanco();
+      if (etq.aberto && etq.vista === 'lista') renderizarListaEtiquetas();
+    }
+
+    // --- Aba Configurações: catálogo completo ---
+    function renderizarCatalogoConfig() {
+      const el = document.getElementById('cfgListaEtiquetas');
+      if (!el) return;
+      if (!etiquetasCatalogo.length) {
+        definirHtmlSeMudou(el, '<div class="etq-vazio">Nenhuma etiqueta criada ainda.</div>');
+        return;
+      }
+      definirHtmlSeMudou(el, etiquetasCatalogo.map((e) => {
+        const usos = contarFichasComEtiqueta(e.id);
+        return `
+          <div class="linha-etq-config">
+            <div class="chips-etq">${chipEtiquetaHtml(e, false)}</div>
+            <span class="uso">${usos} ${usos === 1 ? 'ficha' : 'fichas'}</span>
+            <button type="button" class="btn-icone" data-cfg-editar-etiqueta="${escapeHtml(e.id)}"
+                    aria-label="Editar etiqueta ${escapeHtml(rotuloDaEtiqueta(e))}" title="Editar etiqueta">${icone('lapis')}</button>
+          </div>`;
+      }).join(''));
+    }
+
+    document.getElementById('cfgListaEtiquetas').addEventListener('click', (e) => {
+      const botao = e.target.closest('[data-cfg-editar-etiqueta]');
+      if (botao) abrirModalEtiquetas({ modo: 'gerenciar', editar: botao.dataset.cfgEditarEtiqueta });
+    });
+    document.getElementById('cfgNovaEtiqueta').addEventListener('click', () => {
+      abrirModalEtiquetas({ modo: 'gerenciar', editar: 'nova' });
+    });
+
+    // --- Componente único "Etiquetas" (modal) ---
+    // modo 'ficha': marcar/desmarcar grava na ficha; 'selecao': edita um Set
+    // local (ex.: modal do Banco de Talentos); 'gerenciar': só catálogo.
+    const etq = {
+      aberto: false, modo: 'ficha', fichaId: null, selecionadas: null, aoMudar: null,
+      vista: 'lista', editandoId: null, cor: '', direto: false, ocupado: false, focoAnterior: null
+    };
+    const elEtq = (id) => document.getElementById(id);
+
+    function idsAnexadosAoContexto() {
+      if (etq.modo === 'ficha') {
+        const f = fichaPorId(etq.fichaId);
+        return new Set(f ? idsValidosDaFicha(f) : []);
+      }
+      if (etq.modo === 'selecao' && etq.selecionadas) return etq.selecionadas;
+      return new Set();
+    }
+
+    function mostrarErroEtq(mensagem) {
+      const el = elEtq('etqErro');
+      el.textContent = mensagem;
+      el.hidden = false;
+    }
+    function limparErroEtq() { elEtq('etqErro').hidden = true; }
+
+    function abrirModalEtiquetas({ modo = 'ficha', fichaId = null, selecionadas = null, aoMudar = null, editar = null } = {}) {
+      Object.assign(etq, { modo, fichaId, selecionadas, aoMudar, ocupado: false, direto: false, focoAnterior: document.activeElement, aberto: true });
+      const ficha = fichaId ? fichaPorId(fichaId) : null;
+      elEtq('etqSubtitulo').textContent = modo === 'ficha'
+        ? `Marque as etiquetas da ficha de ${ficha ? (ficha.nomeCompleto || 'candidato') : 'candidato'}.`
+        : (modo === 'selecao' ? 'Marque as etiquetas que serão anexadas à ficha.' : 'Crie, edite ou exclua etiquetas do catálogo.');
+      elEtq('etqBusca').value = '';
+      elEtq('modalEtiquetas').hidden = false;
+      if (editar !== null) {
+        etq.direto = true;
+        mostrarEditorEtiqueta(editar === 'nova' ? null : editar);
+      } else {
+        mostrarListaEtiquetas();
+      }
+    }
+
+    function fecharModalEtiquetas() {
+      if (!etq.aberto) return;
+      etq.aberto = false;
+      elEtq('modalEtiquetas').hidden = true;
+      const anterior = etq.focoAnterior;
+      etq.focoAnterior = null;
+      if (anterior && document.contains(anterior) && anterior.focus) anterior.focus();
+    }
+
+    function mostrarListaEtiquetas(focoId) {
+      etq.vista = 'lista';
+      etq.editandoId = null;
+      elEtq('etqTitulo').textContent = 'Etiquetas';
+      elEtq('etqVistaLista').hidden = false;
+      elEtq('etqAcoesLista').hidden = false;
+      elEtq('etqVistaEditor').hidden = true;
+      elEtq('etqSubtitulo').hidden = false;
+      limparErroEtq();
+      renderizarListaEtiquetas();
+      const alvo = focoId && document.querySelector(`[data-etq-editar="${CSS.escape(focoId)}"]`);
+      (alvo || elEtq('etqBusca')).focus();
+    }
+
+    function renderizarListaEtiquetas() {
+      const lista = elEtq('etqLista');
+      const focado = document.activeElement && document.activeElement.closest && lista.contains(document.activeElement)
+        ? (document.activeElement.dataset.etqMarcar || document.activeElement.dataset.etqEditar) : null;
+      const termo = normalizarTexto(elEtq('etqBusca').value.trim());
+      const anexadas = idsAnexadosAoContexto();
+      const selecionavel = etq.modo !== 'gerenciar';
+      const itens = etiquetasCatalogo.filter((e) => !termo
+        || normalizarTexto(e.nome).includes(termo) || normalizarTexto(nomeDaCor(e.cor)).includes(termo));
+
+      if (!itens.length) {
+        lista.innerHTML = `<div class="etq-vazio">${etiquetasCatalogo.length
+          ? 'Nenhuma etiqueta encontrada para esta busca.'
+          : 'Nenhuma etiqueta criada ainda. Use o botão abaixo para criar a primeira.'}</div>`;
+        return;
+      }
+      lista.innerHTML = itens.map((e) => {
+        const id = escapeHtml(e.id);
+        const chip = chipEtiquetaHtml(e, false);
+        const corpo = selecionavel
+          ? `<label class="etq-marca"><input type="checkbox" data-etq-marcar="${id}" ${anexadas.has(e.id) ? 'checked' : ''}>${chip}</label>`
+          : `<div class="etq-chip-wrap">${chip}</div>`;
+        return `<div class="etq-linha">${corpo}
+          <button type="button" class="btn-icone" data-etq-editar="${id}" aria-label="Editar etiqueta ${escapeHtml(rotuloDaEtiqueta(e))}" title="Editar etiqueta">${icone('lapis')}</button></div>`;
+      }).join('');
+      if (focado) {
+        const alvo = lista.querySelector(`[data-etq-marcar="${CSS.escape(focado)}"], [data-etq-editar="${CSS.escape(focado)}"]`);
+        if (alvo) alvo.focus();
+      }
+    }
+
+    // Anexa/remove uma etiqueta no contexto atual (ficha ou seleção local).
+    async function alternarEtiquetaNoContexto(idEtiqueta, marcar, checkbox) {
+      limparErroEtq();
+      if (etq.modo === 'selecao') {
+        if (marcar && etq.selecionadas.size >= MAX_ETIQUETAS_FICHA) {
+          checkbox.checked = false;
+          mostrarErroEtq(`Use no máximo ${MAX_ETIQUETAS_FICHA} etiquetas por ficha.`);
+          return;
+        }
+        if (marcar) etq.selecionadas.add(idEtiqueta); else etq.selecionadas.delete(idEtiqueta);
+        if (etq.aoMudar) etq.aoMudar([...etq.selecionadas]);
+        return;
+      }
+      const ficha = fichaPorId(etq.fichaId);
+      if (!ficha) { checkbox.checked = !marcar; mostrarErroEtq('Candidato não encontrado.'); return; }
+      const atuais = idsValidosDaFicha(ficha);
+      const novos = marcar ? [...atuais, idEtiqueta] : atuais.filter((x) => x !== idEtiqueta);
+      if (novos.length > MAX_ETIQUETAS_FICHA) {
+        checkbox.checked = false;
+        mostrarErroEtq(`Use no máximo ${MAX_ETIQUETAS_FICHA} etiquetas por ficha.`);
+        return;
+      }
+      checkbox.disabled = true;
+      try {
+        const dados = await chamarApiRh(`/api/rh/fichas/${encodeURIComponent(etq.fichaId)}/etiquetas`, 'PATCH', { etiquetas: novos });
+        atualizarFichaEmCache(dados.candidato);
+        atualizarChipsNaTela();
+      } catch (erro) {
+        checkbox.checked = !marcar;
+        mostrarErroEtq(erro.message);
+      } finally {
+        checkbox.disabled = false;
+        checkbox.focus();
+      }
+    }
+
+    // Anexa uma etiqueta recém-criada ao contexto; devolve uma mensagem de erro (ou null).
+    async function anexarNovaEtiquetaAoContexto(idEtiqueta) {
+      if (etq.modo === 'selecao') {
+        if (etq.selecionadas.size >= MAX_ETIQUETAS_FICHA) return `Etiqueta criada, mas a ficha já tem ${MAX_ETIQUETAS_FICHA} etiquetas.`;
+        etq.selecionadas.add(idEtiqueta);
+        if (etq.aoMudar) etq.aoMudar([...etq.selecionadas]);
+        return null;
+      }
+      const ficha = fichaPorId(etq.fichaId);
+      if (!ficha) return null;
+      const novos = [...idsValidosDaFicha(ficha), idEtiqueta];
+      if (novos.length > MAX_ETIQUETAS_FICHA) return `Etiqueta criada, mas a ficha já tem ${MAX_ETIQUETAS_FICHA} etiquetas.`;
+      try {
+        const dados = await chamarApiRh(`/api/rh/fichas/${encodeURIComponent(etq.fichaId)}/etiquetas`, 'PATCH', { etiquetas: novos });
+        atualizarFichaEmCache(dados.candidato);
+        atualizarChipsNaTela();
+        return null;
+      } catch (erro) {
+        return `Etiqueta criada, mas não foi possível anexá-la: ${erro.message}`;
+      }
+    }
+
+    // --- Editor (criar/editar/excluir) ---
+    function mostrarEditorEtiqueta(id) {
+      const existente = id ? etiquetaPorId(id) : null;
+      if (id && !existente) { mostrarListaEtiquetas(); mostrarErroEtq('Esta etiqueta não existe mais.'); return; }
+      etq.vista = 'editor';
+      etq.editandoId = id;
+      etq.cor = existente ? corSegura(existente.cor) : '';
+      elEtq('etqTitulo').textContent = id ? 'Editar etiqueta' : 'Nova etiqueta';
+      elEtq('etqSubtitulo').hidden = true;
+      elEtq('etqNome').value = existente ? existente.nome : '';
+      elEtq('etqVistaLista').hidden = true;
+      elEtq('etqAcoesLista').hidden = true;
+      elEtq('etqVistaEditor').hidden = false;
+      elEtq('etqExcluir').hidden = !id;
+      elEtq('etqConfirmarExcluir').hidden = true;
+      elEtq('etqSalvar').disabled = false;
+      limparErroEtq();
+      renderizarPaleta();
+      atualizarPreviaEtiqueta();
+      elEtq('etqNome').focus();
+    }
+
+    function renderizarPaleta() {
+      elEtq('etqPaleta').innerHTML = PALETA_ETIQUETAS.map((p) => {
+        const marcada = etq.cor.toLowerCase() === p.cor;
+        return `<button type="button" class="cor-opcao" data-cor="${p.cor}" style="background:${p.cor};color:${corTextoSobre(p.cor)}"
+                  aria-pressed="${marcada}" aria-label="${p.nome}" title="${p.nome}">${marcada ? icone('ok') : ''}</button>`;
+      }).join('');
+      elEtq('etqCorLivre').value = etq.cor || COR_ETIQUETA_PADRAO;
+    }
+
+    function definirCorEditor(cor) {
+      etq.cor = cor.toLowerCase();
+      limparErroEtq();
+      renderizarPaleta();
+      atualizarPreviaEtiqueta();
+    }
+
+    function atualizarPreviaEtiqueta() {
+      const nome = elEtq('etqNome').value.trim();
+      elEtq('etqPrevia').innerHTML = etq.cor
+        ? chipEtiquetaHtml({ nome, cor: etq.cor }, false)
+        : '<span class="etq-vazio" style="padding:0;">escolha uma cor</span>';
+    }
+
+    function cancelarEditorEtiqueta() {
+      if (etq.direto) fecharModalEtiquetas(); else mostrarListaEtiquetas(etq.editandoId);
+    }
+
+    async function salvarEditorEtiqueta() {
+      if (etq.ocupado) return;
+      limparErroEtq();
+      const nome = elEtq('etqNome').value.trim();
+      if (nome.length > 30) { mostrarErroEtq('O nome da etiqueta pode ter no máximo 30 caracteres.'); return; }
+      if (!etq.cor) { mostrarErroEtq('Escolha uma cor para a etiqueta.'); return; }
+
+      etq.ocupado = true;
+      const botao = elEtq('etqSalvar');
+      botao.disabled = true;
+      let idResultado = etq.editandoId;
+      let avisoPosterior = null;
+      try {
+        if (etq.editandoId) {
+          const dados = await chamarApiRh(`/api/rh/etiquetas/${encodeURIComponent(etq.editandoId)}`, 'PATCH', { nome, cor: etq.cor });
+          etiquetasCatalogo = etiquetasCatalogo.map((e) => (e.id === dados.etiqueta.id ? dados.etiqueta : e));
+        } else {
+          const dados = await chamarApiRh('/api/rh/etiquetas', 'POST', { nome, cor: etq.cor });
+          etiquetasCatalogo.push(dados.etiqueta);
+          idResultado = dados.etiqueta.id;
+          if (etq.modo !== 'gerenciar') avisoPosterior = await anexarNovaEtiquetaAoContexto(idResultado);
+        }
+        atualizarChipsNaTela();
+        mostrarFeedback(etq.editandoId ? 'Etiqueta atualizada.' : 'Etiqueta criada.', 'sucesso');
+        if (etq.direto) {
+          fecharModalEtiquetas();
+        } else {
+          mostrarListaEtiquetas(idResultado);
+          if (avisoPosterior) mostrarErroEtq(avisoPosterior);
+        }
+      } catch (erro) {
+        mostrarErroEtq(erro.message);
+      } finally {
+        etq.ocupado = false;
+        botao.disabled = false;
+      }
+    }
+
+    function pedirConfirmacaoExcluirEtiqueta() {
+      const e = etiquetaPorId(etq.editandoId);
+      if (!e) return;
+      const usos = contarFichasComEtiqueta(e.id);
+      elEtq('etqConfirmarExcluirTexto').textContent =
+        `Excluir "${rotuloDaEtiqueta(e)}"? Ela será removida de todas as fichas que a usam (${usos} ${usos === 1 ? 'ficha' : 'fichas'} no momento). Esta ação não pode ser desfeita.`;
+      elEtq('etqConfirmarExcluir').hidden = false;
+      elEtq('etqExcluirNao').focus();
+    }
+
+    async function excluirEtiquetaConfirmada() {
+      if (etq.ocupado) return;
+      const id = etq.editandoId;
+      etq.ocupado = true;
+      limparErroEtq();
+      try {
+        await chamarApiRh(`/api/rh/etiquetas/${encodeURIComponent(id)}`, 'DELETE');
+        etiquetasCatalogo = etiquetasCatalogo.filter((e) => e.id !== id);
+        ultimasFichasCarregadas.forEach((f) => {
+          if (Array.isArray(f.tags)) f.tags = f.tags.filter((t) => t !== id);
+        });
+        if (etq.selecionadas) etq.selecionadas.delete(id);
+        filtroEtiquetasTalentos.delete(id);
+        atualizarChipsNaTela();
+        mostrarFeedback('Etiqueta excluída de todas as fichas.', 'sucesso');
+        if (etq.direto) fecharModalEtiquetas(); else mostrarListaEtiquetas();
+      } catch (erro) {
+        elEtq('etqConfirmarExcluir').hidden = true;
+        mostrarErroEtq(erro.message);
+      } finally {
+        etq.ocupado = false;
+      }
+    }
+
+    // Eventos do modal (delegados)
+    (function ligarModalEtiquetas() {
+      const modal = elEtq('modalEtiquetas');
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) { fecharModalEtiquetas(); return; }
+        const botaoEditar = e.target.closest('[data-etq-editar]');
+        if (botaoEditar) { mostrarEditorEtiqueta(botaoEditar.dataset.etqEditar); return; }
+        const botaoCor = e.target.closest('[data-cor]');
+        if (botaoCor) { definirCorEditor(botaoCor.dataset.cor); const novo = elEtq('etqPaleta').querySelector(`[data-cor="${botaoCor.dataset.cor}"]`); if (novo) novo.focus(); return; }
+        if (e.target.closest('#etqNova')) { mostrarEditorEtiqueta(null); return; }
+        if (e.target.closest('#etqCancelarEditor')) { cancelarEditorEtiqueta(); return; }
+        if (e.target.closest('#etqExcluir')) { pedirConfirmacaoExcluirEtiqueta(); return; }
+        if (e.target.closest('#etqExcluirNao')) { elEtq('etqConfirmarExcluir').hidden = true; elEtq('etqExcluir').focus(); return; }
+        if (e.target.closest('#etqExcluirSim')) { excluirEtiquetaConfirmada(); return; }
+        if (e.target.closest('#etqConcluir')) { fecharModalEtiquetas(); }
+      });
+      modal.addEventListener('change', (e) => {
+        const marca = e.target.closest('[data-etq-marcar]');
+        if (marca) alternarEtiquetaNoContexto(marca.dataset.etqMarcar, marca.checked, marca);
+      });
+      elEtq('etqBusca').addEventListener('input', renderizarListaEtiquetas);
+      elEtq('etqNome').addEventListener('input', atualizarPreviaEtiqueta);
+      elEtq('etqCorLivre').addEventListener('input', (e) => definirCorEditor(e.target.value));
+      elEtq('etqVistaEditor').addEventListener('submit', (e) => { e.preventDefault(); salvarEditorEtiqueta(); });
+      // Enter na busca não deve fazer nada (não é formulário), mas Esc/Tab são tratados aqui.
+      document.addEventListener('keydown', (e) => {
+        if (!etq.aberto) return;
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          if (!elEtq('etqConfirmarExcluir').hidden) { elEtq('etqConfirmarExcluir').hidden = true; elEtq('etqExcluir').focus(); }
+          else if (etq.vista === 'editor') cancelarEditorEtiqueta();
+          else fecharModalEtiquetas();
+          return;
+        }
+        if (e.key === 'Tab') {
+          const focaveis = [...modal.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])')]
+            .filter((el) => !el.disabled && el.getClientRects().length > 0);
+          if (!focaveis.length) return;
+          const primeiro = focaveis[0];
+          const ultimo = focaveis[focaveis.length - 1];
+          if (e.shiftKey && (document.activeElement === primeiro || !modal.contains(document.activeElement))) { e.preventDefault(); ultimo.focus(); }
+          else if (!e.shiftKey && document.activeElement === ultimo) { e.preventDefault(); primeiro.focus(); }
+        }
+      });
+    })();
+
+    // --- Banco de Talentos: etiquetas escolhidas no modal de envio ---
+    let etiquetasBanco = new Set();
+
+    function renderizarChipsBanco() {
+      const el = document.getElementById('modalTalentosChips');
+      if (!el) return;
+      etiquetasBanco.forEach((id) => { if (!etiquetaPorId(id)) etiquetasBanco.delete(id); });
+      definirHtmlSeMudou(el, [...etiquetasBanco].map((id) => chipEtiquetaHtml(etiquetaPorId(id), false)).join(''));
+    }
+
+    document.getElementById('modalTalentosEscolher').addEventListener('click', () => {
+      abrirModalEtiquetas({ modo: 'selecao', selecionadas: etiquetasBanco, aoMudar: renderizarChipsBanco });
+    });
+
+    // =========================================================================
+    // PÁGINA INDIVIDUAL DO CANDIDATO (rh.html#/candidato/<id>): visão dedicada
+    // dentro desta mesma página, reaproveitando as funções montar* da lista.
+    // =========================================================================
+    const SECOES_ABA = { gestao: 'abaGestao', talentos: 'abaTalentos', estatisticas: 'abaEstatisticas', config: 'abaConfig' };
+    const TITULO_ORIGINAL = document.title;
+    let abaAtual = 'gestao';          // aba destacada na sidebar
+    let abaOrigem = null;             // aba de onde o candidato foi aberto
+    let paginaCandidatoId = null;     // ficha aberta na visão individual
+    let paginaRenderizadaDe = null;   // id cujo esqueleto já está no DOM
+    let entrouPorLink = false;        // abriu por clique/duplo clique (permite history.back)
+    let rolagemAntes = 0;
+    let fichasJaCarregadas = false;
+
+    function destacarAbaNaSidebar(aba) {
+      abaAtual = aba;
+      document.querySelectorAll('.btn-aba').forEach((b) => {
+        const ativa = b.dataset.aba === aba;
+        b.classList.toggle('ativo', ativa);
+        if (ativa) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+      });
+    }
+
+    // Exibe uma das abas da sidebar (e esconde a visão individual).
+    function mostrarAba(aba) {
+      destacarAbaNaSidebar(aba);
+      Object.entries(SECOES_ABA).forEach(([chave, idSecao]) => { document.getElementById(idSecao).hidden = chave !== aba; });
+      document.getElementById('abaCandidato').hidden = true;
+      document.body.classList.remove('modo-candidato');
+      if (aba === 'estatisticas') renderizarDashboard();
+      if (aba === 'talentos') renderizarTalentos();
+      if (aba === 'config') abrirAbaConfig();
+    }
+
+    function irParaCandidato(id) {
+      abaOrigem = abaAtual;
+      entrouPorLink = true;
+      rolagemAntes = window.scrollY;
+      window.getSelection && window.getSelection().removeAllRanges();
+      window.location.hash = '#/candidato/' + encodeURIComponent(id);
+    }
+
+    function sairDaPaginaCandidato() {
+      if (paginaCandidatoId !== null) fecharChatPollingRh('p:' + paginaCandidatoId);
+      paginaCandidatoId = null;
+      paginaRenderizadaDe = null;
+      entrouPorLink = false;
+      document.getElementById('paginaCandidato').innerHTML = '';
+      document.title = TITULO_ORIGINAL;
+    }
+
+    function voltarDaPaginaCandidato() {
+      if (entrouPorLink) { history.back(); return; }
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+      rotearHash();
+    }
+
+    // Link do botão "Documentos" da lista (#/candidato/<id>/documentos): ao abrir, leva direto à seção.
+    let rolarParaDocumentos = false;
+
+    function rotearHash() {
+      const m = /^#\/candidato\/([^/?#]+)(\/documentos)?$/.exec(window.location.hash);
+      if (m) { rolarParaDocumentos = !!m[2]; abrirPaginaCandidato(decodeURIComponent(m[1])); return; }
+      if (paginaCandidatoId === null) return;
+      const idAnterior = paginaCandidatoId;
+      const ficha = fichaPorId(idAnterior);
+      sairDaPaginaCandidato();
+      // Volta para a aba onde a ficha está agora (ela pode ter sido arquivada/reativada na página).
+      mostrarAba(ficha ? (ficha.bancoTalentos ? 'talentos' : 'gestao') : (abaOrigem || 'gestao'));
+      window.scrollTo(0, rolagemAntes);
+      const nome = document.querySelector(`[data-nome-candidato="${CSS.escape(idAnterior)}"]`);
+      if (nome) nome.focus({ preventScroll: true });
+    }
+
+    function abrirPaginaCandidato(id) {
+      if (paginaCandidatoId !== null && paginaCandidatoId !== id) {
+        fecharChatPollingRh('p:' + paginaCandidatoId);
+        paginaRenderizadaDe = null;
+      }
+      paginaCandidatoId = id;
+      Object.values(SECOES_ABA).forEach((idSecao) => { document.getElementById(idSecao).hidden = true; });
+      document.getElementById('abaCandidato').hidden = false;
+      document.body.classList.add('modo-candidato');
+      fecharSidebar();
+      renderizarPaginaCandidato();
+      window.scrollTo(0, 0);
+    }
+
+    function formatarNascimento(valor) {
+      const digitos = String(valor || '').replace(/\D/g, '');
+      return digitos.length === 8 ? `${digitos.slice(0, 2)}/${digitos.slice(2, 4)}/${digitos.slice(4)}` : (valor || '-');
+    }
+
+    function montarCabecalhoPagina(f) {
+      const { classe, rotulo } = getStatusBadge(f.status);
+      const selo = f.bancoTalentos
+        ? `<span class="selo-banco">No Banco de Talentos desde ${formatarData(f.bancoTalentosEm)}</span>` : '';
+      const id = escapeHtml(f.id);
+      return `
+        <div class="pc-titulo-linha">
+          ${avatarHtml(f.nomeCompleto, 'avatar-grande')}
+          <h2 class="pc-nome" id="pcNome" tabindex="-1">${escapeHtml(f.nomeCompleto || 'Candidato sem nome')}</h2>
+          <span class="badge ${classe}">${rotulo}</span>
+          ${selo}
+        </div>
+        <div class="pc-acoes" role="group" aria-label="Ações da ficha">
+          <button type="button" class="btn-acao btn-copiar-link" data-copiar-link="${id}">Copiar link da ficha</button>
+          <button type="button" class="btn-acao btn-copiar-link" data-copiar-link-pagina="${id}">Copiar link desta página</button>
+          ${f.status === 'CONTRATACAO_CONCLUIDA' ? `<button type="button" class="btn-acao btn-imprimir" data-imprimir="${id}">Imprimir/Gerar PDF da Ficha</button>` : ''}
+          ${f.bancoTalentos ? `<button type="button" class="btn-acao btn-reativar" data-reativar="${id}">Reativar Candidato</button>` : ''}
+        </div>`;
+    }
+
+    function montarDadosPagina(f) {
+      const campo = (rotulo, valor, largo) =>
+        `<div${largo ? ' class="largo"' : ''}><dt>${rotulo}</dt><dd>${escapeHtml(valor || '-')}</dd></div>`;
+      const complemento = f.complemento ? ` - ${f.complemento}` : '';
+      const linhaRua = f.logradouro ? `${f.logradouro}, ${f.numero || 's/n'}${complemento}` : '';
+      const endereco = [linhaRua, f.bairro, f.cep ? `CEP ${f.cep}` : ''].filter(Boolean).join(' - ');
+      return [
+        campo('CPF', f.cpf),
+        campo('Data de nascimento', formatarNascimento(f.dataNascimento)),
+        campo('E-mail', f.email),
+        campo('WhatsApp', f.whatsapp),
+        campo('Gênero', f.genero),
+        campo('Ficha enviada em', formatarData(f.criadoEm)),
+        campo('Endereço', endereco, true)
+      ].join('');
+    }
+
+    function montarPaginaCandidato(f) {
+      const id = escapeHtml(f.id);
+      return `
+        <div class="pagina-candidato">
+          <div class="pc-voltar"><button type="button" class="btn-modal" data-voltar-lista>&larr; Voltar para a lista</button></div>
+          <section class="pc-card pc-cabecalho" aria-label="Candidato" data-pc="cabecalho"></section>
+          <section class="pc-card" aria-labelledby="pcTituloDados">
+            <h3 class="pc-titulo-secao" id="pcTituloDados">Dados de contato</h3>
+            <dl class="pc-dados" data-pc="dados"></dl>
+          </section>
+          <section class="pc-card pc-etq" aria-labelledby="pcTituloEtq">
+            <div class="pc-etq-topo">
+              <h3 class="pc-titulo-secao" id="pcTituloEtq">Etiquetas</h3>
+              <button type="button" class="btn-modal" data-abrir-etiquetas="${id}">+ Etiquetas</button>
+            </div>
+            <div class="chips-etq" data-chips-ficha="${id}" data-vazio="Nenhuma etiqueta anexada a esta ficha."></div>
+          </section>
+          <div class="pc-colunas">
+            <div class="pc-coluna">
+              <section class="pc-card" aria-labelledby="pcTituloDocs">
+                <h3 class="pc-titulo-secao" id="pcTituloDocs">Documentos</h3>
+                <div class="grade-documentos" data-pc="docs"></div>
+              </section>
+              <section class="pc-card" data-pc-bloco="decisao"><div data-pc="decisao"></div></section>
+              <section class="pc-card" data-pc-bloco="contrato" hidden><div data-pc="contrato"></div></section>
+            </div>
+            <div class="pc-coluna">
+              <section class="pc-card" data-pc="auditoria"></section>
+              <section class="pc-card" data-pc="chat">${montarSecaoChat(f)}</section>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function montarPaginaVazia(carregando) {
+      return `
+        <div class="pagina-candidato">
+          <div class="pc-voltar"><button type="button" class="btn-modal" data-voltar-lista>&larr; Voltar para a lista</button></div>
+          <div class="pc-card pc-vazio" role="status">
+            <p>${carregando
+              ? 'Carregando candidato...'
+              : 'Candidato não encontrado. A ficha pode ter sido removida ou o endereço está incorreto.'}</p>
+          </div>
+        </div>`;
+    }
+
+    // Preenche/atualiza as zonas da página só quando o HTML delas mudou, para
+    // preservar foco, texto digitado e estados abertos (confirmações, pendência).
+    function preencherZonasPagina(raiz, f) {
+      const zona = (nome) => raiz.querySelector(`[data-pc="${nome}"]`);
+      definirHtmlSeMudou(zona('cabecalho'), montarCabecalhoPagina(f));
+      definirHtmlSeMudou(zona('dados'), montarDadosPagina(f));
+      definirHtmlSeMudou(raiz.querySelector('[data-chips-ficha]'), montarChipsDaFicha(f, false));
+
+      const grade = zona('docs');
+      const digitandoNaGrade = grade && grade.contains(document.activeElement)
+        && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
+      if (!digitandoNaGrade) definirHtmlSeMudou(grade, montarGradeDocumentos(f));
+
+      definirHtmlSeMudou(zona('decisao'), montarSecaoDecisao(f));
+
+      const htmlContrato = montarSecaoContrato(f);
+      raiz.querySelector('[data-pc-bloco="contrato"]').hidden = !htmlContrato;
+      definirHtmlSeMudou(zona('contrato'), htmlContrato);
+
+      definirHtmlSeMudou(zona('auditoria'), montarSecaoAuditoriaLgpd(f));
+    }
+
+    function renderizarPaginaCandidato() {
+      if (paginaCandidatoId === null) return;
+      const raiz = document.getElementById('paginaCandidato');
+      const id = paginaCandidatoId;
+      const ficha = fichaPorId(id);
+
+      if (!ficha) {
+        fecharChatPollingRh('p:' + id);
+        paginaRenderizadaDe = null;
+        raiz.innerHTML = montarPaginaVazia(!fichasJaCarregadas);
+        document.title = TITULO_ORIGINAL;
+        return;
+      }
+
+      if (paginaRenderizadaDe !== id) {
+        raiz.innerHTML = montarPaginaCandidato(ficha);
+        paginaRenderizadaDe = id;
+        abrirChatPollingRh(id, 'p:' + id);
+        preencherZonasPagina(raiz, ficha);
+        atualizarChipsNaTela();
+        const titulo = document.getElementById('pcNome');
+        if (titulo) titulo.focus({ preventScroll: true });
+        if (rolarParaDocumentos) {
+          rolarParaDocumentos = false;
+          const docs = document.getElementById('pcTituloDocs');
+          if (docs) docs.scrollIntoView({ block: 'start' });
+        }
+      } else {
+        preencherZonasPagina(raiz, ficha);
+      }
+      // A sidebar destaca a aba em que a ficha está (Gestão ou Banco de Talentos).
+      destacarAbaNaSidebar(ficha.bancoTalentos ? 'talentos' : 'gestao');
+      document.title = `${ficha.nomeCompleto || 'Candidato'} - ${TITULO_ORIGINAL}`;
+    }
+
+    // --- Cliques compartilhados (lista de Gestão, Banco de Talentos e página) ---
+    function tratarCliqueFicha(e) {
+      const btnEtiquetas = e.target.closest('[data-abrir-etiquetas]');
+      if (btnEtiquetas) { abrirModalEtiquetas({ modo: 'ficha', fichaId: btnEtiquetas.dataset.abrirEtiquetas }); return true; }
+
+      const btnPagina = e.target.closest('[data-abrir-pagina]');
+      if (btnPagina) { irParaCandidato(btnPagina.dataset.abrirPagina); return true; }
+
+      const btnVoltar = e.target.closest('[data-voltar-lista]');
+      if (btnVoltar) { voltarDaPaginaCandidato(); return true; }
+
+      const btnCopiarPagina = e.target.closest('[data-copiar-link-pagina]');
+      if (btnCopiarPagina) {
+        const id = btnCopiarPagina.dataset.copiarLinkPagina;
+        copiarLinkCandidato(id, btnCopiarPagina, `${window.location.origin}${window.location.pathname}#/candidato/${encodeURIComponent(id)}`);
+        return true;
+      }
+
+      const btnReativar = e.target.closest('[data-reativar]');
+      if (btnReativar) { reativarCandidato(btnReativar.dataset.reativar, btnReativar); return true; }
+      return false;
+    }
+
+    // Duplo clique (ou Enter) no nome abre a página do candidato.
+    function tratarDuploCliqueNome(e) {
+      const nome = e.target.closest('[data-nome-candidato]');
+      if (!nome) return;
+      window.getSelection && window.getSelection().removeAllRanges();
+      irParaCandidato(nome.dataset.nomeCandidato);
+    }
+    function tratarTeclaNome(e) {
+      if (e.key !== 'Enter') return false;
+      const nome = e.target.closest('[data-nome-candidato]');
+      if (!nome) return false;
+      e.preventDefault();
+      irParaCandidato(nome.dataset.nomeCandidato);
+      return true;
+    }
+
+    document.getElementById('corpoTabela').addEventListener('dblclick', tratarDuploCliqueNome);
+    document.getElementById('corpoTalentos').addEventListener('dblclick', tratarDuploCliqueNome);
+    document.getElementById('corpoTalentos').addEventListener('keydown', tratarTeclaNome);
+
+    // O botão Voltar do navegador (e links com hash) trocam de visão sem recarregar.
+    window.addEventListener('hashchange', rotearHash);
+
+    // Delegação da página individual.
+    (function ligarPaginaCandidato() {
+      const pagina = document.getElementById('paginaCandidato');
+      pagina.addEventListener('click', (e) => { if (!tratarCliqueFicha(e)) tratarCliqueDetalhes(e); });
+      pagina.addEventListener('submit', tratarSubmitDetalhes);
+      pagina.addEventListener('keydown', tratarTeclaDetalhes);
+    })();
+
+    // --- Reativar (usado na aba Banco de Talentos e na página individual) ---
+    async function reativarCandidato(id, botao) {
+      const textoOriginal = botao.textContent;
+      botao.disabled = true;
+      botao.textContent = 'Reativando...';
+      try {
+        const resposta = await fetch(`/api/rh/fichas/${id}/reativar`, { method: 'PATCH', headers: cabecalhosRh() });
+        const resultado = await resposta.json().catch(() => ({}));
+        if (resposta.status === 401 || resposta.status === 403) { window.location.href = '/login.html'; return; }
+        if (!resposta.ok) {
+          mostrarFeedback(resultado.erro || 'Não foi possível reativar o candidato.', 'erro');
+          botao.disabled = false;
+          botao.textContent = textoOriginal;
+          return;
+        }
+        atualizarFichaEmCache(resultado.candidato);
+        atualizarTelasAposMudanca();
+        mostrarFeedback('Candidato reativado. Ele voltou para a Gestão de Candidatos.', 'sucesso');
+      } catch (erro) {
+        mostrarFeedback('Falha ao comunicar com o servidor.', 'erro');
+        botao.disabled = false;
+        botao.textContent = textoOriginal;
+      }
+    }
+
+    // =========================================================================
+    // CONFIGURAÇÕES
+    // =========================================================================
+    const MAX_MENSAGEM_CONFIG = 500;
+    const REGEX_EMAIL_CONFIG = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    let configSujo = false; // há edição não salva no formulário
+
+    function montarListaDocsConfig() {
+      document.getElementById('cfgListaDocs').innerHTML = DOCUMENTOS.map((d) => `
+        <div class="linha-doc-config">
+          <span>${d.titulo}</span>
+          <label><input type="checkbox" data-cfg-doc="${d.tipo}" checked> Obrigatório</label>
+        </div>`).join('');
+    }
+
+    function atualizarContadorEPreviaConfig() {
+      const texto = document.getElementById('cfgMensagem').value;
+      const contador = document.getElementById('cfgContador');
+      contador.textContent = `${texto.length}/${MAX_MENSAGEM_CONFIG}`;
+      contador.classList.toggle('excedeu', texto.trim().length > MAX_MENSAGEM_CONFIG);
+      const previa = document.getElementById('cfgPrevia');
+      const limpo = texto.trim();
+      previa.textContent = limpo || 'Nenhuma mensagem será exibida ao candidato.';
+      previa.classList.toggle('vazia', !limpo);
+    }
+
+    function preencherFormularioConfig(config) {
+      document.getElementById('cfgMensagem').value = config.mensagemBoasVindas || '';
+      document.getElementById('cfgEmail').value = config.emailContatoRh || '';
+      document.querySelectorAll('[data-cfg-doc]').forEach((chk) => {
+        chk.checked = !(config.documentosObrigatorios && config.documentosObrigatorios[chk.dataset.cfgDoc] === false);
+      });
+      atualizarContadorEPreviaConfig();
+      configSujo = false;
+    }
+
+    async function carregarConfiguracoes() {
+      try {
+        const resposta = await fetch('/api/rh/configuracoes', { headers: cabecalhosRh() });
+        if (!resposta.ok) return;
+        configuracoesRh = await resposta.json();
+        if (!configSujo) preencherFormularioConfig(configuracoesRh);
+        // Reflete "Opcional" nas grades de documentos já abertas.
+        const fichaAberta = fichaPorId(paginaCandidatoId); if (fichaAberta) atualizarPainelDetalhesInline(fichaAberta);
+      } catch (erro) {
+        // Sem configuração carregada, a grade trata todos os documentos como obrigatórios.
+      }
+    }
+
+    function abrirAbaConfig() {
+      if (!configSujo) carregarConfiguracoes();
+    }
+
+    // Valida como o servidor; devolve a lista de erros por campo.
+    function validarFormularioConfig() {
+      const erros = {};
+      const mensagem = document.getElementById('cfgMensagem').value.trim();
+      if (mensagem.length > MAX_MENSAGEM_CONFIG) erros.geral = `A mensagem de boas-vindas pode ter no máximo ${MAX_MENSAGEM_CONFIG} caracteres.`;
+      const algumObrigatorio = [...document.querySelectorAll('[data-cfg-doc]')].some((c) => c.checked);
+      if (!algumObrigatorio) erros.docs = 'Pelo menos um documento deve permanecer obrigatório.';
+      const email = document.getElementById('cfgEmail').value.trim();
+      if (email && !REGEX_EMAIL_CONFIG.test(email)) erros.email = 'Informe um e-mail válido ou deixe o campo em branco.';
+      return erros;
+    }
+
+    ['cfgMensagem', 'cfgEmail'].forEach((id) => {
+      document.getElementById(id).addEventListener('input', () => { configSujo = true; atualizarContadorEPreviaConfig(); });
+    });
+    document.getElementById('cfgListaDocs').addEventListener('change', () => { configSujo = true; });
+
+    document.getElementById('formConfig').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const botao = document.getElementById('cfgSalvar');
+      const erroGeral = document.getElementById('cfgErro');
+      const sucesso = document.getElementById('cfgSucesso');
+      const erroDocs = document.getElementById('cfgErroDocs');
+      const erroEmail = document.getElementById('cfgErroEmail');
+      [erroGeral, sucesso, erroDocs, erroEmail].forEach((el) => { el.hidden = true; });
+
+      const erros = validarFormularioConfig();
+      if (erros.docs) { erroDocs.textContent = erros.docs; erroDocs.hidden = false; }
+      if (erros.email) { erroEmail.textContent = erros.email; erroEmail.hidden = false; }
+      if (erros.geral) { erroGeral.textContent = erros.geral; erroGeral.hidden = false; }
+      if (Object.keys(erros).length) return;
+
+      const documentosObrigatorios = {};
+      document.querySelectorAll('[data-cfg-doc]').forEach((c) => { documentosObrigatorios[c.dataset.cfgDoc] = c.checked; });
+
+      botao.disabled = true;
+      botao.textContent = 'Salvando...';
+      try {
+        const resposta = await fetch('/api/rh/configuracoes', {
+          method: 'PUT',
+          headers: cabecalhosRh({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            mensagemBoasVindas: document.getElementById('cfgMensagem').value,
+            documentosObrigatorios,
+            emailContatoRh: document.getElementById('cfgEmail').value
+          })
+        });
+        const resultado = await resposta.json().catch(() => ({}));
+        if (resposta.status === 401 || resposta.status === 403) { window.location.href = '/login.html'; return; }
+        if (!resposta.ok) {
+          erroGeral.textContent = resultado.erro || 'Não foi possível salvar as configurações.';
+          erroGeral.hidden = false;
+          return;
+        }
+        configuracoesRh = resultado;
+        preencherFormularioConfig(resultado);
+        const fichaAberta = fichaPorId(paginaCandidatoId); if (fichaAberta) atualizarPainelDetalhesInline(fichaAberta);
+        sucesso.textContent = 'Configurações salvas com sucesso.';
+        sucesso.hidden = false;
+      } catch (erro) {
+        erroGeral.textContent = 'Falha ao comunicar com o servidor.';
+        erroGeral.hidden = false;
+      } finally {
+        botao.disabled = false;
+        botao.textContent = 'Salvar configurações';
+      }
+    });
+
+    montarListaDocsConfig();
+    atualizarContadorEPreviaConfig();
+
     exigirSessaoRh().then((autorizado) => {
       if (!autorizado) return;
+      carregarConfiguracoes();
+      carregarEtiquetas();
       carregarFichas();
+      rotearHash(); // URL direta (ex.: #/candidato/<id>) abre a página do candidato
       setInterval(atualizarFichasSilenciosamente, INTERVALO_ATUALIZACAO_FICHAS_MS);
       // Ao voltar para esta aba (que ficou em segundo plano e não atualizava),
       // atualiza imediatamente em vez de esperar o próximo ciclo.
@@ -2008,5 +3209,14 @@
       });
     });
   </script>
+
+  <div vw class="enabled">
+    <div vw-access-button class="active"></div>
+    <div vw-plugin-wrapper>
+      <div class="vw-plugin-top-wrapper"></div>
+    </div>
+  </div>
+  <script src="https://vlibras.gov.br/app/vlibras-plugin.js"></script>
+  <script>if (window.VLibras) { new window.VLibras.Widget('https://vlibras.gov.br/app'); }</script>
 </body>
 </html>
