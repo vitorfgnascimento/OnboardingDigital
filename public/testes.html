@@ -2026,6 +2026,18 @@
         }
       },
       {
+        nome: 'Login: após 5 senhas erradas seguidas o servidor passa a recusar com 429',
+        run: async () => {
+          const email = 'forca-bruta-' + Date.now() + '@exemplo.test';
+          const codigos = [];
+          for (let i = 0; i < 6; i++) {
+            const r = await postJson('/auth/login', { email, senha: 'errada-' + i });
+            codigos.push(r.status);
+          }
+          return { ok: codigos.slice(0, 5).every((c) => c === 401) && codigos[5] === 429, detalhe: `códigos: ${codigos.join(', ')}` };
+        }
+      },
+      {
         nome: 'Candidato lê a própria ficha (200) mas não a de outra conta (403)',
         run: async () => {
           const auth = { Authorization: 'Bearer ' + window.__tokenAuth };

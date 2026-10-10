@@ -16,6 +16,13 @@ const supabase = require('./db/supabase');
 
 const app = express();
 
+// Atrás de proxy reverso (Vercel, Render, Railway...) o IP real do cliente vem
+// em X-Forwarded-For; sem isto req.ip seria o do proxy - o que quebraria o
+// limite de tentativas de login e o IP gravado na trilha de auditoria.
+if (process.env.VERCEL || process.env.TRUST_PROXY === '1') {
+  app.set('trust proxy', 1);
+}
+
 // 400 KB: comporta a foto de perfil (até ~200 KB) em base64 dentro do JSON.
 app.use(express.json({ limit: '400kb' }));
 
@@ -807,17 +814,69 @@ app.post('/api/auth/ativar', async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// LIMITE DE TENTATIVAS DE LOGIN (anti força bruta)
+// Contador em memória, por processo: protege o servidor local e cada instância
+// em nuvem, mas em serverless (várias instâncias) o limite vale por instância.
+// Duas chaves: IP + e-mail (5 falhas) e IP sozinho (30 falhas) em 15 minutos.
+// Chaveado também pelo IP, um terceiro não bloqueia a conta da vítima.
+// ---------------------------------------------------------------------------
+const JANELA_LOGIN_MS = 15 * 60 * 1000;
+const MAX_FALHAS_LOGIN_POR_CONTA = 5;
+const MAX_FALHAS_LOGIN_POR_IP = 30;
+const falhasLogin = new Map(); // chave -> { quantidade, expiraEm }
+
+function falhasAtuais(chave) {
+  const registro = falhasLogin.get(chave);
+  if (!registro) return 0;
+  if (registro.expiraEm <= Date.now()) { falhasLogin.delete(chave); return 0; }
+  return registro.quantidade;
+}
+
+function registrarFalhaLogin(chave) {
+  if (falhasLogin.size > 5000) {
+    const agora = Date.now();
+    for (const [k, v] of falhasLogin) if (v.expiraEm <= agora) falhasLogin.delete(k);
+  }
+  const registro = falhasLogin.get(chave);
+  if (registro && registro.expiraEm > Date.now()) registro.quantidade += 1;
+  else falhasLogin.set(chave, { quantidade: 1, expiraEm: Date.now() + JANELA_LOGIN_MS });
+}
+
+// Hash descartável: quando o e-mail não existe, o bcrypt roda mesmo assim, para
+// que o tempo de resposta não revele quais e-mails têm conta.
+let hashFalsoLogin = null;
+function hashFalso() {
+  if (!hashFalsoLogin) hashFalsoLogin = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 10);
+  return hashFalsoLogin;
+}
+
 app.post('/api/auth/login', async (req, res) => {
   try {
   const { email, senha } = req.body;
   const emailAparado = String(email || '').trim().toLowerCase();
 
+  const chaveConta = `${req.ip}|${emailAparado}`;
+  const chaveIp = `ip|${req.ip}`;
+  if (falhasAtuais(chaveConta) >= MAX_FALHAS_LOGIN_POR_CONTA || falhasAtuais(chaveIp) >= MAX_FALHAS_LOGIN_POR_IP) {
+    res.set('Retry-After', String(Math.ceil(JANELA_LOGIN_MS / 1000)));
+    return res.status(429).json({ erro: 'Muitas tentativas de login. Aguarde alguns minutos e tente novamente.' });
+  }
+
   const usuarios = await lerUsuarios();
   const usuario = usuarios.find((u) => u.email === emailAparado);
 
-  if (!usuario || !usuario.senhaHash || !senhaConfere(String(senha || ''), usuario.senhaSalt, usuario.senhaHash)) {
+  const senhaOk = usuario && usuario.senhaHash
+    ? senhaConfere(String(senha || ''), usuario.senhaSalt, usuario.senhaHash)
+    : (bcrypt.compareSync(String(senha || ''), hashFalso()), false);
+
+  if (!senhaOk) {
+    registrarFalhaLogin(chaveConta);
+    registrarFalhaLogin(chaveIp);
     return res.status(401).json({ erro: 'E-mail ou senha incorretos.' });
   }
+
+  falhasLogin.delete(chaveConta);
 
   if (usuario.ativo === false) {
     return res.status(403).json({ erro: 'Conta ainda não ativada. Verifique o link de confirmação enviado no cadastro (ou o console do servidor, neste ambiente de testes).' });
