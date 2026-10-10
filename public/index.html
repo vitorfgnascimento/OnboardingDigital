@@ -2394,7 +2394,7 @@
       try {
         const resposta = await fetch('/api/candidato/' + candidatoId + '/contrato/concluir', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: cabecalhosAutenticados({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ consentimentoContratoLGPD: true })
         });
         const resultado = await resposta.json();

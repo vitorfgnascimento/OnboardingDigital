@@ -3364,7 +3364,7 @@ app.get('/api/contrato/minuta/:tipo', (req, res) => {
 // O candidato clica em "Li e Aceito os Termos" para UM documento (aceite por
 // clique = assinatura eletrônica simples). Só é permitido para fichas já
 // APROVADAS pelo RH. Grava timestamp (ISO) e IP no documento e na auditoria.
-app.post('/api/candidato/:id/contrato/:tipo/aceite', async (req, res) => {
+app.post('/api/candidato/:id/contrato/:tipo/aceite', autenticar, async (req, res) => {
   try {
   const { id, tipo } = req.params;
   if (!TIPOS_CONTRATO.includes(tipo)) {
@@ -3375,6 +3375,10 @@ app.post('/api/candidato/:id/contrato/:tipo/aceite', async (req, res) => {
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  // Assinatura é ato pessoal: só a conta dona da ficha aceita (nem o RH).
+  if (!usuarioEhDonoDaFicha(req.usuario, candidato)) {
+    return res.status(403).json({ erro: ERRO_FICHA_DE_OUTRA_CONTA });
+  }
   if (candidato.status !== 'PENDENTE_ASSINATURA') {
     return res.status(400).json({ erro: 'O aceite dos documentos só está disponível para fichas aprovadas e ainda não contratadas.' });
   }
@@ -3428,7 +3432,7 @@ app.patch('/api/rh/fichas/:id/contrato/:tipo/aceitar', exigirRh, (req, res) => {
 // 14.063/2020) e a base legal do tratamento dos metadados (LGPD, Art. 7º).
 const BASE_LEGAL_ASSINATURA_DIGITAL = 'MP nº 2.200-2/2001; Lei nº 14.063/2020; LGPD Art. 7º, II e V';
 
-app.post('/api/candidato/:id/contrato/concluir', async (req, res) => {
+app.post('/api/candidato/:id/contrato/concluir', autenticar, async (req, res) => {
   try {
   const { id } = req.params;
   const { consentimentoContratoLGPD } = req.body;
@@ -3436,6 +3440,10 @@ app.post('/api/candidato/:id/contrato/concluir', async (req, res) => {
   const candidato = candidatos.find((c) => c.id === id);
 
   if (!candidato) return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  // Assinatura é ato pessoal: só a conta dona da ficha conclui (nem o RH).
+  if (!usuarioEhDonoDaFicha(req.usuario, candidato)) {
+    return res.status(403).json({ erro: ERRO_FICHA_DE_OUTRA_CONTA });
+  }
   if (candidato.status !== 'PENDENTE_ASSINATURA') {
     return res.status(400).json({ erro: 'A assinatura digital só está disponível para fichas aprovadas e ainda não contratadas.' });
   }

@@ -2128,6 +2128,20 @@
         }
       },
       {
+        nome: 'Contrato: aceite e conclusão sem login 401; conta alheia e RH não assinam (403)',
+        run: async () => {
+          const id = window.__idAuthFicha;
+          const semLoginAceite = await postJson('/candidato/' + id + '/contrato/contratoTrabalho/aceite', {});
+          const semLoginConcluir = await postJson('/candidato/' + id + '/contrato/concluir', { consentimentoContratoLGPD: true });
+          const alheia = await fetch(API + '/candidato/' + id + '/contrato/contratoTrabalho/aceite', { method: 'POST', headers: await headersDono() });
+          const rhAceite = await postJsonRh('/candidato/' + id + '/contrato/contratoTrabalho/aceite', {});
+          const rhConcluir = await postJsonRh('/candidato/' + id + '/contrato/concluir', { consentimentoContratoLGPD: true });
+          const esperado = [401, 401, 403, 403, 403];
+          const obtido = [semLoginAceite.status, semLoginConcluir.status, alheia.status, rhAceite.status, rhConcluir.status];
+          return { ok: JSON.stringify(esperado) === JSON.stringify(obtido), detalhe: `esperado ${esperado.join(', ')} | obtido ${obtido.join(', ')}` };
+        }
+      },
+      {
         nome: 'Foto do RH: candidato não altera (403), sem sessão 401, RH salva e a rota pública reflete, null remove',
         run: async () => {
           const corpoFoto = JSON.stringify({ foto: FOTO_TESTE });
