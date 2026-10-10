@@ -2099,7 +2099,7 @@ const AUTORES_VALIDOS = ['RH', 'Candidato'];
 // última consulta do front-end, evitando reenviar o histórico inteiro a
 // cada poll.
 // ---------------------------------------------------------------------------
-app.get('/api/candidato/:id/mensagens', async (req, res) => {
+app.get('/api/candidato/:id/mensagens', autenticar, async (req, res) => {
   try {
     const { id } = req.params;
     const { apos } = req.query;
@@ -2109,11 +2109,14 @@ app.get('/api/candidato/:id/mensagens', async (req, res) => {
     // o array embutido de mensagens de um único candidato.
     const { data: candidatoRow, error: erroCandidato } = await supabase
       .from('candidatos')
-      .select('id')
+      .select('id, usuario_id, email')
       .eq('id', id)
       .maybeSingle();
     if (erroCandidato) throw erroCandidato;
     if (!candidatoRow) return res.status(404).json({ erro: 'Candidato não encontrado.' });
+    if (!usuarioPodeVerFicha(req.usuario, { usuarioId: candidatoRow.usuario_id, email: candidatoRow.email })) {
+      return res.status(403).json({ erro: ERRO_FICHA_DE_OUTRA_CONTA });
+    }
 
     let consulta = supabase
       .from('mensagens_chat')
@@ -2139,13 +2142,19 @@ app.get('/api/candidato/:id/mensagens', async (req, res) => {
 // ROTA: envio de mensagem no chat da ficha (RH <-> Candidato), com histórico
 // ordenado por data/hora persistido junto da ficha em candidatos.json
 // ---------------------------------------------------------------------------
-app.post('/api/candidato/:id/mensagens', async (req, res) => {
+app.post('/api/candidato/:id/mensagens', autenticar, async (req, res) => {
   try {
     const { id } = req.params;
     const { autor, texto, nomeAutor } = req.body;
 
     if (!AUTORES_VALIDOS.includes(autor)) {
       return res.status(400).json({ erro: "Autor inválido. Use 'RH' ou 'Candidato'." });
+    }
+
+    // O papel do autor vem da sessão, não do corpo: só o RH escreve como 'RH'
+    // e só a conta dona da ficha escreve como 'Candidato'.
+    if ((autor === 'RH') !== (req.usuario.tipo === 'rh')) {
+      return res.status(403).json({ erro: `Sua conta não pode enviar mensagens como '${autor}'.` });
     }
 
     const textoAparado = String(texto || '').trim();
@@ -2166,6 +2175,10 @@ app.post('/api/candidato/:id/mensagens', async (req, res) => {
       return res.status(404).json({ erro: 'Candidato não encontrado.' });
     }
 
+    if (autor === 'Candidato' && !usuarioEhDonoDaFicha(req.usuario, { usuarioId: candidatoRow.usuario_id, email: candidatoRow.email })) {
+      return res.status(403).json({ erro: ERRO_FICHA_DE_OUTRA_CONTA });
+    }
+
     // Bloqueio definitivo: processo finalizado (reprovado) não recebe mais
     // mensagens de nenhum dos dois lados.
     if (candidatoRow.status === 'REPROVADO') {
@@ -2173,8 +2186,8 @@ app.post('/api/candidato/:id/mensagens', async (req, res) => {
     }
 
     // Nome exibido junto da mensagem: do candidato sempre vem da própria ficha
-    // (nunca confia no valor enviado pelo cliente); do RH vem do corpo da
-    // requisição, já que esta rota não tem middleware de autenticação.
+    // (nunca confia no valor enviado pelo cliente); do RH, o nome informado
+    // pelo painel ou, na falta dele, "RH".
     const nomeAutorFinal = autor === 'Candidato'
       ? candidatoRow.nome_completo
       : (String(nomeAutor || '').trim() || 'RH');

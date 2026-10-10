@@ -1512,7 +1512,7 @@
       const id = estado.id;
       try {
         const params = estado.ultimoTimestamp ? `?apos=${encodeURIComponent(estado.ultimoTimestamp)}` : '';
-        const r = await fetch(`/api/candidato/${id}/mensagens${params}`);
+        const r = await fetch(`/api/candidato/${id}/mensagens${params}`, { headers: cabecalhosRh() });
         if (!r.ok) return;
         const { mensagens } = await r.json();
         if (!mensagens || !mensagens.length) return;
@@ -1808,7 +1808,7 @@
       try {
         const resposta = await fetch(`/api/candidato/${id}/mensagens`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: cabecalhosRh({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ autor: 'RH', texto, nomeAutor: nomeUsuarioRh })
         });
         const resultado = await resposta.json();

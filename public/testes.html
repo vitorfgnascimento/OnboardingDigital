@@ -2111,6 +2111,23 @@
         }
       },
       {
+        nome: 'Chat: sem login 401; conta alheia 403; RH não escreve como Candidato nem o candidato como RH (403)',
+        run: async () => {
+          const id = window.__idMasculino;
+          const corpoCand = JSON.stringify({ autor: 'Candidato', texto: 'invasor' });
+          const semLoginGet = await fetch(API + '/candidato/' + id + '/mensagens');
+          const semLoginPost = await fetch(API + '/candidato/' + id + '/mensagens', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: corpoCand });
+          const alheio = { Authorization: 'Bearer ' + window.__tokenAuth };
+          const alheiaGet = await fetch(API + '/candidato/' + id + '/mensagens', { headers: alheio });
+          const alheiaPost = await fetch(API + '/candidato/' + id + '/mensagens', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, alheio), body: corpoCand });
+          const candComoRh = await fetch(API + '/candidato/' + id + '/mensagens', { method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, await headersDono()), body: JSON.stringify({ autor: 'RH', texto: 'fingindo ser o RH' }) });
+          const rhComoCand = await postJsonRh('/candidato/' + id + '/mensagens', { autor: 'Candidato', texto: 'RH fingindo' });
+          const esperado = [401, 401, 403, 403, 403, 403];
+          const obtido = [semLoginGet.status, semLoginPost.status, alheiaGet.status, alheiaPost.status, candComoRh.status, rhComoCand.status];
+          return { ok: JSON.stringify(esperado) === JSON.stringify(obtido), detalhe: `esperado ${esperado.join(', ')} | obtido ${obtido.join(', ')}` };
+        }
+      },
+      {
         nome: 'Foto do RH: candidato não altera (403), sem sessão 401, RH salva e a rota pública reflete, null remove',
         run: async () => {
           const corpoFoto = JSON.stringify({ foto: FOTO_TESTE });

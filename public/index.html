@@ -2156,7 +2156,7 @@
       if (!candidatoId) return;
       try {
         const params = chatPollingUltimoTimestamp ? `?apos=${encodeURIComponent(chatPollingUltimoTimestamp)}` : '';
-        const r = await fetch(API + '/candidato/' + candidatoId + '/mensagens' + params);
+        const r = await fetch(API + '/candidato/' + candidatoId + '/mensagens' + params, { headers: cabecalhosAutenticados() });
         if (!r.ok) return;
         const { mensagens } = await r.json();
         if (!mensagens || !mensagens.length) return;
@@ -2251,7 +2251,7 @@
       try {
         const resposta = await fetch('/api/candidato/' + candidatoId + '/mensagens', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: cabecalhosAutenticados({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ autor: 'Candidato', texto })
         });
         const resultado = await resposta.json();
