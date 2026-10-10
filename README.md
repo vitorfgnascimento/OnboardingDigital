@@ -121,7 +121,7 @@ Recursos incluídos depois das Etapas 1 a 4 (cobertos pelas migrações em `supa
 - **Configurações do RH** - mensagem de boas-vindas, documentos obrigatórios, e-mail de contato do RH, foto do RH e mensagem de contratação concluída.
 - **Planilha Mestre** - `relatorio_geral_admissoes.xlsx` é regenerada a cada gravação de ficha, e também no boot.
 - **Relatório do painel em PDF** - `GET /api/relatorio/dashboard-pdf`.
-- **API REST v1 para sistemas externos (B2B)** - `GET /api/v1/admissoes`, protegida por API Key (header `x-api-key` ou `Authorization: Bearer <chave>`). Defina `API_KEY_ADMISSOES` no ambiente; sem ela vale uma chave padrão de desenvolvimento, que **não deve ser usada em produção**.
+- **API REST v1 para sistemas externos (B2B)** - `GET /api/v1/admissoes`, protegida por API Key (header `x-api-key` ou `Authorization: Bearer <chave>`). Defina `API_KEY_ADMISSOES` (mínimo de 16 caracteres) no ambiente; sem ela a API fica desativada e responde 503 - não existe chave padrão.
 
 ## Conformidade LGPD nos 3 Momentos da Jornada
 
@@ -164,7 +164,8 @@ cp .env.example .env
 |---|---|---|
 | `SUPABASE_URL` | *(obrigatória)* | URL do projeto Supabase (Project Settings > API). |
 | `SUPABASE_KEY` | *(obrigatória)* | Chave `anon public` do projeto. O acesso ao banco é feito apenas pelo backend Express. |
-| `API_KEY_ADMISSOES` | chave de desenvolvimento | Chave da API REST v1 (`/api/v1/admissoes`). Obrigatório definir em produção. |
+| `API_KEY_ADMISSOES` | *(vazia = API desativada)* | Chave da API REST v1 (`/api/v1/admissoes`), mínimo de 16 caracteres. |
+| `SENHA_RH_TESTE` | *(vazia = conta de RH não criada)* | Senha da conta `rh@onboarding.local`, mínimo de 10 caracteres. |
 | `PORT` | `3001` | Porta em que o servidor escuta. Injetada automaticamente por plataformas de deploy em nuvem (Render, Railway, etc.). |
 | `GOOGLE_CLIENT_ID` | *(vazio)* | Client ID OAuth 2.0 do Google (Google Cloud Console), necessário para o botão "Entrar com o Google" funcionar de verdade. Sem ela, o botão fica desabilitado e a rota `/api/auth/google` responde 400. |
 

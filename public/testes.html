@@ -196,6 +196,16 @@
       tokenRhTestes = r.corpo.token;
       return tokenRhTestes;
     }
+    // A chave da API v1 não fica no código: é a API_KEY_ADMISSOES do .env do servidor.
+    async function chaveApiTestes() {
+      let chave = null;
+      try { chave = sessionStorage.getItem('chaveApiTestes'); } catch (e) { /* storage indisponível */ }
+      if (!chave) {
+        chave = window.prompt('Chave da API v1 (valor de API_KEY_ADMISSOES no .env do servidor):') || '';
+        try { sessionStorage.setItem('chaveApiTestes', chave); } catch (e) { /* ignora */ }
+      }
+      return chave;
+    }
     function headersRh(extra) {
       return Object.assign({ Authorization: 'Bearer ' + tokenRhTestes }, extra || {});
     }
@@ -1345,7 +1355,7 @@
       {
         nome: 'Com API Key correta retorna lista de admissões (200)',
         run: async () => {
-          const r = await fetch(API + '/v1/admissoes', { headers: { 'x-api-key': 'onboarding-dev-key-2026' } });
+          const r = await fetch(API + '/v1/admissoes', { headers: { 'x-api-key': await chaveApiTestes() } });
           const corpoResposta = await r.json().catch(() => ({}));
           const ok = r.status === 200 && Array.isArray(corpoResposta.admissoes) && typeof corpoResposta.total === 'number';
           return { ok, detalhe: `status ${r.status}, total ${corpoResposta.total}` };
@@ -1354,7 +1364,7 @@
       {
         nome: 'Filtro por código interno (?status=EM_ANALISE) retorna só fichas com esse status',
         run: async () => {
-          const r = await fetch(API + '/v1/admissoes?status=EM_ANALISE', { headers: { 'x-api-key': 'onboarding-dev-key-2026' } });
+          const r = await fetch(API + '/v1/admissoes?status=EM_ANALISE', { headers: { 'x-api-key': await chaveApiTestes() } });
           const corpoResposta = await r.json().catch(() => ({}));
           const todosCorretos = (corpoResposta.admissoes || []).every((a) => a.status === 'EM_ANALISE');
           const ok = r.status === 200 && todosCorretos && corpoResposta.admissoes.length > 0;
@@ -1364,7 +1374,7 @@
       {
         nome: 'Filtro por rótulo em português (?status=Em Análise, URL-encoded) retorna só fichas com esse status',
         run: async () => {
-          const r = await fetch(API + '/v1/admissoes?status=' + encodeURIComponent('Em Análise'), { headers: { 'x-api-key': 'onboarding-dev-key-2026' } });
+          const r = await fetch(API + '/v1/admissoes?status=' + encodeURIComponent('Em Análise'), { headers: { 'x-api-key': await chaveApiTestes() } });
           const corpoResposta = await r.json().catch(() => ({}));
           const todosCorretos = (corpoResposta.admissoes || []).every((a) => a.status === 'EM_ANALISE');
           const ok = r.status === 200 && todosCorretos && corpoResposta.admissoes.length > 0;
@@ -1374,7 +1384,7 @@
       {
         nome: 'Status inválido no filtro é recusado (400)',
         run: async () => {
-          const r = await fetch(API + '/v1/admissoes?status=NAO_EXISTE', { headers: { 'x-api-key': 'onboarding-dev-key-2026' } });
+          const r = await fetch(API + '/v1/admissoes?status=NAO_EXISTE', { headers: { 'x-api-key': await chaveApiTestes() } });
           const corpoResposta = await r.json().catch(() => ({}));
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${corpoResposta.erro || ''}` };
         }
@@ -1382,7 +1392,7 @@
       {
         nome: 'Registro da API v1 traz dados cadastrais, documentos e não traz mensagens',
         run: async () => {
-          const r = await fetch(API + '/v1/admissoes?status=EM_ANALISE', { headers: { 'x-api-key': 'onboarding-dev-key-2026' } });
+          const r = await fetch(API + '/v1/admissoes?status=EM_ANALISE', { headers: { 'x-api-key': await chaveApiTestes() } });
           const corpoResposta = await r.json().catch(() => ({}));
           const registro = (corpoResposta.admissoes || [])[0];
           const ok = r.status === 200 && !!registro && !!registro.nomeCompleto && !!registro.cpf &&

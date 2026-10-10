@@ -2896,14 +2896,27 @@ function formatarDataBr(iso) {
 
 // ---------------------------------------------------------------------------
 // API REST v1 - integração com sistemas externos de admissão (protegida por
-// API Key). API_KEY_ADMISSOES deve ser configurada via variável de ambiente
-// em produção; o valor fixo abaixo é apenas um padrão de desenvolvimento.
+// API Key). API_KEY_ADMISSOES é obrigatória (mín. 16 caracteres): sem ela a
+// API fica desativada - não existe chave padrão.
 // ---------------------------------------------------------------------------
-const CHAVE_API_ADMISSOES = process.env.API_KEY_ADMISSOES || 'onboarding-dev-key-2026';
+const CHAVE_API_ADMISSOES = process.env.API_KEY_ADMISSOES || '';
+const TAMANHO_MINIMO_CHAVE_API = 16;
+
+// Comparação em tempo constante (compara os SHA-256, que têm tamanho fixo).
+function chavesIguais(a, b) {
+  const ha = crypto.createHash('sha256').update(String(a)).digest();
+  const hb = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
 
 function exigirApiKeyAdmissoes(req, res, next) {
+  if (CHAVE_API_ADMISSOES.length < TAMANHO_MINIMO_CHAVE_API) {
+    return res.status(503).json({
+      erro: `API de integração desativada: defina API_KEY_ADMISSOES (mínimo de ${TAMANHO_MINIMO_CHAVE_API} caracteres) no ambiente do servidor.`
+    });
+  }
   const chaveRecebida = req.headers['x-api-key'] || (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-  if (!chaveRecebida || chaveRecebida !== CHAVE_API_ADMISSOES) {
+  if (!chaveRecebida || !chavesIguais(chaveRecebida, CHAVE_API_ADMISSOES)) {
     return res.status(401).json({ erro: 'API Key inválida ou ausente. Use o header "x-api-key" ou "Authorization: Bearer <TOKEN>".' });
   }
   next();
