@@ -305,6 +305,8 @@
             <input type="password" id="loginSenha" autocomplete="current-password" required minlength="6">
           </div>
           <button type="submit" class="btn btn-primario">Entrar</button>
+          <!-- Acesso rápido do RH de testes: só aparece em localhost (ambiente de desenvolvimento). -->
+          <button type="button" class="btn btn-secundario" id="btnAcessoRapidoRh" hidden>Entrar como RH (teste)</button>
         </form>
 
         <!-- FORMULÁRIO: CADASTRO MANUAL -->
@@ -556,6 +558,21 @@
         mostrarErro('Não conseguimos falar com o servidor. Tente de novo em instantes.');
       }
     });
+
+    // Acesso rápido do RH de testes (rh@onboarding.local, senha pública do README):
+    // preenche os campos e envia o mesmo formulário de login. Só existe em
+    // localhost/127.0.0.1 - em qualquer outro endereço o botão continua oculto.
+    (function () {
+      const hosts = ['localhost', '127.0.0.1', '[::1]'];
+      if (!hosts.includes(window.location.hostname)) return;
+      const botao = document.getElementById('btnAcessoRapidoRh');
+      botao.hidden = false;
+      botao.addEventListener('click', () => {
+        document.getElementById('loginEmail').value = 'rh@onboarding.local';
+        document.getElementById('loginSenha').value = 'onboarding123';
+        formEntrar.requestSubmit();
+      });
+    })();
 
     // O botão "Criar Conta" só é liberado depois que o checkbox de aceite dos
     // Termos de Uso/Política de Privacidade é marcado (LGPD - Momento 1).
