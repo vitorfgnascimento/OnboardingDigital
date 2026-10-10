@@ -70,6 +70,25 @@ if (!fs.existsSync(PASTA_UPLOADS)) {
   fs.mkdirSync(PASTA_UPLOADS, { recursive: true });
 }
 
+// Armazenamento dos PDFs dos candidatos (documentos, contratos assinados e
+// ficha em PDF) atrás de uma interface única - ver storage/armazenamento.js.
+// As minutas dos contratos são modelos gerados pelo próprio código e ficam
+// sempre na pasta local.
+const armazenamento = require('./storage/armazenamento').criarArmazenamento({ pastaLocal: PASTA_UPLOADS });
+
+// "uploads/arquivo.pdf" (referência gravada na ficha) -> "arquivo.pdf"
+const nomeDoArquivo = (referencia) => String(referencia || '').replace(/^\/?uploads\//, '');
+
+// Converte um PDFDocument (PDFKit) em Buffer, para entregar ao armazenamento.
+function pdfParaBuffer(doc) {
+  return new Promise((resolve, reject) => {
+    const partes = [];
+    doc.on('data', (parte) => partes.push(parte));
+    doc.on('end', () => resolve(Buffer.concat(partes)));
+    doc.on('error', reject);
+  });
+}
+
 // Serve os PDFs enviados pelos candidatos para visualização/download pelo RH
 // (candidato.documentos[tipo].arquivo é salvo como "uploads/arquivo.pdf")
 // Os PDFs NÃO são mais servidos como arquivos estáticos públicos: contêm
@@ -662,12 +681,12 @@ const VALIDADE_URL_ARQUIVO_MS = 5 * 60 * 1000;
 const REGEX_NOME_ARQUIVO = /^[\w.-]+\.pdf$/i;
 
 // Segredo de assinatura: ARQUIVOS_SEGREDO (recomendado). Sem ele, deriva da
-// chave do Supabase, que só existe no servidor - funciona, mas troque a chave
-// e todas as URLs emitidas deixam de valer.
+// chave secret do Supabase (só existe no servidor) - funciona, mas trocar a
+// chave invalida as URLs já emitidas. Nunca derive da chave pública.
 function segredoArquivos() {
   const dedicado = process.env.ARQUIVOS_SEGREDO || '';
   if (dedicado.length >= 16) return dedicado;
-  return 'arquivos-v1|' + (process.env.SUPABASE_KEY || 'sem-chave');
+  return 'arquivos-v1|' + (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY || 'sem-chave');
 }
 
 function assinarArquivo(nome, expiraEm) {
@@ -700,7 +719,7 @@ app.post('/api/arquivos/assinar', autenticar, async (req, res) => {
     const bruto = String((req.body || {}).arquivo || '');
     const nome = bruto.replace(/^\/?uploads\//, '');
     if (!REGEX_NOME_ARQUIVO.test(nome)) return res.status(400).json({ erro: 'Arquivo inválido.' });
-    if (!fs.existsSync(path.join(PASTA_UPLOADS, nome))) return res.status(404).json({ erro: 'Arquivo não encontrado.' });
+    if (!(await armazenamento.existe(nome))) return res.status(404).json({ erro: 'Arquivo não encontrado.' });
 
     const ficha = await fichaDoArquivo(nome);
     if (!ficha || !usuarioPodeVerFicha(req.usuario, ficha)) {
@@ -720,38 +739,42 @@ app.post('/api/arquivos/assinar', autenticar, async (req, res) => {
 
 // Entrega o PDF somente com assinatura válida e não expirada. As minutas dos
 // contratos são modelos públicos (também disponíveis em /api/contrato/minuta).
-app.get('/uploads/:nome', (req, res) => {
-  const nome = String(req.params.nome || '');
-  if (!REGEX_NOME_ARQUIVO.test(nome)) return res.status(400).json({ erro: 'Arquivo inválido.' });
+app.get('/uploads/:nome', async (req, res) => {
+  try {
+    const nome = String(req.params.nome || '');
+    if (!REGEX_NOME_ARQUIVO.test(nome)) return res.status(400).json({ erro: 'Arquivo inválido.' });
 
-  const minutaPublica = /^minuta-[A-Za-z]+\.pdf$/.test(nome);
-  if (!minutaPublica && !assinaturaArquivoValida(nome, req.query.exp, req.query.sig)) {
-    return res.status(403).json({ erro: 'Link inválido ou expirado. Abra o documento novamente pelo sistema.' });
+    const minutaPublica = /^minuta-[A-Za-z]+\.pdf$/.test(nome);
+    if (!minutaPublica && !assinaturaArquivoValida(nome, req.query.exp, req.query.sig)) {
+      return res.status(403).json({ erro: 'Link inválido ou expirado. Abra o documento novamente pelo sistema.' });
+    }
+
+    // Minutas (modelos) ficam na pasta local; os documentos dos candidatos, no armazenamento.
+    const conteudo = minutaPublica
+      ? (fs.existsSync(path.join(PASTA_UPLOADS, nome)) ? fs.readFileSync(path.join(PASTA_UPLOADS, nome)) : null)
+      : await armazenamento.ler(nome);
+    if (!conteudo) return res.status(404).json({ erro: 'Arquivo não encontrado.' });
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${nome}"`,
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff'
+    });
+    return res.status(200).send(conteudo);
+  } catch (erro) {
+    console.error('Falha ao entregar arquivo:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao abrir o arquivo.' });
   }
-
-  const caminho = path.join(PASTA_UPLOADS, nome);
-  if (!fs.existsSync(caminho)) return res.status(404).json({ erro: 'Arquivo não encontrado.' });
-  res.set({
-    'Content-Type': 'application/pdf',
-    'Content-Disposition': `inline; filename="${nome}"`,
-    'Cache-Control': 'private, no-store',
-    'X-Content-Type-Options': 'nosniff'
-  });
-  return res.sendFile(caminho);
 });
 
 // ---------------------------------------------------------------------------
 // UPLOAD DE PDF (multer)
 // ---------------------------------------------------------------------------
 
-const armazenamento = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, PASTA_UPLOADS),
-  filename: (req, file, cb) => {
-    // O campo "tipoDocumento" precisa ser enviado ANTES do arquivo no FormData
-    const tipo = req.body.tipoDocumento || 'documento';
-    cb(null, `${req.params.id}-${tipo}-${Date.now()}.pdf`);
-  }
-});
+// Em memoria: nada e gravado antes de a ficha, o dono e as regras serem validados;
+// o nome do arquivo e gerado pelo servidor ao salvar no armazenamento.
+const armazenamentoMemoria = multer.memoryStorage();
 
 // Aceita somente arquivos PDF.
 // Alguns navegadores (sobretudo no Windows) enviam o PDF com mimetype
@@ -771,7 +794,7 @@ const filtroPdf = (req, file, cb) => {
 };
 
 const upload = multer({
-  storage: armazenamento,
+  storage: armazenamentoMemoria,
   fileFilter: filtroPdf,
   limits: { fileSize: 10 * 1024 * 1024 } // 10 MB por arquivo
 });
@@ -1304,15 +1327,7 @@ app.post('/api/candidato/:id/documento', autenticar, (req, res) => {
     const { tipoDocumento, cpfIncluso } = req.body;
     const tipo = tipoDocumento;
 
-    // Remove do disco um arquivo aceito pelo multer mas recusado por regra de negócio.
-    const descartarArquivo = () => {
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-    };
-
     if (!TIPOS_DOCUMENTO.includes(tipo)) {
-      descartarArquivo();
       return res.status(400).json({ erro: 'Tipo de documento inválido.' });
     }
 
@@ -1325,18 +1340,15 @@ app.post('/api/candidato/:id/documento', autenticar, (req, res) => {
     const candidato = candidatos.find((c) => c.id === id);
 
     if (!candidato) {
-      descartarArquivo();
       return res.status(404).json({ erro: 'Candidato não encontrado.' });
     }
 
     if (!usuarioEhDonoDaFicha(req.usuario, candidato)) {
-      descartarArquivo();
       return res.status(403).json({ erro: ERRO_FICHA_DE_OUTRA_CONTA });
     }
 
     // Ficha com decisão final (Aprovado/Reprovado) não aceita mais nenhum envio
     if (candidato.decisaoFinal) {
-      descartarArquivo();
       return res.status(400).json({
         erro: 'Esta ficha já foi decidida e está bloqueada para novos envios.'
       });
@@ -1347,7 +1359,6 @@ app.post('/api/candidato/:id/documento', autenticar, (req, res) => {
 
     // Documento já enviado só pode ser reenviado se o RH abriu uma pendência para ele
     if (documentoAtual && documentoAtual.arquivo && !pendenciaAtiva) {
-      descartarArquivo();
       return res.status(400).json({
         erro: 'Este documento já foi enviado e a ficha está bloqueada para edição. Aguarde o RH sinalizar uma pendência para reenviar.'
       });
@@ -1355,7 +1366,6 @@ app.post('/api/candidato/:id/documento', autenticar, (req, res) => {
 
     // Regra: reservista dispensado para gênero diferente de Masculino
     if (tipo === 'reservista' && candidato.genero !== 'Masculino') {
-      descartarArquivo();
       return res.status(400).json({
         erro: 'Certificado de Reservista não é exigido para este candidato.'
       });
@@ -1363,26 +1373,33 @@ app.post('/api/candidato/:id/documento', autenticar, (req, res) => {
 
     // Regra: aba CPF desabilitada quando o CPF está incluso na identidade
     if (tipo === 'cpf' && candidato.cpfInclusoNaIdentidade) {
-      descartarArquivo();
       return res.status(400).json({
         erro: 'A aba CPF está desabilitada (CPF incluso na Identidade).'
       });
     }
 
-    // Se havia um PDF anterior (reenvio após pendência), remove o arquivo físico antigo
+    // O arquivo precisa ser mesmo um PDF: o nome e o MIME vêm do cliente e não
+    // provam nada, então confere a assinatura "%PDF-" no começo do conteúdo.
+    if (req.file.buffer.subarray(0, 5).toString('latin1') !== '%PDF-') {
+      return res.status(400).json({ erro: 'O arquivo enviado não é um PDF válido.' });
+    }
+
+    // Nome gerado pelo servidor (id validado + tipo da lista + sufixo aleatório),
+    // nunca derivado de texto enviado pelo cliente.
+    const nomeArquivo = `${candidato.id}-${tipo}-${crypto.randomBytes(8).toString('hex')}.pdf`;
+    await armazenamento.salvar(nomeArquivo, req.file.buffer);
+
+    // Se havia um PDF anterior (reenvio após pendência), remove o arquivo antigo
     if (documentoAtual && documentoAtual.arquivo) {
-      const caminhoAntigo = path.join(__dirname, documentoAtual.arquivo);
-      fs.unlink(caminhoAntigo, (erro) => {
-        if (erro && erro.code !== 'ENOENT') {
-          console.error('Falha ao excluir PDF antigo:', caminhoAntigo, erro.message);
-        }
+      armazenamento.remover(nomeDoArquivo(documentoAtual.arquivo)).catch((erro) => {
+        console.error('Falha ao excluir PDF antigo:', documentoAtual.arquivo, erro.message);
       });
     }
 
     // Registra o arquivo enviado, move o documento para "Em Análise" (AMARELO) e
     // encerra qualquer pendência aberta (o reenvio pedido pelo RH foi atendido)
     candidato.documentos[tipo] = {
-      arquivo: 'uploads/' + req.file.filename,
+      arquivo: 'uploads/' + nomeArquivo,
       status: 'AMARELO',
       atualizadoEm: new Date().toISOString(),
       pendencia: null
@@ -1396,7 +1413,7 @@ app.post('/api/candidato/:id/documento', autenticar, (req, res) => {
 
     await salvarCandidatos(candidatos);
 
-    console.log(`--- Documento recebido --- ID: ${id} | Tipo: ${tipo} | Arquivo: ${req.file.filename}`);
+    console.log(`--- Documento recebido --- ID: ${id} | Tipo: ${tipo} | Arquivo: ${nomeArquivo}`);
 
     return res.status(201).json({
       mensagem: 'Documento enviado com sucesso!',
@@ -1438,13 +1455,10 @@ app.delete('/api/candidato/:id/documento/:tipo', autenticar, async (req, res) =>
 
   const documento = candidato.documentos[tipo];
 
-  // Remove o arquivo físico da pasta uploads/ (se houver), ignorando "arquivo inexistente".
+  // Remove o arquivo do armazenamento (se houver), ignorando "arquivo inexistente".
   if (documento && documento.arquivo) {
-    const caminhoFisico = path.join(__dirname, documento.arquivo);
-    fs.unlink(caminhoFisico, (erro) => {
-      if (erro && erro.code !== 'ENOENT') {
-        console.error('Falha ao excluir arquivo:', caminhoFisico, erro.message);
-      }
+    armazenamento.remover(nomeDoArquivo(documento.arquivo)).catch((erro) => {
+      console.error('Falha ao excluir arquivo:', documento.arquivo, erro.message);
     });
   }
 
@@ -3236,11 +3250,9 @@ app.get('/api/rh/fichas/:id/pdf', exigirRh, async (req, res) => {
   }
 
   const nomeArquivo = `ficha-${candidato.id}.pdf`;
-  const caminho = path.join(PASTA_UPLOADS, nomeArquivo);
 
   const doc = new PDFDocument({ margin: 50, size: 'A4' });
-  const stream = fs.createWriteStream(caminho);
-  doc.pipe(stream);
+  const pronto = pdfParaBuffer(doc);
 
   const endereco = [candidato.logradouro, candidato.numero, candidato.complemento, candidato.bairro, candidato.cep]
     .filter(Boolean).join(', ');
@@ -3295,13 +3307,13 @@ app.get('/api/rh/fichas/:id/pdf', exigirRh, async (req, res) => {
 
   doc.end();
 
-  stream.on('finish', () => {
+  try {
+    await armazenamento.salvar(nomeArquivo, await pronto);
     return res.status(200).json({ mensagem: 'PDF gerado com sucesso!', arquivo: 'uploads/' + nomeArquivo });
-  });
-  stream.on('error', (erro) => {
+  } catch (erro) {
     console.error('Falha ao gerar PDF da ficha:', erro.message);
     return res.status(500).json({ erro: 'Falha ao gerar o PDF da ficha.' });
-  });
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -3399,15 +3411,12 @@ function nomeArquivoContratoAssinado(candidatoId, tipo) {
 // exemplar específico foi assinado - não é só um registro no banco de dados.
 function gerarDocumentoContratoAssinado(candidato, tipo, titulo, aceite) {
   const nomeArquivo = nomeArquivoContratoAssinado(candidato.id, tipo);
-  const caminho = path.join(PASTA_UPLOADS, nomeArquivo);
 
   const doc = new PDFDocument({ margin: 50, size: 'A4' });
-  const stream = fs.createWriteStream(caminho);
-  const prontoQuandoGravado = new Promise((resolve, reject) => {
-    stream.on('finish', () => resolve(nomeArquivo));
-    stream.on('error', reject);
-  });
-  doc.pipe(stream);
+  const conteudoPronto = pdfParaBuffer(doc);
+  const prontoQuandoGravado = conteudoPronto
+    .then((buffer) => armazenamento.salvar(nomeArquivo, buffer))
+    .then(() => nomeArquivo);
 
   doc.fontSize(16).font('Helvetica-Bold').fillColor('#1a252f').text(titulo);
   doc.moveDown(1);

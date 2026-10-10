@@ -22,7 +22,7 @@ public/
   testes.html   -> bateria de testes automatizados contra a API em execução
 
 index.js        -> servidor Express único, expõe as rotas dos módulos
-db/supabase.js  -> cliente Supabase compartilhado (exige SUPABASE_URL e SUPABASE_KEY)
+db/supabase.js  -> cliente Supabase compartilhado (exige SUPABASE_URL e SUPABASE_SERVICE_KEY; aceita SUPABASE_KEY só em desenvolvimento)
 supabase/       -> schema.sql + migrações SQL para criar/atualizar as tabelas
 
 auditoria.json  -> trilha de auditoria (arquivo local, não versionado - LGPD)
@@ -36,10 +36,27 @@ relatorio_geral_admissoes.xlsx -> planilha Mestre, regenerada a cada gravação 
 |---|---|---|
 | Fichas, usuários, sessões, chat, etiquetas, configurações do RH | **Supabase** (Postgres) | Tabelas `candidatos`, `usuarios`, `sessoes`, `mensagens_chat`, `etiquetas`, `configuracoes`. Compartilhado: qualquer instância com as mesmas credenciais enxerga os mesmos dados. |
 | Trilha de auditoria (`auditoria.json`) | **Disco local** | Fica na máquina/instância que rodou o servidor. |
-| PDFs enviados e contratos assinados (`uploads/`) | **Disco local** | Idem. |
+| PDFs enviados, contratos assinados e ficha em PDF | **Armazenamento configurável** (`ARMAZENAMENTO_DRIVER`) | `local` (padrão): pasta `uploads/` do servidor. `supabase`: bucket privado do Supabase Storage, que persiste na Vercel. Veja "Armazenamento de arquivos". |
 | Planilha Mestre (`.xlsx`) | **Disco local** | Gerada a partir do Supabase a cada gravação. |
 
-> **Atenção (deploy na Vercel):** a Vercel é serverless e só permite gravar em `/tmp`, que é efêmero. Lá, `auditoria.json`, `uploads/` e a planilha Mestre **não persistem** entre execuções. Para uso real em nuvem, esses três itens precisam migrar para o Supabase (tabela de auditoria e Supabase Storage para os PDFs) - veja "Próximas fases".
+> **Atenção (deploy na Vercel):** a Vercel é serverless e só permite gravar em `/tmp`, que é efêmero. Lá, `auditoria.json` e a planilha Mestre **não persistem** entre execuções (a trilha de auditoria ainda precisa migrar para uma tabela do Supabase - veja "Próximas fases"). Os PDFs persistem se `ARMAZENAMENTO_DRIVER=supabase`.
+
+### Armazenamento de arquivos
+
+Os PDFs passam por uma interface única (`storage/armazenamento.js`: `salvar`, `ler`, `existe`, `remover`), então trocar de plataforma é trocar o *driver*:
+
+| `ARMAZENAMENTO_DRIVER` | Onde ficam os PDFs | Quando usar |
+|---|---|---|
+| `local` (padrão) | Pasta `uploads/` do servidor | Servidor próprio com disco persistente, desenvolvimento |
+| `supabase` | Bucket privado do Supabase Storage | Vercel e demais ambientes sem disco persistente |
+
+Para usar o driver `supabase`:
+
+1. No SQL Editor, crie o bucket **privado**: `insert into storage.buckets (id, name, public) values ('documentos', 'documentos', false) on conflict (id) do nothing;`
+2. Defina `ARMAZENAMENTO_DRIVER=supabase`. O bucket padrão é `documentos` (altere com `ARMAZENAMENTO_BUCKET`).
+3. Use a mesma chave **secret/service_role** em `SUPABASE_SERVICE_KEY` (só no servidor, nunca no navegador). Sem ela, o driver usa `SUPABASE_KEY` e o bucket exigiria políticas de acesso.
+
+Os PDFs não são servidos publicamente: o acesso é por URL assinada de 5 minutos (`POST /api/arquivos/assinar`), emitida só ao RH ou à conta dona da ficha. Defina `ARQUIVOS_SEGREDO` (16+ caracteres) para assinar essas URLs.
 
 **Módulo Candidato** (`public/index.html`): formulário de dados pessoais com máscaras e validação estrita, upload dos 6 documentos obrigatórios, envio unificado da ficha, chat com o RH e reabertura pontual de documentos com pendência. Uma ficha já enviada pode ser revisitada pelo link `http://localhost:3001/index.html?id=<candidatoId>`.
 
@@ -132,7 +149,7 @@ Recursos incluídos depois das Etapas 1 a 4 (cobertos pelas migrações em `supa
 
 ## Próximas fases do roteiro de desenvolvimento
 
-- Mover `uploads/` para o Supabase Storage e a trilha de auditoria para uma tabela no Supabase, para que persistam em ambientes serverless (pré-requisito do deploy).
+- Mover a trilha de auditoria para uma tabela no Supabase, para que persista em ambientes serverless (pré-requisito do deploy). Os PDFs já têm persistência via `ARMAZENAMENTO_DRIVER=supabase`.
 - Deploy do MVP em nuvem (a configuração atual já inclui `vercel.json`; Render/Railway continuam possíveis via a variável `PORT`).
 - Gestão de credenciais reais do Google OAuth para o ambiente de produção.
 - URLs amigáveis sem `.html` (ver `ROADMAP.md`).
@@ -141,7 +158,7 @@ Recursos incluídos depois das Etapas 1 a 4 (cobertos pelas migrações em `supa
 
 ### Pré-requisitos
 - Git instalado na máquina
-- **Um projeto Supabase** (gratuito) com as tabelas criadas - veja "Configurar o Supabase" abaixo. Sem `SUPABASE_URL` e `SUPABASE_KEY` o servidor não inicia.
+- **Um projeto Supabase** (gratuito) com as tabelas criadas - veja "Configurar o Supabase" abaixo. Sem `SUPABASE_URL` e uma chave (`SUPABASE_SERVICE_KEY`, ou `SUPABASE_KEY` em desenvolvimento) o servidor não inicia.
 - Opção 1: Docker e Docker Compose instalados
 - Opção 2: Node.js **22 ou superior** instalado na máquina (exigido pelas dependências `@supabase/supabase-js` e `google-auth-library`)
 
@@ -154,7 +171,7 @@ cd OnboardingDigital
 
 ### Variáveis de ambiente (opcional)
 
-Copie `.env.example` para `.env` e preencha ao menos `SUPABASE_URL` e `SUPABASE_KEY`:
+Copie `.env.example` para `.env` e preencha ao menos `SUPABASE_URL` e `SUPABASE_SERVICE_KEY` (para conferir que a chave pública não acessa o banco: `npm run verificar:rls`):
 
 ```bash
 cp .env.example .env
@@ -163,8 +180,13 @@ cp .env.example .env
 | Variável | Padrão | Descrição |
 |---|---|---|
 | `SUPABASE_URL` | *(obrigatória)* | URL do projeto Supabase (Project Settings > API). |
-| `SUPABASE_KEY` | *(obrigatória)* | Chave `anon public` do projeto. O acesso ao banco é feito apenas pelo backend Express. |
+| `SUPABASE_SERVICE_KEY` | *(obrigatória em produção)* | Chave **secret/service_role** do projeto. Só no servidor (`.env` ou variável da plataforma), nunca no navegador nem no Git. Com ela, o RLS fica ligado e a chave pública não acessa nada. |
+| `SUPABASE_KEY` | *(opcional)* | Chave pública (`anon`/`publishable`). Só é usada se `SUPABASE_SERVICE_KEY` não estiver definida (modo de desenvolvimento, com aviso no log). |
 | `API_KEY_ADMISSOES` | *(vazia = API desativada)* | Chave da API REST v1 (`/api/v1/admissoes`), mínimo de 16 caracteres. |
+| `ARMAZENAMENTO_DRIVER` | `local` | Onde ficam os PDFs: `local` ou `supabase` (ver "Armazenamento de arquivos"). |
+| `ARMAZENAMENTO_BUCKET` | `documentos` | Nome do bucket privado, quando o driver é `supabase`. |
+| `SUPABASE_SERVICE_KEY` | *(vazia)* | Chave secret/service_role, só no servidor, usada pelo driver `supabase`. |
+| `ARQUIVOS_SEGREDO` | *(deriva da chave do Supabase)* | Segredo (16+ caracteres) que assina as URLs de acesso aos PDFs. |
 | `SENHA_RH_TESTE` | `onboarding123` | Senha da conta de RH de testes `rh@onboarding.local`. Opcional: define outra senha (e a aplica a uma conta já existente ao reiniciar). |
 | `PORT` | `3001` | Porta em que o servidor escuta. Injetada automaticamente por plataformas de deploy em nuvem (Render, Railway, etc.). |
 | `GOOGLE_CLIENT_ID` | *(vazio)* | Client ID OAuth 2.0 do Google (Google Cloud Console), necessário para o botão "Entrar com o Google" funcionar de verdade. Sem ela, o botão fica desabilitado e a rota `/api/auth/google` responde 400. |
@@ -177,7 +199,7 @@ cp .env.example .env
    2. `migracao_banco_talentos_configuracoes.sql` - Banco de Talentos e Configurações do RH
    3. `migracao_etiquetas.sql` - etiquetas
    4. `migracao_fotos_mensagem_contratacao.sql` - fotos de perfil e mensagem de contratação
-   5. `disable_rls.sql` - desativa o RLS nas 4 tabelas base (o acesso é controlado pelo backend)
+   5. `ativar_rls.sql` - **liga o RLS** nas 6 tabelas, sem políticas: só o servidor (chave secret) acessa o banco. Aplique somente depois que o servidor já estiver rodando com `SUPABASE_SERVICE_KEY`.
 3. Para testes pessoais, use um projeto Supabase próprio, para não alterar dados compartilhados.
 
 ### Login com o Google

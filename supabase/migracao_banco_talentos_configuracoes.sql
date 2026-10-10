@@ -25,6 +25,6 @@ values (
 )
 on conflict (id) do nothing;
 
--- Mesmo critério das outras tabelas: o Supabase só é acessado pelo backend
--- Express, que já faz o controle de acesso (sessões, exigirRh).
-alter table configuracoes disable row level security;
+-- RLS LIGADO e sem politicas: so o backend Express acessa o banco, com a chave
+-- secret (SUPABASE_SERVICE_KEY). A chave publica nao le nem grava nada.
+alter table configuracoes enable row level security;

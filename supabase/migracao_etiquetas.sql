@@ -12,6 +12,6 @@ create table if not exists etiquetas (
   atualizado_em timestamptz not null default now()
 );
 
--- Mesmo critério das outras tabelas: o Supabase só é acessado pelo backend
--- Express, que já faz o controle de acesso (sessões, exigirRh).
-alter table etiquetas disable row level security;
+-- RLS LIGADO e sem politicas: so o backend Express acessa o banco, com a chave
+-- secret (SUPABASE_SERVICE_KEY). A chave publica nao le nem grava nada.
+alter table etiquetas enable row level security;
