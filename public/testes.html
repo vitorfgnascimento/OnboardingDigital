@@ -249,6 +249,41 @@
       return { status: r.status, corpo: await r.json().catch(() => ({})) };
     }
 
+    // Conta de candidato dona das fichas anônimas criadas pelos testes (e-mail
+    // teste@exemplo.com): as rotas da ficha exigem login do dono da ficha.
+    const EMAIL_DONO_TESTES = 'teste@exemplo.com';
+    const SENHA_DONO_TESTES = 'senha-dono-testes-123';
+    let tokenDonoTestes = null;
+    async function loginDono() {
+      if (tokenDonoTestes) return tokenDonoTestes;
+      let r = await postJson('/auth/login', { email: EMAIL_DONO_TESTES, senha: SENHA_DONO_TESTES });
+      if (r.status !== 200) {
+        const reg = await postJson('/auth/registrar', {
+          nome: 'Dono Dos Testes', email: EMAIL_DONO_TESTES, senha: SENHA_DONO_TESTES, confirmarSenha: SENHA_DONO_TESTES,
+          dataNascimento: '10/05/1990', cpf: '123.456.789-09', aceiteTermos: true
+        });
+        if (reg.corpo.tokenAtivacao) await postJson('/auth/ativar', { token: reg.corpo.tokenAtivacao });
+        r = await postJson('/auth/login', { email: EMAIL_DONO_TESTES, senha: SENHA_DONO_TESTES });
+      }
+      tokenDonoTestes = r.corpo.token;
+      return tokenDonoTestes;
+    }
+    async function headersDono(extra) {
+      return Object.assign({ Authorization: 'Bearer ' + (await loginDono()) }, extra || {});
+    }
+    async function postJsonDono(caminho, corpo) {
+      const r = await fetch(API + caminho, { method: 'POST', headers: await headersDono({ 'Content-Type': 'application/json' }), body: JSON.stringify(corpo) });
+      return { status: r.status, corpo: await r.json().catch(() => ({})) };
+    }
+    async function patchJsonDono(caminho, corpo) {
+      const r = await fetch(API + caminho, { method: 'PATCH', headers: await headersDono({ 'Content-Type': 'application/json' }), body: JSON.stringify(corpo) });
+      return { status: r.status, corpo: await r.json().catch(() => ({})) };
+    }
+    // Candidato autenticado da seção de autenticação (dono de window.__idAuthFicha).
+    async function postJsonAuth(caminho, corpo) {
+      const r = await fetch(API + caminho, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + window.__tokenAuth }, body: JSON.stringify(corpo) });
+      return { status: r.status, corpo: await r.json().catch(() => ({})) };
+    }
     async function deleteRh(caminho) {
       await loginRh();
       const r = await fetch(API + caminho, { method: 'DELETE', headers: headersRh() });
@@ -264,7 +299,7 @@
       dados.append('tipoDocumento', tipoDocumento);
       if (extras) Object.entries(extras).forEach(([k, v]) => dados.append(k, v));
       dados.append('arquivo', arquivo);
-      const r = await fetch(API + '/candidato/' + id + '/documento', { method: 'POST', body: dados });
+      const r = await fetch(API + '/candidato/' + id + '/documento', { method: 'POST', headers: await headersDono(), body: dados });
       return { status: r.status, corpo: await r.json().catch(() => ({})) };
     }
 
@@ -425,7 +460,7 @@
         run: async () => {
           const up = await enviarDocumento(window.__idMasculino, 'comprovanteEscolaridade', pdfDeTeste('hist.pdf'));
           if (up.status !== 201) return { ok: false, detalhe: `upload prévio falhou (${up.status})` };
-          const r = await fetch(API + '/candidato/' + window.__idMasculino + '/documento/comprovanteEscolaridade', { method: 'DELETE' });
+          const r = await fetch(API + '/candidato/' + window.__idMasculino + '/documento/comprovanteEscolaridade', { method: 'DELETE', headers: await headersDono() });
           const corpo = await r.json().catch(() => ({}));
           const doc = corpo.candidato?.documentos?.comprovanteEscolaridade;
           return {
@@ -437,7 +472,7 @@
       {
         nome: 'DELETE de candidato inexistente (404)',
         run: async () => {
-          const r = await fetch(API + '/candidato/nao-existe/documento/cpf', { method: 'DELETE' });
+          const r = await fetch(API + '/candidato/nao-existe/documento/cpf', { method: 'DELETE', headers: await headersDono() });
           return { ok: r.status === 404, detalhe: `status ${r.status}` };
         }
       },
@@ -445,9 +480,22 @@
       { grupo: 'Regras condicionais (PATCH /api/candidato/:id/dados)' },
 
       {
+        nome: 'Dados, upload e exclusão de documento sem login são recusados (401)',
+        run: async () => {
+          const dados = await patchJson('/candidato/' + window.__idMasculino + '/dados', { genero: 'Feminino' });
+          const form = new FormData();
+          form.append('tipoDocumento', 'identidade');
+          form.append('arquivo', pdfDeTeste('anonimo.pdf'));
+          const up = await fetch(API + '/candidato/' + window.__idMasculino + '/documento', { method: 'POST', body: form });
+          const del = await fetch(API + '/candidato/' + window.__idMasculino + '/documento/identidade', { method: 'DELETE' });
+          return { ok: dados.status === 401 && up.status === 401 && del.status === 401, detalhe: `dados ${dados.status}, upload ${up.status}, exclusão ${del.status}` };
+        }
+      },
+
+      {
         nome: 'CPF incluso na Identidade: aba CPF herda o status da Identidade',
         run: async () => {
-          const r = await patchJson('/candidato/' + window.__idMasculino + '/dados', { cpfInclusoNaIdentidade: true });
+          const r = await patchJsonDono('/candidato/' + window.__idMasculino + '/dados', { cpfInclusoNaIdentidade: true });
           const c = r.corpo.candidato || {};
           const ok = r.status === 200 && c.cpfInclusoNaIdentidade === true
             && c.documentos.cpf.status === c.documentos.identidade.status;
@@ -470,7 +518,7 @@
           const rc = await postJson('/candidato', fichaValida({ cpf: '741.852.963-00' }));
           const idCpfSync = rc.corpo.candidato?.id;
           window.__idCpfSync = idCpfSync;
-          await patchJson('/candidato/' + idCpfSync + '/dados', { cpfInclusoNaIdentidade: true });
+          await patchJsonDono('/candidato/' + idCpfSync + '/dados', { cpfInclusoNaIdentidade: true });
           await enviarDocumento(idCpfSync, 'identidade', pdfDeTeste('rg-sync.pdf'));
 
           const r = await patchJsonRh('/rh/fichas/' + idCpfSync + '/documento/identidade/aceitar', {});
@@ -491,7 +539,7 @@
       {
         nome: 'Mudar gênero para Feminino zera exigência do reservista (VERDE)',
         run: async () => {
-          const r = await patchJson('/candidato/' + window.__idFeminino + '/dados', { genero: 'Feminino' });
+          const r = await patchJsonDono('/candidato/' + window.__idFeminino + '/dados', { genero: 'Feminino' });
           const st = r.corpo.candidato?.documentos?.reservista?.status;
           return { ok: r.status === 200 && st === 'VERDE', detalhe: `reservista = ${st}` };
         }
@@ -499,7 +547,7 @@
       {
         nome: 'Gênero inválido é recusado (400)',
         run: async () => {
-          const r = await patchJson('/candidato/' + window.__idMasculino + '/dados', { genero: 'Outros' });
+          const r = await patchJsonDono('/candidato/' + window.__idMasculino + '/dados', { genero: 'Outros' });
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
@@ -624,14 +672,14 @@
       {
         nome: 'Candidato envia mensagem no chat (201)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idMasculino + '/mensagens', { autor: 'Candidato', texto: 'Olá, tenho uma dúvida.' });
+          const r = await postJsonDono('/candidato/' + window.__idMasculino + '/mensagens', { autor: 'Candidato', texto: 'Olá, tenho uma dúvida.' });
           return { ok: r.status === 201 && r.corpo.candidato?.mensagens?.length === 1, detalhe: `status ${r.status}, total mensagens ${r.corpo.candidato?.mensagens?.length}` };
         }
       },
       {
         nome: 'RH responde no chat (201) e histórico fica ordenado',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idMasculino + '/mensagens', { autor: 'RH', texto: 'Já te respondo.' });
+          const r = await postJsonRh('/candidato/' + window.__idMasculino + '/mensagens', { autor: 'RH', texto: 'Já te respondo.' });
           const msgs = r.corpo.candidato?.mensagens || [];
           const ok = r.status === 201 && msgs.length === 2 && msgs[0].autor === 'Candidato' && msgs[1].autor === 'RH';
           return { ok, detalhe: `status ${r.status}, ordem: ${msgs.map((m) => m.autor).join(' -> ')}` };
@@ -640,7 +688,7 @@
       {
         nome: 'Mensagem do chat grava timestamp e IP (LGPD)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idMasculino + '/mensagens', { autor: 'RH', texto: 'Registro para auditoria.' });
+          const r = await postJsonRh('/candidato/' + window.__idMasculino + '/mensagens', { autor: 'RH', texto: 'Registro para auditoria.' });
           const msgs = r.corpo.candidato?.mensagens || [];
           const ultima = msgs[msgs.length - 1];
           const ok = r.status === 201 && !!ultima?.timestamp && !!ultima?.ip;
@@ -650,14 +698,14 @@
       {
         nome: 'Recusa mensagem com autor inválido (400)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idMasculino + '/mensagens', { autor: 'Hacker', texto: 'oi' });
+          const r = await postJsonRh('/candidato/' + window.__idMasculino + '/mensagens', { autor: 'Hacker', texto: 'oi' });
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
       {
         nome: 'Recusa mensagem vazia (400)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idMasculino + '/mensagens', { autor: 'RH', texto: '   ' });
+          const r = await postJsonRh('/candidato/' + window.__idMasculino + '/mensagens', { autor: 'RH', texto: '   ' });
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
@@ -833,14 +881,14 @@
       {
         nome: 'Mensagem do Candidato não altera o status (continua EM_ANALISE)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idAutomacao + '/mensagens', { autor: 'Candidato', texto: 'Oi, enviei minha ficha.' });
+          const r = await postJsonDono('/candidato/' + window.__idAutomacao + '/mensagens', { autor: 'Candidato', texto: 'Oi, enviei minha ficha.' });
           return { ok: r.status === 201 && r.corpo.candidato?.status === 'EM_ANALISE', detalhe: `status geral após msg do candidato: ${r.corpo.candidato?.status}` };
         }
       },
       {
         nome: 'Mensagem do RH não altera o status (continua EM_ANALISE)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idAutomacao + '/mensagens', { autor: 'RH', texto: 'Recebemos sua ficha!' });
+          const r = await postJsonRh('/candidato/' + window.__idAutomacao + '/mensagens', { autor: 'RH', texto: 'Recebemos sua ficha!' });
           return { ok: r.status === 201 && r.corpo.candidato?.status === 'EM_ANALISE', detalhe: `status geral após msg do RH: ${r.corpo.candidato?.status}` };
         }
       },
@@ -1055,7 +1103,7 @@
       {
         nome: 'Aceite de documento do contrato antes da aprovação é recusado (400)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/contratoTrabalho/aceite', {});
+          const r = await postJsonAuth('/candidato/' + window.__idAuthFicha + '/contrato/contratoTrabalho/aceite', {});
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
@@ -1084,14 +1132,14 @@
       {
         nome: 'Concluir assinatura digital com documentos pendentes é recusado (400)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/concluir', {});
+          const r = await postJsonAuth('/candidato/' + window.__idAuthFicha + '/contrato/concluir', {});
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
       {
         nome: 'Aceite (clique) do 1º documento registra timestamp, IP, autor e hash SHA-256 da assinatura (LGPD)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/contratoTrabalho/aceite', {});
+          const r = await postJsonAuth('/candidato/' + window.__idAuthFicha + '/contrato/contratoTrabalho/aceite', {});
           const aceite = r.corpo.candidato?.contrato?.documentos?.contratoTrabalho?.aceite;
           const ok = r.status === 200 && !!aceite?.timestamp && !!aceite?.ip && aceite?.por === 'CANDIDATO' && /^[0-9a-f]{64}$/.test(aceite?.hash || '');
           return { ok, detalhe: `status ${r.status}, aceite ${JSON.stringify(aceite)}` };
@@ -1119,7 +1167,7 @@
       {
         nome: 'Tipo de documento de contrato inválido no aceite é recusado (400)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/naoExiste/aceite', {});
+          const r = await postJsonAuth('/candidato/' + window.__idAuthFicha + '/contrato/naoExiste/aceite', {});
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
@@ -1145,7 +1193,7 @@
       {
         nome: 'Aceite do 2º documento (termo de confidencialidade) feito pelo próprio candidato registra autor CANDIDATO',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/termoConfidencialidade/aceite', {});
+          const r = await postJsonAuth('/candidato/' + window.__idAuthFicha + '/contrato/termoConfidencialidade/aceite', {});
           const documento = r.corpo.candidato?.contrato?.documentos?.termoConfidencialidade;
           const ok = r.status === 200 && documento?.aceite?.por === 'CANDIDATO' && !!documento?.arquivoAssinado;
           return { ok, detalhe: `status ${r.status}, documento ${JSON.stringify(documento)}` };
@@ -1154,7 +1202,7 @@
       {
         nome: 'Concluir com 1 documento ainda pendente continua recusado (400)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/concluir', {});
+          const r = await postJsonAuth('/candidato/' + window.__idAuthFicha + '/contrato/concluir', {});
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
@@ -1168,7 +1216,7 @@
       {
         nome: 'Aceita o 3º documento restante (política de privacidade)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/politicaPrivacidade/aceite', {});
+          const r = await postJsonAuth('/candidato/' + window.__idAuthFicha + '/contrato/politicaPrivacidade/aceite', {});
           return { ok: r.status === 200, detalhe: `status ${r.status}` };
         }
       },
@@ -1177,14 +1225,14 @@
         // explícita sobre a assinatura eletrônica a conclusão é recusada.
         nome: 'Concluir sem o consentimento da assinatura eletrônica é recusado (400)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/concluir', {});
+          const r = await postJsonAuth('/candidato/' + window.__idAuthFicha + '/contrato/concluir', {});
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
       {
         nome: 'Concluir assinatura digital com todos aceitos grava CPF e hash (LGPD)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idAuthFicha + '/contrato/concluir', { consentimentoContratoLGPD: true });
+          const r = await postJsonAuth('/candidato/' + window.__idAuthFicha + '/contrato/concluir', { consentimentoContratoLGPD: true });
           const assinatura = r.corpo.candidato?.contrato?.assinaturaConcluida;
           const ok = r.status === 200 && !!assinatura?.timestamp && !!assinatura?.ip && !!assinatura?.cpf && !!assinatura?.hash;
           return { ok, detalhe: `status ${r.status}, assinatura ${JSON.stringify(assinatura)}` };
@@ -1264,7 +1312,7 @@
       {
         nome: 'Mensagem do Candidato grava nomeAutor = nomeCompleto da ficha',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idChatNomeAutor + '/mensagens', { autor: 'Candidato', texto: 'Olá!' });
+          const r = await postJsonDono('/candidato/' + window.__idChatNomeAutor + '/mensagens', { autor: 'Candidato', texto: 'Olá!' });
           const msg = r.corpo.candidato?.mensagens?.slice(-1)[0];
           const ok = r.status === 201 && msg?.nomeAutor === window.__nomeChatNomeAutor;
           return { ok, detalhe: `status ${r.status}, nomeAutor "${msg?.nomeAutor}", esperado "${window.__nomeChatNomeAutor}"` };
@@ -1273,7 +1321,7 @@
       {
         nome: 'Mensagem do RH com nomeAutor no corpo devolve o mesmo nome',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idChatNomeAutor + '/mensagens', { autor: 'RH', texto: 'Tudo bem?', nomeAutor: 'Fernanda RH' });
+          const r = await postJsonRh('/candidato/' + window.__idChatNomeAutor + '/mensagens', { autor: 'RH', texto: 'Tudo bem?', nomeAutor: 'Fernanda RH' });
           const msg = r.corpo.candidato?.mensagens?.slice(-1)[0];
           const ok = r.status === 201 && msg?.nomeAutor === 'Fernanda RH';
           return { ok, detalhe: `status ${r.status}, nomeAutor "${msg?.nomeAutor}"` };
@@ -1282,7 +1330,7 @@
       {
         nome: 'Mensagem do RH sem nomeAutor no corpo cai para "RH"',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idChatNomeAutor + '/mensagens', { autor: 'RH', texto: 'Sem nome informado.' });
+          const r = await postJsonRh('/candidato/' + window.__idChatNomeAutor + '/mensagens', { autor: 'RH', texto: 'Sem nome informado.' });
           const msg = r.corpo.candidato?.mensagens?.slice(-1)[0];
           const ok = r.status === 201 && msg?.nomeAutor === 'RH';
           return { ok, detalhe: `status ${r.status}, nomeAutor "${msg?.nomeAutor}"` };
@@ -1294,13 +1342,13 @@
         // periodicamente pelo front-end enquanto o chat está visível.
         nome: 'GET .../mensagens (polling) retorna o histórico e respeita o filtro ?apos=',
         run: async () => {
-          const r1 = await fetch(API + '/candidato/' + window.__idChatNomeAutor + '/mensagens');
+          const r1 = await fetch(API + '/candidato/' + window.__idChatNomeAutor + '/mensagens', { headers: await headersDono() });
           const corpo1 = await r1.json();
           const total = (corpo1.mensagens || []).length;
           if (total === 0) return { ok: false, detalhe: 'nenhuma mensagem encontrada para testar o polling' };
 
           const ultimoTimestamp = corpo1.mensagens[total - 1].timestamp;
-          const r2 = await fetch(API + '/candidato/' + window.__idChatNomeAutor + '/mensagens?apos=' + encodeURIComponent(ultimoTimestamp));
+          const r2 = await fetch(API + '/candidato/' + window.__idChatNomeAutor + '/mensagens?apos=' + encodeURIComponent(ultimoTimestamp), { headers: await headersDono() });
           const corpo2 = await r2.json();
 
           const ok = r1.status === 200 && total > 0 && r2.status === 200 && Array.isArray(corpo2.mensagens) && corpo2.mensagens.length === 0;
@@ -1320,7 +1368,7 @@
       {
         nome: 'Chat bloqueado definitivamente após reprovação (400, mensagem exata)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idChatReprovado + '/mensagens', { autor: 'Candidato', texto: 'Ainda posso falar?' });
+          const r = await postJsonDono('/candidato/' + window.__idChatReprovado + '/mensagens', { autor: 'Candidato', texto: 'Ainda posso falar?' });
           const ok = r.status === 400 && r.corpo.erro === 'Atendimento encerrado. Este processo admissional foi finalizado.';
           return { ok, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
@@ -1328,7 +1376,7 @@
       {
         nome: 'Chat bloqueado também para o lado do RH após reprovação (400)',
         run: async () => {
-          const r = await postJson('/candidato/' + window.__idChatReprovado + '/mensagens', { autor: 'RH', texto: 'Oi', nomeAutor: 'Fernanda RH' });
+          const r = await postJsonRh('/candidato/' + window.__idChatReprovado + '/mensagens', { autor: 'RH', texto: 'Oi', nomeAutor: 'Fernanda RH' });
           const ok = r.status === 400 && r.corpo.erro === 'Atendimento encerrado. Este processo admissional foi finalizado.';
           return { ok, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
@@ -2044,6 +2092,22 @@
           const propria = await fetch(API + '/candidato/' + window.__idAuthFicha, { headers: auth });
           const alheia = await fetch(API + '/candidato/' + window.__idMasculino, { headers: auth });
           return { ok: propria.status === 200 && alheia.status === 403, detalhe: `própria ${propria.status}, alheia ${alheia.status}` };
+        }
+      },
+      {
+        nome: 'Conta alheia e RH não alteram dados nem documentos de outro candidato (403)',
+        run: async () => {
+          const alheio = { Authorization: 'Bearer ' + window.__tokenAuth };
+          const json = Object.assign({ 'Content-Type': 'application/json' }, alheio);
+          const dados = await fetch(API + '/candidato/' + window.__idMasculino + '/dados', { method: 'PATCH', headers: json, body: JSON.stringify({ genero: 'Feminino' }) });
+          const del = await fetch(API + '/candidato/' + window.__idMasculino + '/documento/identidade', { method: 'DELETE', headers: alheio });
+          const form = new FormData();
+          form.append('tipoDocumento', 'identidade');
+          form.append('arquivo', pdfDeTeste('alheio.pdf'));
+          const up = await fetch(API + '/candidato/' + window.__idMasculino + '/documento', { method: 'POST', headers: alheio, body: form });
+          const rhDados = await patchJsonRh('/candidato/' + window.__idMasculino + '/dados', { genero: 'Feminino' });
+          const codigos = [dados.status, del.status, up.status, rhDados.status];
+          return { ok: codigos.every((c) => c === 403), detalhe: `dados/exclusão/upload (conta alheia) e dados (RH): ${codigos.join(', ')}` };
         }
       },
       {

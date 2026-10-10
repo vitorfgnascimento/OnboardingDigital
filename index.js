@@ -579,13 +579,19 @@ async function exigirRh(req, res, next) {
 // Regra de acesso a uma ficha individual: o RH vê qualquer ficha; o candidato
 // só vê a própria (vinculada à conta pelo usuarioId; fichas antigas, criadas
 // sem login, caem no e-mail da conta).
-function usuarioPodeVerFicha(usuario, candidato) {
-  if (!usuario || !candidato) return false;
-  if (usuario.tipo === 'rh') return true;
+function usuarioEhDonoDaFicha(usuario, candidato) {
+  if (!usuario || !candidato || usuario.tipo === 'rh') return false;
   if (candidato.usuarioId) return candidato.usuarioId === usuario.id;
   const emailFicha = String(candidato.email || '').trim().toLowerCase();
   return emailFicha !== '' && emailFicha === String(usuario.email || '').trim().toLowerCase();
 }
+
+function usuarioPodeVerFicha(usuario, candidato) {
+  if (!usuario || !candidato) return false;
+  return usuario.tipo === 'rh' || usuarioEhDonoDaFicha(usuario, candidato);
+}
+
+const ERRO_FICHA_DE_OUTRA_CONTA = 'Esta ficha pertence a outra conta.';
 
 // ---------------------------------------------------------------------------
 // REGRAS DE NEGÓCIO DOS DOCUMENTOS
@@ -1145,8 +1151,9 @@ app.post('/api/candidato', autenticarOpcional, async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // ROTA: atualização dos dados pessoais / regras (gênero e CPF incluso)
+// Exige login: só a conta dona da ficha altera.
 // ---------------------------------------------------------------------------
-app.patch('/api/candidato/:id/dados', async (req, res) => {
+app.patch('/api/candidato/:id/dados', autenticar, async (req, res) => {
   try {
   const { id } = req.params;
   const { genero, cpfInclusoNaIdentidade } = req.body;
@@ -1156,6 +1163,10 @@ app.patch('/api/candidato/:id/dados', async (req, res) => {
 
   if (!candidato) {
     return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  }
+
+  if (!usuarioEhDonoDaFicha(req.usuario, candidato)) {
+    return res.status(403).json({ erro: ERRO_FICHA_DE_OUTRA_CONTA });
   }
 
   if (genero !== undefined) {
@@ -1186,8 +1197,10 @@ app.patch('/api/candidato/:id/dados', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // ROTA: envio de um documento PDF para uma das abas
+// Exige login (antes do multer, para que visitantes anônimos não gravem
+// arquivos em disco); só a conta dona da ficha envia.
 // ---------------------------------------------------------------------------
-app.post('/api/candidato/:id/documento', (req, res) => {
+app.post('/api/candidato/:id/documento', autenticar, (req, res) => {
   upload.single('arquivo')(req, res, async (erroUpload) => {
     if (erroUpload) {
       if (erroUpload.code === 'LIMIT_FILE_SIZE') {
@@ -1223,6 +1236,11 @@ app.post('/api/candidato/:id/documento', (req, res) => {
     if (!candidato) {
       descartarArquivo();
       return res.status(404).json({ erro: 'Candidato não encontrado.' });
+    }
+
+    if (!usuarioEhDonoDaFicha(req.usuario, candidato)) {
+      descartarArquivo();
+      return res.status(403).json({ erro: ERRO_FICHA_DE_OUTRA_CONTA });
     }
 
     // Ficha com decisão final (Aprovado/Reprovado) não aceita mais nenhum envio
@@ -1302,8 +1320,9 @@ app.post('/api/candidato/:id/documento', (req, res) => {
 
 // ---------------------------------------------------------------------------
 // ROTA: exclusão de um documento PDF já anexado
+// Exige login: só a conta dona da ficha exclui.
 // ---------------------------------------------------------------------------
-app.delete('/api/candidato/:id/documento/:tipo', async (req, res) => {
+app.delete('/api/candidato/:id/documento/:tipo', autenticar, async (req, res) => {
   try {
   const { id, tipo } = req.params;
 
@@ -1316,6 +1335,10 @@ app.delete('/api/candidato/:id/documento/:tipo', async (req, res) => {
 
   if (!candidato) {
     return res.status(404).json({ erro: 'Candidato não encontrado.' });
+  }
+
+  if (!usuarioEhDonoDaFicha(req.usuario, candidato)) {
+    return res.status(403).json({ erro: ERRO_FICHA_DE_OUTRA_CONTA });
   }
 
   if (candidato.decisaoFinal) {
@@ -2050,7 +2073,7 @@ app.get('/api/candidato/:id', autenticar, async (req, res) => {
     }
 
     if (!usuarioPodeVerFicha(req.usuario, candidato)) {
-      return res.status(403).json({ erro: 'Esta ficha pertence a outra conta.' });
+      return res.status(403).json({ erro: ERRO_FICHA_DE_OUTRA_CONTA });
     }
 
     const [comFoto] = await comFotosDosCandidatos([candidato]);

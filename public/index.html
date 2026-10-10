@@ -1454,7 +1454,7 @@
       // Se o documento já foi persistido no servidor, exclui o arquivo físico
       if (candidatoId && candidato && candidato.documentos[tipo] && candidato.documentos[tipo].arquivo) {
         try {
-          const resposta = await fetch('/api/candidato/' + candidatoId + '/documento/' + tipo, { method: 'DELETE' });
+          const resposta = await fetch('/api/candidato/' + candidatoId + '/documento/' + tipo, { method: 'DELETE', headers: cabecalhosAutenticados() });
           const resultado = await resposta.json();
           if (resposta.ok) candidato = resultado.candidato;
         } catch (erro) {
@@ -1477,7 +1477,7 @@
         try {
           const resposta = await fetch('/api/candidato/' + candidatoId + '/dados', {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: cabecalhosAutenticados({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ cpfInclusoNaIdentidade: e.target.checked })
           });
           const resultado = await resposta.json();
@@ -1573,7 +1573,7 @@
       }
       dados.append('arquivo', arquivo);
 
-      const resposta = await fetch('/api/candidato/' + candidatoId + '/documento', { method: 'POST', body: dados });
+      const resposta = await fetch('/api/candidato/' + candidatoId + '/documento', { method: 'POST', headers: cabecalhosAutenticados(), body: dados });
       const resultado = await resposta.json();
       if (!resposta.ok) throw new Error(resultado.erro || 'Falha no upload de ' + tipo);
       candidato = resultado.candidato;
@@ -1643,7 +1643,7 @@
         if (chk && chk.checked) {
           const respDados = await fetch('/api/candidato/' + candidatoId + '/dados', {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: cabecalhosAutenticados({ 'Content-Type': 'application/json' }),
             body: JSON.stringify({ cpfInclusoNaIdentidade: true })
           });
           const resDados = await respDados.json();
