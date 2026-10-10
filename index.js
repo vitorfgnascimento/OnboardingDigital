@@ -3417,16 +3417,52 @@ app.patch('/api/rh/fichas/:id/contrato/validar', exigirRh, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// CONTA DE RH DE TESTES (MVP/Dev) - semeada de forma idempotente no boot,
-// já que o formulário público de registro só cria contas 'candidato'.
-// Credenciais documentadas no README.md, apenas para uso em desenvolvimento.
+// CONTA DE RH (MVP/Dev) - semeada no boot, já que o formulário público de
+// registro só cria contas 'candidato'. A senha NÃO fica no código: vem da
+// variável de ambiente SENHA_RH_TESTE (ver .env.example). Sem ela, a conta não
+// é criada.
 // ---------------------------------------------------------------------------
 const EMAIL_RH_TESTE = 'rh@onboarding.local';
-const SENHA_RH_TESTE = 'onboarding123';
+const SENHA_RH_TESTE = process.env.SENHA_RH_TESTE || '';
+const TAMANHO_MINIMO_SENHA_RH = 10;
+// Senha que já esteve versionada neste repositório (público): considerada
+// vazada. Se uma conta de RH ainda a usa, a conta é bloqueada no boot.
+const SENHA_RH_VAZADA = 'onboarding123';
 
 async function garantirUsuarioRhTeste() {
+  if (SENHA_RH_TESTE && (SENHA_RH_TESTE.length < TAMANHO_MINIMO_SENHA_RH || SENHA_RH_TESTE === SENHA_RH_VAZADA)) {
+    console.error(`SENHA_RH_TESTE inválida: use pelo menos ${TAMANHO_MINIMO_SENHA_RH} caracteres e nunca a senha antiga do repositório. Conta de RH não alterada.`);
+    return;
+  }
+
   const usuarios = await lerUsuarios();
-  if (usuarios.some((u) => u.email === EMAIL_RH_TESTE)) return;
+  const existente = usuarios.find((u) => u.email === EMAIL_RH_TESTE);
+
+  if (existente) {
+    if (SENHA_RH_TESTE) {
+      // A variável de ambiente é a fonte da verdade: aplicar/rotacionar a senha.
+      if (!existente.senhaHash || !senhaConfere(SENHA_RH_TESTE, existente.senhaSalt, existente.senhaHash)) {
+        const { salt, hash } = gerarHashSenha(SENHA_RH_TESTE);
+        existente.senhaSalt = salt;
+        existente.senhaHash = hash;
+        existente.ativo = true;
+        await salvarUsuarios(usuarios);
+        console.log('--- Senha da conta de RH atualizada a partir de SENHA_RH_TESTE:', EMAIL_RH_TESTE, '---');
+      }
+      return;
+    }
+    if (existente.ativo !== false && existente.senhaHash && senhaConfere(SENHA_RH_VAZADA, existente.senhaSalt, existente.senhaHash)) {
+      existente.ativo = false;
+      await salvarUsuarios(usuarios);
+      console.error(`Conta ${EMAIL_RH_TESTE} BLOQUEADA: ainda usava a senha antiga do repositório. Defina SENHA_RH_TESTE e reinicie para reativá-la com uma senha nova.`);
+    }
+    return;
+  }
+
+  if (!SENHA_RH_TESTE) {
+    console.log(`Conta de RH não criada: defina SENHA_RH_TESTE (ver .env.example) para semear ${EMAIL_RH_TESTE}.`);
+    return;
+  }
 
   const { salt, hash } = gerarHashSenha(SENHA_RH_TESTE);
   usuarios.push({

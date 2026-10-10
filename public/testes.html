@@ -185,7 +185,14 @@
     let tokenRhTestes = null;
     async function loginRh() {
       if (tokenRhTestes) return tokenRhTestes;
-      const r = await postJson('/auth/login', { email: 'rh@onboarding.local', senha: 'onboarding123' });
+      // A senha do RH não fica no código: é a SENHA_RH_TESTE definida no .env do servidor.
+      let senha = null;
+      try { senha = sessionStorage.getItem('senhaRhTestes'); } catch (e) { /* storage indisponível */ }
+      if (!senha) {
+        senha = window.prompt('Senha da conta rh@onboarding.local (valor de SENHA_RH_TESTE no .env do servidor):') || '';
+        try { sessionStorage.setItem('senhaRhTestes', senha); } catch (e) { /* ignora */ }
+      }
+      const r = await postJson('/auth/login', { email: 'rh@onboarding.local', senha });
       tokenRhTestes = r.corpo.token;
       return tokenRhTestes;
     }

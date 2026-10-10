@@ -110,7 +110,7 @@ Módulo de Autenticação e Contratação:
 - **Painel do RH protegido** - `public/rh.html` exige sessão do tipo `rh`; sem ela, redireciona para o login. As rotas `/api/rh/*` exigem o mesmo token no backend.
 - **Aceite Virtual de Contratos por Clique (Assinatura Eletrônica Simples)** - liberado para fichas com status `APROVADO`: lista de documentos (Contrato de Trabalho, Termo de Confidencialidade, Política de Privacidade/LGPD), cada um com download da minuta e um botão "Li e Aceito os Termos" próprio. O botão unificado "Concluir Assinatura Digital" só libera quando todos os documentos forem aceitos, e grava timestamp ISO, IP, CPF e um hash SHA-256 das minutas na auditoria. O Painel do RH ganha o card "Contrato de Trabalho - Aceite Digital" (mesmo layout dos cards de documento) com o botão "Validar Contratação", que move o status para o estado terminal `CONTRATACAO_CONCLUIDA`.
 
-> **Conta de RH de testes:** semeada de forma idempotente no boot do servidor (não recriada se já existir), com e-mail `rh@onboarding.local`; a senha de desenvolvimento está definida em `index.js`. Apenas para uso em desenvolvimento - **trocar ou remover antes de qualquer uso em produção**. O formulário público de registro sempre cria contas do tipo `candidato`.
+> **Conta de RH:** semeada no boot do servidor com e-mail `rh@onboarding.local` e a senha da variável de ambiente `SENHA_RH_TESTE` (10+ caracteres). Sem a variável, a conta **não** é criada. Definir ou alterar a variável e reiniciar redefine a senha do RH. Se a conta ainda usar a senha antiga que já esteve versionada neste repositório, ela é bloqueada no boot até que uma senha nova seja definida. O formulário público de registro sempre cria contas do tipo `candidato`.
 
 ## Funcionalidades adicionais do painel do RH
 
