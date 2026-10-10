@@ -106,6 +106,19 @@
       margin-bottom: 0.75rem;
       line-height: 1.5;
     }
+    /* Campo de senha com botão Mostrar/Ocultar dentro da caixa */
+    .campo-senha { position: relative; display: flex; }
+    .campo-senha input { flex: 1; min-width: 0; padding-right: 5.5rem; }
+    .btn-ver-senha {
+      position: absolute; top: 50%; right: 0.375rem; transform: translateY(-50%);
+      min-height: 2rem; padding: 0.25rem 0.625rem;
+      background: transparent; border: 0; border-radius: 0.375rem;
+      color: var(--verde-texto); font: inherit; font-size: 0.875rem; font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-ver-senha:hover { color: var(--floresta); background: var(--menta); }
+    .btn-ver-senha:focus-visible { outline: 2px solid var(--verde); outline-offset: 1px; }
+
     .aviso-lgpd a, .check-lgpd a {
       color: var(--verde-texto);
       font-weight: 600;
@@ -423,6 +436,37 @@
 
     document.getElementById('registroDataNascimento').addEventListener('input', (e) => aplicarMascaraComCursor(e.target, mascaraData));
     document.getElementById('registroCpf').addEventListener('input', (e) => aplicarMascaraComCursor(e.target, mascaraCPF));
+
+    // =========================================================================
+    // MOSTRAR / OCULTAR SENHA (oculta por padrão) - um botão em cada campo de senha
+    // =========================================================================
+    document.querySelectorAll('input[type="password"]').forEach((campo) => {
+      const envoltorio = document.createElement('div');
+      envoltorio.className = 'campo-senha';
+      campo.parentNode.insertBefore(envoltorio, campo);
+      envoltorio.appendChild(campo);
+
+      const botao = document.createElement('button');
+      botao.type = 'button';
+      botao.className = 'btn-ver-senha';
+      botao.setAttribute('aria-controls', campo.id);
+      envoltorio.appendChild(botao);
+
+      function definirVisibilidade(visivel) {
+        campo.type = visivel ? 'text' : 'password';
+        botao.textContent = visivel ? 'Ocultar' : 'Mostrar';
+        botao.setAttribute('aria-pressed', String(visivel));
+        botao.setAttribute('aria-label', visivel ? 'Ocultar senha' : 'Mostrar senha');
+      }
+      definirVisibilidade(false);
+
+      botao.addEventListener('click', () => {
+        definirVisibilidade(campo.type === 'password');
+        campo.focus();
+      });
+      // Ao limpar o formulário (ex.: depois de criar a conta), volta a ocultar.
+      if (campo.form) campo.form.addEventListener('reset', () => definirVisibilidade(false));
+    });
 
     // =========================================================================
     // MODAL DE TESTE (simulação de e-mail de confirmação de cadastro)
