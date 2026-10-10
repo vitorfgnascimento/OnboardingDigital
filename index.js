@@ -691,6 +691,9 @@ const clienteGoogle = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : nu
 // caso o texto dos termos mude no futuro.
 const VERSAO_TERMOS_CADASTRO = 'v1.0';
 
+// Link/token de ativação só é devolvido na resposta fora de produção (NODE_ENV).
+const EXIBIR_LINK_ATIVACAO = process.env.NODE_ENV !== 'production';
+
 app.post('/api/auth/registrar', async (req, res) => {
   try {
   const { nome, email, senha, confirmarSenha, dataNascimento, cpf, aceiteTermos } = req.body;
@@ -757,6 +760,16 @@ app.post('/api/auth/registrar', async (req, res) => {
   console.log(`Para: ${emailAparado}`);
   console.log(`Link de ativação: http://localhost:${PORTA}/login.html?ativacao=${novoUsuario.tokenAtivacao}`);
   console.log('=======================================================\n');
+
+  // O envio real de e-mail ainda não existe: em desenvolvimento a resposta
+  // devolve o link/token para o modal de teste do login. Em produção isso
+  // NUNCA pode ir na resposta - quem cadastrasse o e-mail de outra pessoa
+  // ativaria a conta sem ter acesso à caixa de entrada dela.
+  if (!EXIBIR_LINK_ATIVACAO) {
+    return res.status(201).json({
+      mensagem: 'Conta criada! A conta só poderá ser usada depois da confirmação do e-mail cadastrado.'
+    });
+  }
 
   return res.status(201).json({
     mensagem: 'Conta criada! Confirme seu cadastro pelo link de ativação (verifique o console do servidor nesse ambiente de testes).',

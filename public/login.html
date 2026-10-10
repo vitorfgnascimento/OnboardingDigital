@@ -544,7 +544,8 @@
         if (!r.ok) { mostrarErro(corpo.erro || 'Não foi possível criar a conta.'); return; }
         formCriarConta.reset();
         btnCriarConta.disabled = true;
-        abrirModalAtivacao(corpo.linkAtivacao);
+        if (corpo.linkAtivacao) abrirModalAtivacao(corpo.linkAtivacao);
+        else mostrarSucesso(corpo.mensagem || 'Conta criada! Confirme o seu e-mail para ativá-la.');
       } catch (erro) {
         mostrarErro('Não conseguimos falar com o servidor. Tente de novo em instantes.');
       }
