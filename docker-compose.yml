@@ -3,8 +3,11 @@ services:
     build: .
     ports:
       - "${PORT:-3001}:3001"
+    # Credenciais (Supabase, Google, API Key) vêm do .env da raiz do projeto,
+    # sem serem copiadas para dentro da imagem (ver .dockerignore).
+    env_file:
+      - .env
     environment:
       - PORT=3001
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
     volumes:
       - ./uploads:/app/uploads

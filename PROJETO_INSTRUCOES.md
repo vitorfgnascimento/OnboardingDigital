@@ -96,7 +96,7 @@ para arquivos PDF (até 10 MB):
 
 - Painel de Gestão do RH (`public/rh.html`) com listagem, busca por nome/CPF,
   filtros por aba (Não avaliados / Em Análise / Aprovados / Reprovados),
-  cards de resumo estatístico e exportação de relatório em CSV.
+  cards de resumo estatístico e exportação de relatório em Excel (.xlsx).
 - Ações por documento: Aceitar Documento e Marcar Pendência (com
   justificativa obrigatória e reabertura pontual do upload para o candidato).
 - Transição automática de status Não avaliado → Em Análise na primeira

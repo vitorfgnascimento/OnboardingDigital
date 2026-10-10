@@ -22,20 +22,32 @@ public/
   testes.html   -> bateria de testes automatizados contra a API em execução
 
 index.js        -> servidor Express único, expõe as rotas dos módulos
-candidatos.json -> persistência das fichas (não versionado - dados pessoais, LGPD)
-usuarios.json   -> contas de usuário, senha com hash/salt (não versionado - dados pessoais, LGPD)
-sessoes.json    -> tokens de sessão ativos (não versionado)
-auditoria.json  -> trilha de auditoria imutável (não versionado - LGPD)
-uploads/        -> PDFs enviados pelos candidatos e contratos assinados (não versionado - dados pessoais, LGPD)
+db/supabase.js  -> cliente Supabase compartilhado (exige SUPABASE_URL e SUPABASE_KEY)
+supabase/       -> schema.sql + migrações SQL para criar/atualizar as tabelas
+
+auditoria.json  -> trilha de auditoria (arquivo local, não versionado - LGPD)
+uploads/        -> PDFs enviados pelos candidatos e contratos assinados (disco local, não versionado - LGPD)
+relatorio_geral_admissoes.xlsx -> planilha Mestre, regenerada a cada gravação (não versionada - LGPD)
 ```
+
+### Onde cada dado é guardado (persistência híbrida)
+
+| Dado | Onde fica | Observação |
+|---|---|---|
+| Fichas, usuários, sessões, chat, etiquetas, configurações do RH | **Supabase** (Postgres) | Tabelas `candidatos`, `usuarios`, `sessoes`, `mensagens_chat`, `etiquetas`, `configuracoes`. Compartilhado: qualquer instância com as mesmas credenciais enxerga os mesmos dados. |
+| Trilha de auditoria (`auditoria.json`) | **Disco local** | Fica na máquina/instância que rodou o servidor. |
+| PDFs enviados e contratos assinados (`uploads/`) | **Disco local** | Idem. |
+| Planilha Mestre (`.xlsx`) | **Disco local** | Gerada a partir do Supabase a cada gravação. |
+
+> **Atenção (deploy na Vercel):** a Vercel é serverless e só permite gravar em `/tmp`, que é efêmero. Lá, `auditoria.json`, `uploads/` e a planilha Mestre **não persistem** entre execuções. Para uso real em nuvem, esses três itens precisam migrar para o Supabase (tabela de auditoria e Supabase Storage para os PDFs) - veja "Próximas fases".
 
 **Módulo Candidato** (`public/index.html`): formulário de dados pessoais com máscaras e validação estrita, upload dos 6 documentos obrigatórios, envio unificado da ficha, chat com o RH e reabertura pontual de documentos com pendência. Uma ficha já enviada pode ser revisitada pelo link `http://localhost:3001/index.html?id=<candidatoId>`.
 
 > **Nota sobre testes/arquitetura:** o botão "Copiar link" do candidato, no Painel do RH, gera exatamente esse link direto (`?id=<candidatoId>`). É um **recurso utilitário exclusivo da versão MVP/Dev**, pensado para agilizar a validação de testes locais (acessar a ficha de um candidato específico sem precisar procurar o `id` manualmente). Ele **não deve fazer parte do fluxo de produção final**: o lançamento da busca por nome/CPF (ver Etapa 2) cobre essa necessidade de localizar um candidato de forma adequada para uso real, sem depender de compartilhar links com identificadores de ficha.
 
-**Módulo RH** (`public/rh.html`): painel de gestão com cards de resumo, filtros por decisão, alteração de status, abertura de pendências, decisão final (Aprovar/Reprovar), chat, exportação de relatório em CSV e impressão/PDF da ficha individual.
+**Módulo RH** (`public/rh.html`): painel de gestão com cards de resumo, filtros por decisão, alteração de status, abertura de pendências, decisão final (Aprovar/Reprovar), chat, exportação de relatório em Excel (.xlsx) e impressão/PDF da ficha individual.
 
-**Backend** (`index.js`): API REST em Express, upload de arquivos com Multer, persistência em arquivos JSON locais (sem banco de dados nesta etapa do MVP).
+**Backend** (`index.js`): API REST em Express, upload de arquivos com Multer, dados cadastrais no Supabase (Postgres) e arquivos (PDFs, auditoria, planilha Mestre) em disco local - ver "Onde cada dado é guardado".
 
 ## Resumo técnico da Etapa 1
 
@@ -68,13 +80,13 @@ O Painel de Gestão do RH (`public/rh.html`) está em construção, cobrindo at�
 - **Decisão final do processo** - botões "Aprovar Candidato"/"Reprovar Candidato" no Painel do RH; a Ficha do Candidato exibe um banner de sucesso ou de agradecimento e trava totalmente para edição, sem exceção (nem pendências residuais reabrem campos).
 - **Filtros e ordenação** - filtra a lista por Todos/Não avaliados/Em Análise/Aprovados/Reprovados; candidatos "Não avaliados" ficam sempre no topo. **Migração visual controlada:** aceitar um documento, marcar pendência ou abrir um PDF mudam o status real na hora, mas a tela só reflete a migração de aba/grupo quando a lista é recarregada de verdade (botão "Atualizar lista", troca de aba de filtro, ou ao expandir o painel de uma ficha) - evita a lista "pular" sozinha enquanto o RH está no meio de uma ação.
 - **Busca por nome ou CPF** - campo de busca no topo do painel, com filtragem em tempo real (a cada tecla digitada) e combinável com o filtro ativo.
-- **Exportação de relatório em CSV** - botão no cabeçalho da tabela baixa um `.csv` (separador `;`, compatível com Excel, com BOM UTF-8), respeitando o filtro ativo. Inclui 23 colunas: dados cadastrais (Nome Completo, CPF, E-mail, Telefone, Gênero, CEP, Endereço, Número, Complemento), status e datas (Status Atual, Data de Submissão, Última Atualização), trilha de auditoria LGPD (Consentimento LGPD, Timestamp LGPD, IP LGPD), situação documental (Status Documentos, CPF no RG, Reservista), aceite do contrato (Aceite Contratual, Timestamp Aceite Contrato, Hash Contrato) e integração com sistema de ponto externo/B2B (Exportado Ponto, Sistema Ponto Alvo).
+- **Exportação de relatório em Excel** - botão no cabeçalho da tabela baixa o arquivo `relatorio_geral_admissoes.xlsx` (uma aba "Relatório de Admissões", cabeçalho destacado, filtro automático e coluna de status colorida), sempre com todas as fichas do sistema, atualizado no momento do download. Inclui 23 colunas: dados cadastrais (Nome Completo, CPF, E-mail, Telefone, Gênero, CEP, Endereço, Número, Complemento), status e datas (Status Atual, Data de Submissão, Última Atualização), trilha de auditoria LGPD (Consentimento LGPD, Timestamp LGPD, IP LGPD), situação documental (Status Documentos, CPF no RG, Reservista), aceite do contrato (Aceite Contratual, Timestamp Aceite Contrato, Hash Contrato) e integração com sistema de ponto externo/B2B (Exportado Ponto, Sistema Ponto Alvo).
 - **Relatório individual em PDF** - cada candidato tem um botão "Imprimir/Gerar PDF da Ficha" que gera, no backend (`pdfkit`), um PDF real com dados pessoais, documentos e declaração de consentimento LGPD com o timestamp real de submissão; o arquivo abre no visualizador de PDF embutido do navegador, de onde o RH baixa ou imprime pelos próprios controles do visualizador.
 - **Copiar link do candidato** *(recurso MVP/Dev - ver nota na Arquitetura do Projeto)* - botão que copia o link direto da ficha de um candidato para a área de transferência.
 
-Rotas do backend dedicadas ao painel: `GET /api/rh/fichas`, `PATCH /api/rh/fichas/:id/status`, `PATCH /api/rh/fichas/:id/documento/:tipo/pendencia`, `PATCH /api/rh/fichas/:id/documento/:tipo/aceitar`, `PATCH /api/rh/fichas/:id/documento/:tipo/visualizado`, `PATCH /api/rh/fichas/:id/decisao`, `GET /api/rh/exportar-csv` (aceita `?filtro=APROVADO|REPROVADO|PENDENTE|EM_ANALISE`). Rotas compartilhadas com o candidato: `GET /api/candidato/:id` (retorno via link `?id=`) e `POST /api/candidato/:id/mensagens` (chat).
+Rotas do backend dedicadas ao painel: `GET /api/rh/fichas`, `PATCH /api/rh/fichas/:id/status`, `PATCH /api/rh/fichas/:id/documento/:tipo/pendencia`, `PATCH /api/rh/fichas/:id/documento/:tipo/aceitar`, `PATCH /api/rh/fichas/:id/documento/:tipo/visualizado`, `PATCH /api/rh/fichas/:id/decisao`, `GET /api/rh/exportar-relatorio` (download da planilha Excel; substituiu a antiga `/api/rh/exportar-csv`). Rotas compartilhadas com o candidato: `GET /api/candidato/:id` (retorno via link `?id=`) e `POST /api/candidato/:id/mensagens` (chat).
 
-> **Massa de dados de testes:** a base local (`candidatos.json`) mantém exclusivamente a candidata fictícia **"Maria Gadu"**, usada para validar manualmente o Painel do RH (e, na Etapa 4, o fluxo completo de login/aprovação/contrato) sem precisar recriar dados a cada ciclo. Diferente do candidato fixo de etapas anteriores, ela não é recriada automaticamente no boot - é mantida manualmente.
+> **Massa de dados de testes:** a base (tabela `candidatos` no Supabase) mantém a candidata fictícia **"Maria Gadu"**, usada para validar manualmente o Painel do RH (e, na Etapa 4, o fluxo completo de login/aprovação/contrato). Ela não é recriada automaticamente no boot - é mantida manualmente. Como o Supabase é compartilhado, **quem usa as mesmas credenciais vê e altera os mesmos dados**: para testes pessoais, use um projeto Supabase próprio.
 
 ## Resumo técnico da Etapa 3 (em consolidação)
 
@@ -88,7 +100,7 @@ Foco em documentação, conformidade com a LGPD e preparação para publicar o M
 
 Módulo de Autenticação e Contratação:
 
-- **Login e Registro** (`public/login.html`) - entrar com e-mail/senha, criar conta, ou entrar com o Google (Google Identity Services). Senhas usam hash `scrypt` + salt (nunca texto puro); sessão via token opaco (`Authorization: Bearer`), persistido em `sessoes.json` (7 dias de validade).
+- **Login e Registro** (`public/login.html`) - entrar com e-mail/senha, criar conta, ou entrar com o Google (Google Identity Services). Senhas usam hash `bcrypt` (via `bcryptjs`, nunca texto puro); sessão via token opaco (`Authorization: Bearer`), persistido na tabela `sessoes` do Supabase (7 dias de validade).
 - **Google Sign-In** requer uma credencial OAuth real (`GOOGLE_CLIENT_ID`, ver `.env.example`) gerada no Google Cloud Console pelo Líder de Projeto; sem ela, o botão aparece desabilitado com o aviso "Login com Google indisponível no momento". Veja o passo a passo em [Login com o Google](#login-com-o-google). Ao entrar pelo Google, o nome e a foto da conta Google são usados no perfil.
 - **Foto de perfil** - candidatos (card "Seu perfil" na ficha) e RH (Configurações) podem enviar uma foto, recortada e reduzida no navegador (JPEG ~256x256, até 200 KB) e guardada em `usuarios.foto` / `configuracoes.foto_rh`. A foto do candidato aparece para o RH e a do RH para os candidatos. Migração: `supabase/migracao_fotos_mensagem_contratacao.sql`.
 - **Mensagem de contratação concluída** - título e texto do card exibido ao candidato contratado são editáveis em Configurações do RH.
@@ -98,7 +110,18 @@ Módulo de Autenticação e Contratação:
 - **Painel do RH protegido** - `public/rh.html` exige sessão do tipo `rh`; sem ela, redireciona para o login. As rotas `/api/rh/*` exigem o mesmo token no backend.
 - **Aceite Virtual de Contratos por Clique (Assinatura Eletrônica Simples)** - liberado para fichas com status `APROVADO`: lista de documentos (Contrato de Trabalho, Termo de Confidencialidade, Política de Privacidade/LGPD), cada um com download da minuta e um botão "Li e Aceito os Termos" próprio. O botão unificado "Concluir Assinatura Digital" só libera quando todos os documentos forem aceitos, e grava timestamp ISO, IP, CPF e um hash SHA-256 das minutas na auditoria. O Painel do RH ganha o card "Contrato de Trabalho - Aceite Digital" (mesmo layout dos cards de documento) com o botão "Validar Contratação", que move o status para o estado terminal `CONTRATACAO_CONCLUIDA`.
 
-> **Conta de RH de testes:** semeada de forma idempotente no boot do servidor (não recriada se já existir) - `rh@onboarding.local` / `onboarding123`. Apenas para uso em desenvolvimento; o formulário público de registro sempre cria contas do tipo `candidato`.
+> **Conta de RH de testes:** semeada de forma idempotente no boot do servidor (não recriada se já existir), com e-mail `rh@onboarding.local`; a senha de desenvolvimento está definida em `index.js`. Apenas para uso em desenvolvimento - **trocar ou remover antes de qualquer uso em produção**. O formulário público de registro sempre cria contas do tipo `candidato`.
+
+## Funcionalidades adicionais do painel do RH
+
+Recursos incluídos depois das Etapas 1 a 4 (cobertos pelas migrações em `supabase/`):
+
+- **Banco de Talentos** - candidatos podem ser arquivados (saem da lista ativa) e reativados; a ficha guarda `banco_talentos` e a data do arquivamento.
+- **Etiquetas** - catálogo de etiquetas coloridas (estilo Trello), com nome e cor editáveis, anexáveis a várias fichas; editar uma etiqueta reflete em todas as fichas que a usam.
+- **Configurações do RH** - mensagem de boas-vindas, documentos obrigatórios, e-mail de contato do RH, foto do RH e mensagem de contratação concluída.
+- **Planilha Mestre** - `relatorio_geral_admissoes.xlsx` é regenerada a cada gravação de ficha, e também no boot.
+- **Relatório do painel em PDF** - `GET /api/relatorio/dashboard-pdf`.
+- **API REST v1 para sistemas externos (B2B)** - `GET /api/v1/admissoes`, protegida por API Key (header `x-api-key` ou `Authorization: Bearer <chave>`). Defina `API_KEY_ADMISSOES` no ambiente; sem ela vale uma chave padrão de desenvolvimento, que **não deve ser usada em produção**.
 
 ## Conformidade LGPD nos 3 Momentos da Jornada
 
@@ -109,15 +132,18 @@ Módulo de Autenticação e Contratação:
 
 ## Próximas fases do roteiro de desenvolvimento
 
-- Deploy do MVP em um serviço de nuvem (Render/Railway), usando a variável `PORT` já preparada em etapa anterior.
+- Mover `uploads/` para o Supabase Storage e a trilha de auditoria para uma tabela no Supabase, para que persistam em ambientes serverless (pré-requisito do deploy).
+- Deploy do MVP em nuvem (a configuração atual já inclui `vercel.json`; Render/Railway continuam possíveis via a variável `PORT`).
 - Gestão de credenciais reais do Google OAuth para o ambiente de produção.
+- URLs amigáveis sem `.html` (ver `ROADMAP.md`).
 
 ## Como Executar o Projeto Localmente
 
 ### Pré-requisitos
 - Git instalado na máquina
+- **Um projeto Supabase** (gratuito) com as tabelas criadas - veja "Configurar o Supabase" abaixo. Sem `SUPABASE_URL` e `SUPABASE_KEY` o servidor não inicia.
 - Opção 1: Docker e Docker Compose instalados
-- Opção 2: Node.js instalado na máquina
+- Opção 2: Node.js **22 ou superior** instalado na máquina (exigido pelas dependências `@supabase/supabase-js` e `google-auth-library`)
 
 ### Clonar o repositório
 
@@ -128,7 +154,7 @@ cd OnboardingDigital
 
 ### Variáveis de ambiente (opcional)
 
-O projeto roda com valores padrão sem nenhuma configuração adicional. Se quiser customizar a porta, copie `.env.example` para `.env` e ajuste:
+Copie `.env.example` para `.env` e preencha ao menos `SUPABASE_URL` e `SUPABASE_KEY`:
 
 ```bash
 cp .env.example .env
@@ -136,8 +162,22 @@ cp .env.example .env
 
 | Variável | Padrão | Descrição |
 |---|---|---|
+| `SUPABASE_URL` | *(obrigatória)* | URL do projeto Supabase (Project Settings > API). |
+| `SUPABASE_KEY` | *(obrigatória)* | Chave `anon public` do projeto. O acesso ao banco é feito apenas pelo backend Express. |
+| `API_KEY_ADMISSOES` | chave de desenvolvimento | Chave da API REST v1 (`/api/v1/admissoes`). Obrigatório definir em produção. |
 | `PORT` | `3001` | Porta em que o servidor escuta. Injetada automaticamente por plataformas de deploy em nuvem (Render, Railway, etc.). |
 | `GOOGLE_CLIENT_ID` | *(vazio)* | Client ID OAuth 2.0 do Google (Google Cloud Console), necessário para o botão "Entrar com o Google" funcionar de verdade. Sem ela, o botão fica desabilitado e a rota `/api/auth/google` responde 400. |
+
+### Configurar o Supabase
+
+1. Crie um projeto em [supabase.com](https://supabase.com) e copie a **URL** e a chave **anon public** (Project Settings > API) para o `.env`.
+2. No **SQL Editor**, execute os arquivos da pasta `supabase/` nesta ordem:
+   1. `schema.sql` - tabelas base (`usuarios`, `sessoes`, `candidatos`, `mensagens_chat`)
+   2. `migracao_banco_talentos_configuracoes.sql` - Banco de Talentos e Configurações do RH
+   3. `migracao_etiquetas.sql` - etiquetas
+   4. `migracao_fotos_mensagem_contratacao.sql` - fotos de perfil e mensagem de contratação
+   5. `disable_rls.sql` - desativa o RLS nas 4 tabelas base (o acesso é controlado pelo backend)
+3. Para testes pessoais, use um projeto Supabase próprio, para não alterar dados compartilhados.
 
 ### Login com o Google
 
@@ -147,7 +187,9 @@ cp .env.example .env
 4. Copie o **ID do cliente** (termina em `.apps.googleusercontent.com`) e defina `GOOGLE_CLIENT_ID` no arquivo `.env` (local) e em **Settings > Environment Variables** do projeto na Vercel (depois faça um novo deploy).
 5. Reinicie o servidor: o botão "Entrar com o Google" passa a funcionar. Contas novas viram candidatos; se o e-mail do Google já existir no sistema, a conta é reaproveitada.
 
-### Opção 1 (Recomendada - Docker)
+### Opção 1 (Docker)
+
+> O contêiner lê as variáveis do arquivo `.env` da raiz (via `env_file` no `docker-compose.yml`); o `.env` não é copiado para dentro da imagem. Crie-o antes (ver "Variáveis de ambiente"). A imagem usa Node 22.
 
 1. Subir a aplicação em um contêiner:
 ```bash
@@ -156,7 +198,7 @@ docker compose up --build
 
 2. Acessar a aplicação no navegador: `http://localhost:3001`
 
-### Opção 2 (Tradicional - Node.js)
+### Opção 2 (Node.js - recomendada hoje)
 
 1. Instalar as dependências do projeto:
 ```bash
@@ -172,7 +214,7 @@ node index.js
 
 ## Tecnologias
 
-Node.js, Express e Multer no backend; HTML5, CSS3 e JavaScript puro (Vanilla JS) no frontend; persistência em arquivos JSON locais; Git e GitHub para versionamento; Docker e Docker Compose para conteinerização.
+Node.js, Express e Multer no backend (`bcryptjs` para senhas, `pdfkit` e `exceljs` para relatórios, `google-auth-library` para o login Google); HTML5, CSS3 e JavaScript puro (Vanilla JS) no frontend; Supabase (Postgres) para os dados e disco local para PDFs e auditoria; Git e GitHub para versionamento; Docker e Docker Compose para conteinerização; Vercel como alvo de deploy.
 
 ## Licença
 
