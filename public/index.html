@@ -2411,7 +2411,17 @@
     // =========================================================================
     async function carregarFichaExistente(id) {
       try {
-        const resposta = await fetch('/api/candidato/' + id);
+        const resposta = await fetch('/api/candidato/' + id, { headers: cabecalhosAutenticados() });
+        if (resposta.status === 401) {
+          localStorage.removeItem('onboarding_token');
+          localStorage.removeItem('onboarding_usuario');
+          irParaLogin();
+          return false;
+        }
+        if (resposta.status === 403) {
+          alert('Esta ficha pertence a outra conta. Entre com a conta que a criou.');
+          return false;
+        }
         if (!resposta.ok) return false;
 
         candidato = await resposta.json();
@@ -2447,7 +2457,9 @@
       const idNaUrl = new URLSearchParams(window.location.search).get('id');
       if (idNaUrl) {
         // Acesso direto a uma ficha já existente por link (ex.: "Copiar link"
-        // no Painel do RH) - continua funcionando sem exigir login.
+        // no Painel do RH) - exige login; o servidor só entrega a ficha ao RH
+        // ou à conta dona dela.
+        if (!tokenSessao()) { irParaLogin(); return; }
         await carregarFichaExistente(idNaUrl);
         await carregarSessaoOpcional();
         return;

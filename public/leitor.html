@@ -71,6 +71,13 @@
       }
     }
 
+    // Sessão do usuário (mesmo token guardado pelo login) para as chamadas à API.
+    function cabecalhosAutenticados() {
+      let token = null;
+      try { token = localStorage.getItem('onboarding_token'); } catch (e) { /* storage indisponível */ }
+      return token ? { Authorization: 'Bearer ' + token } : {};
+    }
+
     async function iniciar() {
       if (!TITULOS[tipo] || !candidatoId) {
         corpo.innerHTML = '<div class="leitor-carregando">Link inválido. Volte ao painel e tente novamente.</div>';
@@ -82,7 +89,7 @@
 
       let candidato;
       try {
-        const r = await fetch('/api/candidato/' + encodeURIComponent(candidatoId));
+        const r = await fetch('/api/candidato/' + encodeURIComponent(candidatoId), { headers: cabecalhosAutenticados() });
         if (!r.ok) throw new Error();
         candidato = await r.json();
       } catch (e) {
@@ -125,7 +132,7 @@
     btn.addEventListener('click', async () => {
       btn.disabled = true;
       try {
-        const r = await fetch('/api/candidato/' + encodeURIComponent(candidatoId) + '/contrato/' + tipo + '/aceite', { method: 'POST' });
+        const r = await fetch('/api/candidato/' + encodeURIComponent(candidatoId) + '/contrato/' + tipo + '/aceite', { method: 'POST', headers: cabecalhosAutenticados() });
         const resultado = await r.json();
         if (!r.ok) { alert('Erro: ' + (resultado.erro || 'não foi possível registrar o aceite.')); btn.disabled = false; return; }
         jaAceito = true;

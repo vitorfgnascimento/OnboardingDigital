@@ -569,6 +569,17 @@ async function exigirRh(req, res, next) {
   }
 }
 
+// Regra de acesso a uma ficha individual: o RH vê qualquer ficha; o candidato
+// só vê a própria (vinculada à conta pelo usuarioId; fichas antigas, criadas
+// sem login, caem no e-mail da conta).
+function usuarioPodeVerFicha(usuario, candidato) {
+  if (!usuario || !candidato) return false;
+  if (usuario.tipo === 'rh') return true;
+  if (candidato.usuarioId) return candidato.usuarioId === usuario.id;
+  const emailFicha = String(candidato.email || '').trim().toLowerCase();
+  return emailFicha !== '' && emailFicha === String(usuario.email || '').trim().toLowerCase();
+}
+
 // ---------------------------------------------------------------------------
 // REGRAS DE NEGÓCIO DOS DOCUMENTOS
 // ---------------------------------------------------------------------------
@@ -1280,8 +1291,9 @@ app.delete('/api/candidato/:id/documento/:tipo', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // ROTA: listagem completa de candidatos (consumida pelo painel do RH)
+// Restrita ao RH: devolve CPF e demais dados pessoais de todas as fichas.
 // ---------------------------------------------------------------------------
-app.get('/api/candidatos', async (req, res) => {
+app.get('/api/candidatos', exigirRh, async (req, res) => {
   try {
     const candidatos = await lerCandidatos();
     return res.status(200).json(await comFotosDosCandidatos(candidatos));
@@ -1293,9 +1305,9 @@ app.get('/api/candidatos', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // ROTA: alteração do status geral do candidato pelo RH (EM_ANALISE ou
-// PENDENTE_ASSINATURA)
+// PENDENTE_ASSINATURA) - restrita ao RH.
 // ---------------------------------------------------------------------------
-app.patch('/api/candidato/:id/status', async (req, res) => {
+app.patch('/api/candidato/:id/status', exigirRh, async (req, res) => {
   try {
   const { id } = req.params;
   const { status } = req.body;
@@ -1954,14 +1966,19 @@ app.patch('/api/rh/fichas/:id/status', exigirRh, async (req, res) => {
 // ---------------------------------------------------------------------------
 // ROTA: busca de uma única ficha por id (usada pelo candidato para retornar
 // à própria ficha - via link com ?id= - e ver pendências, mensagens e decisão)
+// Exige login: o RH acessa qualquer ficha; o candidato, somente a própria.
 // ---------------------------------------------------------------------------
-app.get('/api/candidato/:id', async (req, res) => {
+app.get('/api/candidato/:id', autenticar, async (req, res) => {
   try {
     const candidatos = await lerCandidatos();
     const candidato = candidatos.find((c) => c.id === req.params.id);
 
     if (!candidato) {
       return res.status(404).json({ erro: 'Candidato não encontrado.' });
+    }
+
+    if (!usuarioPodeVerFicha(req.usuario, candidato)) {
+      return res.status(403).json({ erro: 'Esta ficha pertence a outra conta.' });
     }
 
     const [comFoto] = await comFotosDosCandidatos([candidato]);

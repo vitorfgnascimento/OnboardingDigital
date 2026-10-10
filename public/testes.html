@@ -490,31 +490,45 @@
       { grupo: 'Painel do RH - rotas originais, mantidas por compatibilidade (GET /api/candidatos, PATCH .../status)' },
 
       {
-        nome: 'GET /api/candidatos retorna uma lista',
+        nome: 'GET /api/candidatos retorna uma lista (com sessão de RH)',
+        run: async () => {
+          const r = await getRh('/candidatos');
+          const lista = r.corpo;
+          return { ok: r.status === 200 && Array.isArray(lista), detalhe: `status ${r.status}, ${Array.isArray(lista) ? lista.length + ' candidatos' : 'não é lista'}` };
+        }
+      },
+      {
+        nome: 'GET /api/candidatos sem login é recusado (401)',
         run: async () => {
           const r = await fetch(API + '/candidatos');
-          const lista = await r.json();
-          return { ok: r.status === 200 && Array.isArray(lista), detalhe: `status ${r.status}, ${Array.isArray(lista) ? lista.length + ' candidatos' : 'não é lista'}` };
+          return { ok: r.status === 401, detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'PATCH /api/candidato/:id/status sem login é recusado (401)',
+        run: async () => {
+          const r = await patchJson('/candidato/' + window.__idMasculino + '/status', { status: 'PENDENTE_ASSINATURA' });
+          return { ok: r.status === 401, detalhe: `status ${r.status}` };
         }
       },
       {
         nome: 'RH aprova candidato: status geral vira PENDENTE_ASSINATURA',
         run: async () => {
-          const r = await patchJson('/candidato/' + window.__idMasculino + '/status', { status: 'PENDENTE_ASSINATURA' });
+          const r = await patchJsonRh('/candidato/' + window.__idMasculino + '/status', { status: 'PENDENTE_ASSINATURA' });
           return { ok: r.status === 200 && r.corpo.candidato?.status === 'PENDENTE_ASSINATURA', detalhe: `status ${r.status}, geral = ${r.corpo.candidato?.status}` };
         }
       },
       {
         nome: 'RH não pode definir status arbitrário (400)',
         run: async () => {
-          const r = await patchJson('/candidato/' + window.__idMasculino + '/status', { status: 'AZUL' });
+          const r = await patchJsonRh('/candidato/' + window.__idMasculino + '/status', { status: 'AZUL' });
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
       {
         nome: 'Alterar status de candidato inexistente (404)',
         run: async () => {
-          const r = await patchJson('/candidato/id-que-nao-existe/status', { status: 'PENDENTE_ASSINATURA' });
+          const r = await patchJsonRh('/candidato/id-que-nao-existe/status', { status: 'PENDENTE_ASSINATURA' });
           return { ok: r.status === 404, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
         }
       },
@@ -569,17 +583,24 @@
       { grupo: 'Pendências, Chat e Decisão Final (Etapa 2 - continuação)' },
 
       {
-        nome: 'GET /api/candidato/:id retorna a ficha completa',
+        nome: 'GET /api/candidato/:id retorna a ficha completa (RH)',
+        run: async () => {
+          const r = await getRh('/candidato/' + window.__idMasculino);
+          const ok = r.status === 200 && r.corpo.id === window.__idMasculino;
+          return { ok, detalhe: `status ${r.status}` };
+        }
+      },
+      {
+        nome: 'GET /api/candidato/:id sem login é recusado (401)',
         run: async () => {
           const r = await fetch(API + '/candidato/' + window.__idMasculino);
-          const ok = r.status === 200 && (await r.clone().json()).id === window.__idMasculino;
-          return { ok, detalhe: `status ${r.status}` };
+          return { ok: r.status === 401, detalhe: `status ${r.status}` };
         }
       },
       {
         nome: 'GET /api/candidato/:id inexistente (404)',
         run: async () => {
-          const r = await fetch(API + '/candidato/id-que-nao-existe');
+          const r = await getRh('/candidato/id-que-nao-existe');
           return { ok: r.status === 404, detalhe: `status ${r.status}` };
         }
       },
@@ -1506,9 +1527,9 @@
         }
       },
       {
-        nome: 'Ficha arquivada continua acessível por link (GET /api/candidato/:id)',
+        nome: 'Ficha arquivada continua acessível por link para o RH (GET /api/candidato/:id)',
         run: async () => {
-          const r = await fetch(API + '/candidato/' + window.__idMasculino);
+          const r = await getRh('/candidato/' + window.__idMasculino);
           return { ok: r.status === 200, detalhe: `status ${r.status}` };
         }
       },
@@ -1978,13 +1999,22 @@
         run: async () => {
           const put = await fetch(API + '/auth/foto', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + window.__tokenAuth }, body: JSON.stringify({ foto: FOTO_TESTE }) });
           const sessao = await fetch(API + '/auth/sessao', { headers: { Authorization: 'Bearer ' + window.__tokenAuth } }).then((x) => x.json());
-          const ficha = await fetch(API + '/candidato/' + window.__idAuthFicha).then((x) => x.json());
+          const ficha = await fetch(API + '/candidato/' + window.__idAuthFicha, { headers: { Authorization: 'Bearer ' + window.__tokenAuth } }).then((x) => x.json());
           const lista = await getRh('/rh/fichas');
           const naLista = (lista.corpo || []).find((f) => f.id === window.__idAuthFicha);
           const comFoto = put.status === 200 && sessao.usuario.foto === FOTO_TESTE && ficha.foto === FOTO_TESTE && naLista && naLista.foto === FOTO_TESTE;
           const del = await fetch(API + '/auth/foto', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + window.__tokenAuth }, body: JSON.stringify({ foto: null }) });
-          const depois = await fetch(API + '/candidato/' + window.__idAuthFicha).then((x) => x.json());
+          const depois = await fetch(API + '/candidato/' + window.__idAuthFicha, { headers: { Authorization: 'Bearer ' + window.__tokenAuth } }).then((x) => x.json());
           return { ok: !!comFoto && del.status === 200 && !depois.foto, detalhe: `put ${put.status}, sessão ${!!sessao.usuario.foto}, ficha ${!!ficha.foto}, lista ${!!(naLista && naLista.foto)}, após remover ${!!depois.foto}` };
+        }
+      },
+      {
+        nome: 'Candidato lê a própria ficha (200) mas não a de outra conta (403)',
+        run: async () => {
+          const auth = { Authorization: 'Bearer ' + window.__tokenAuth };
+          const propria = await fetch(API + '/candidato/' + window.__idAuthFicha, { headers: auth });
+          const alheia = await fetch(API + '/candidato/' + window.__idMasculino, { headers: auth });
+          return { ok: propria.status === 200 && alheia.status === 403, detalhe: `própria ${propria.status}, alheia ${alheia.status}` };
         }
       },
       {
