@@ -99,7 +99,19 @@
       }
       const documento = (candidato.contrato && candidato.contrato.documentos && candidato.contrato.documentos[tipo]) || {};
       jaAceito = !!documento.aceite;
-      const urlPdf = documento.arquivoAssinado ? '/' + documento.arquivoAssinado : '/api/contrato/minuta/' + tipo;
+      let urlPdf = '/api/contrato/minuta/' + tipo;
+      if (documento.arquivoAssinado) {
+        // O PDF assinado é privado: pede uma URL assinada de curta duração.
+        try {
+          const rs = await fetch('/api/arquivos/assinar', {
+            method: 'POST',
+            headers: Object.assign({ 'Content-Type': 'application/json' }, cabecalhosAutenticados()),
+            body: JSON.stringify({ arquivo: documento.arquivoAssinado })
+          });
+          const cs = await rs.json().catch(() => ({}));
+          if (rs.ok && cs.url) urlPdf = cs.url;
+        } catch (e) { /* mantém a minuta pública */ }
+      }
       document.getElementById('baixar').href = urlPdf;
 
       if (jaAceito) {

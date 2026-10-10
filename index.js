@@ -72,7 +72,9 @@ if (!fs.existsSync(PASTA_UPLOADS)) {
 
 // Serve os PDFs enviados pelos candidatos para visualização/download pelo RH
 // (candidato.documentos[tipo].arquivo é salvo como "uploads/arquivo.pdf")
-app.use('/uploads', express.static(PASTA_UPLOADS));
+// Os PDFs NÃO são mais servidos como arquivos estáticos públicos: contêm
+// documentos pessoais. O acesso é por URL assinada de curta duração (ver
+// "ACESSO AOS ARQUIVOS" mais abaixo), emitida só ao RH ou ao dono da ficha.
 
 // Tipos de documento aceitos na jornada de admissão (uma aba para cada)
 const TIPOS_DOCUMENTO = [
@@ -648,6 +650,95 @@ function aplicarRegraCpfIncluso(candidato) {
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// ACESSO AOS ARQUIVOS (PDFs em uploads/): URL assinada de curta duração
+// O navegador não envia o token de sessão em <iframe>/<a href>, então o
+// cliente pede uma URL assinada (POST /api/arquivos/assinar), que só é
+// emitida ao RH ou à conta dona da ficha. A assinatura é um HMAC-SHA256 do
+// nome do arquivo + validade, com um segredo do servidor.
+// ---------------------------------------------------------------------------
+const VALIDADE_URL_ARQUIVO_MS = 5 * 60 * 1000;
+const REGEX_NOME_ARQUIVO = /^[\w.-]+\.pdf$/i;
+
+// Segredo de assinatura: ARQUIVOS_SEGREDO (recomendado). Sem ele, deriva da
+// chave do Supabase, que só existe no servidor - funciona, mas troque a chave
+// e todas as URLs emitidas deixam de valer.
+function segredoArquivos() {
+  const dedicado = process.env.ARQUIVOS_SEGREDO || '';
+  if (dedicado.length >= 16) return dedicado;
+  return 'arquivos-v1|' + (process.env.SUPABASE_KEY || 'sem-chave');
+}
+
+function assinarArquivo(nome, expiraEm) {
+  return crypto.createHmac('sha256', segredoArquivos()).update(`${nome}|${expiraEm}`).digest('hex');
+}
+
+function assinaturaArquivoValida(nome, expiraEm, assinatura) {
+  const exp = Number(expiraEm);
+  if (!Number.isFinite(exp) || exp < Date.now()) return false;
+  const esperada = Buffer.from(assinarArquivo(nome, exp), 'hex');
+  let recebida;
+  try { recebida = Buffer.from(String(assinatura || ''), 'hex'); } catch (e) { return false; }
+  return recebida.length === esperada.length && crypto.timingSafeEqual(recebida, esperada);
+}
+
+// Ficha a que um arquivo pertence (documento enviado, contrato assinado ou PDF da ficha).
+async function fichaDoArquivo(nome) {
+  const caminho = 'uploads/' + nome;
+  const candidatos = await lerCandidatos();
+  return candidatos.find((c) => {
+    if (nome === `ficha-${c.id}.pdf`) return true;
+    if (Object.values(c.documentos || {}).some((d) => d && d.arquivo === caminho)) return true;
+    return Object.values((c.contrato && c.contrato.documentos) || {}).some((d) => d && d.arquivoAssinado === caminho);
+  }) || null;
+}
+
+// Emite a URL assinada. Corpo: { arquivo: "uploads/nome.pdf" }.
+app.post('/api/arquivos/assinar', autenticar, async (req, res) => {
+  try {
+    const bruto = String((req.body || {}).arquivo || '');
+    const nome = bruto.replace(/^\/?uploads\//, '');
+    if (!REGEX_NOME_ARQUIVO.test(nome)) return res.status(400).json({ erro: 'Arquivo inválido.' });
+    if (!fs.existsSync(path.join(PASTA_UPLOADS, nome))) return res.status(404).json({ erro: 'Arquivo não encontrado.' });
+
+    const ficha = await fichaDoArquivo(nome);
+    if (!ficha || !usuarioPodeVerFicha(req.usuario, ficha)) {
+      return res.status(403).json({ erro: 'Você não tem acesso a este arquivo.' });
+    }
+
+    const expiraEm = Date.now() + VALIDADE_URL_ARQUIVO_MS;
+    return res.status(200).json({
+      url: `/uploads/${encodeURIComponent(nome)}?exp=${expiraEm}&sig=${assinarArquivo(nome, expiraEm)}`,
+      expiraEm
+    });
+  } catch (erro) {
+    console.error('Falha ao assinar URL de arquivo:', erro.message);
+    return res.status(500).json({ erro: 'Falha ao liberar o arquivo.' });
+  }
+});
+
+// Entrega o PDF somente com assinatura válida e não expirada. As minutas dos
+// contratos são modelos públicos (também disponíveis em /api/contrato/minuta).
+app.get('/uploads/:nome', (req, res) => {
+  const nome = String(req.params.nome || '');
+  if (!REGEX_NOME_ARQUIVO.test(nome)) return res.status(400).json({ erro: 'Arquivo inválido.' });
+
+  const minutaPublica = /^minuta-[A-Za-z]+\.pdf$/.test(nome);
+  if (!minutaPublica && !assinaturaArquivoValida(nome, req.query.exp, req.query.sig)) {
+    return res.status(403).json({ erro: 'Link inválido ou expirado. Abra o documento novamente pelo sistema.' });
+  }
+
+  const caminho = path.join(PASTA_UPLOADS, nome);
+  if (!fs.existsSync(caminho)) return res.status(404).json({ erro: 'Arquivo não encontrado.' });
+  res.set({
+    'Content-Type': 'application/pdf',
+    'Content-Disposition': `inline; filename="${nome}"`,
+    'Cache-Control': 'private, no-store',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  return res.sendFile(caminho);
+});
 
 // ---------------------------------------------------------------------------
 // UPLOAD DE PDF (multer)

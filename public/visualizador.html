@@ -40,12 +40,40 @@
     // navegação de diretório nem URLs externas/absolutas).
     const caminhoValido = /^uploads\/[\w.-]+\.pdf$/i.test(arquivo);
 
-    if (caminhoValido) {
-      document.getElementById('frame').src = '/' + arquivo;
-      document.title = arquivo.split('/').pop() + ' - Visualizar Documento';
-    } else {
-      document.body.innerHTML = '<p class="aviso">Não foi possível carregar este documento.</p>';
+    function mostrarAviso(texto) {
+      document.body.innerHTML = '';
+      const p = document.createElement('p');
+      p.className = 'aviso';
+      p.textContent = texto;
+      document.body.appendChild(p);
     }
+
+    // Os documentos são privados: o servidor só entrega o PDF por uma URL
+    // assinada e de curta duração, emitida a quem está logado e tem acesso.
+    async function abrir() {
+      if (!caminhoValido) { mostrarAviso('Não foi possível carregar este documento.'); return; }
+      let token = null;
+      try { token = localStorage.getItem('onboarding_token'); } catch (e) { /* storage indisponível */ }
+      if (!token) { mostrarAviso('Entre no sistema para visualizar este documento.'); return; }
+
+      try {
+        const r = await fetch('/api/arquivos/assinar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+          body: JSON.stringify({ arquivo })
+        });
+        const corpo = await r.json().catch(() => ({}));
+        if (!r.ok || !corpo.url) {
+          mostrarAviso(r.status === 403 ? 'Você não tem acesso a este documento.' : 'Não foi possível carregar este documento.');
+          return;
+        }
+        document.getElementById('frame').src = corpo.url;
+        document.title = arquivo.split('/').pop() + ' - Visualizar Documento';
+      } catch (e) {
+        mostrarAviso('Não foi possível carregar este documento.');
+      }
+    }
+    abrir();
   </script>
 </body>
 </html>
