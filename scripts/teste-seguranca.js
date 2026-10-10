@@ -48,7 +48,8 @@ async function iniciarAmbiente() {
       NODE_ENV: 'test', PORT: String(PORTA_APP), DIRETORIO_DADOS: pastaTemp,
       SUPABASE_URL: `http://127.0.0.1:${PORTA_FALSO}`, SUPABASE_KEY: 'chave-de-teste', SUPABASE_SERVICE_KEY: '',
       ARMAZENAMENTO_DRIVER: 'local', SENHA_RH_TESTE: '', API_KEY_ADMISSOES: 'chave-api-de-teste-0123456789',
-      LIMITE_CADASTROS_HORA: '12', LIMITE_FICHAS_HORA: '12', LIMITE_UPLOADS_HORA: '200', LIMITE_MENSAGENS_10MIN: '200'
+      MASTER_EMAIL: 'master@exemplo.test', MASTER_SENHA: 'Master-Senha-Forte-123',
+      LIMITE_CADASTROS_HORA: '20', LIMITE_FICHAS_HORA: '12', LIMITE_UPLOADS_HORA: '200', LIMITE_MENSAGENS_10MIN: '200'
     },
     stdio: 'ignore'
   });
@@ -170,12 +171,96 @@ async function suite(BASE, urlFalso) {
   const dup =await (await req('POST', '/api/auth/registrar', { body: { nome: 'Dup', email: `dono${sufixo}@exemplo.test`, senha: senhaOk, confirmarSenha: senhaOk, dataNascimento: '01/01/1990', cpf: '529.982.247-25', aceiteTermos: true } })).json();
   t('3.3', 'Enumeração', 'Cadastro não revela se o e-mail já existe', !/já existe/i.test(dup.erro || ''), dup.erro || '', true);
 
+  // ---- Páginas: raiz = login; ficha renomeada; redirecionamento legado ----
+  const raiz = await fetch(BASE + '/');
+  const htmlRaiz = await raiz.text();
+  t('pág.', 'Páginas', 'A raiz "/" é a tela de login', raiz.status === 200 && /Esqueci minha senha/.test(htmlRaiz), `HTTP ${raiz.status}`);
+  const legado = await fetch(BASE + '/index.html?id=abc-123', { redirect: 'manual' });
+  t('pág.', 'Páginas', '/index.html redireciona para /ficha.html preservando o ?id=', legado.status === 301 && legado.headers.get('location') === '/ficha.html?id=abc-123', `${legado.status} ${legado.headers.get('location')}`);
+  const fichaHtml = await (await fetch(BASE + '/ficha.html')).text();
+  t('pág.', 'Páginas', '/ficha.html existe e não tem mais a caixa de consentimento LGPD', fichaHtml.includes('data-termos-privacidade="ficha"') && !fichaHtml.includes('checkConsentimentoFicha'), '');
+  const loginHtml = await (await fetch(BASE + '/login.html')).text();
+  t('pág.', 'Páginas', 'Cadastro com frase + link "Termos de privacidade" (sem checkbox)', loginHtml.includes('data-termos-privacidade="cadastro"') && !loginHtml.includes('checkAceiteTermos'), '');
+  const jsTermos = await (await fetch(BASE + '/termos-privacidade.js')).text();
+  t('pág.', 'Páginas', 'Pop-up cita direitos do art. 18, finalidade, base legal e consentimento', ['art. 18', 'Por que coletamos', 'Base legal', 'Consentimento', 'Termos de privacidade', 'concorda com as políticas de privacidade e os termos de uso'].every((x) => jsTermos.includes(x)), '');
+  t('pág.', 'Cadastro', 'Servidor ainda exige o aceite dos termos (aceiteTermos=false -> 400)', (await registrarCom({ aceiteTermos: false })).status === 400, '');
+
+  // ---- Papéis: master, admin e operadores ----
+  const login = async (email, senha) => {
+    const r = await req('POST', '/api/auth/login', { body: { email, senha } });
+    const j = await r.json().catch(() => ({}));
+    return { status: r.status, token: j.token, usuario: j.usuario };
+  };
+  const senhaMaster = 'Master-Senha-Forte-123';
+  const m = await login('master@exemplo.test', senhaMaster);
+  t('papéis', 'Master', 'Conta master (definida no ambiente do servidor) entra', m.status === 200 && m.usuario && m.usuario.tipo === 'master', `HTTP ${m.status}`);
+  t('papéis', 'Master', 'Master NÃO acessa fichas de candidatos (403)', (await req('GET', '/api/rh/fichas', { token: m.token })).status === 403, '');
+  t('papéis', 'Master', 'Master NÃO lê uma ficha (403)', (await req('GET', `/api/candidato/${id}`, { token: m.token })).status === 403, '');
+  t('papéis', 'Master', 'Candidato não acessa a gestão do master (403)', (await req('GET', '/api/master/admins', { token: dono })).status === 403, '');
+  t('papéis', 'Master', 'RH não acessa a gestão do master (403)', (await req('GET', '/api/master/admins', { token: rh })).status === 403, '');
+  t('papéis', 'Master', 'Sem login a gestão do master é recusada (401)', (await req('GET', '/api/master/admins')).status === 401, '');
+
+  // master cria o administrador (cliente); ele define a senha pelo link + senha temporária
+  const novoAdmin = await (await req('POST', '/api/master/admins', { token: m.token, body: { nome: 'Admin Cliente', email: `admin${sufixo}@cliente.test` } })).json();
+  t('papéis', 'Master', 'Master cria a conta admin do cliente', !!(novoAdmin.conta && novoAdmin.conta.tipo === 'admin' && novoAdmin.linkRecuperacao && novoAdmin.senhaTemporaria), JSON.stringify(novoAdmin).slice(0, 80));
+  const tokenLink = (novoAdmin.linkRecuperacao || '').split('token=')[1];
+  t('papéis', 'Master', 'Admin sem senha definida ainda não consegue entrar', (await login(`admin${sufixo}@cliente.test`, 'Qualquer-Senha-1')).status === 401, '');
+
+  const redefinir = (corpo) => req('POST', '/api/auth/redefinir-senha', { body: corpo });
+  t('recup.', 'Senha', 'Senha temporária errada é recusada', (await redefinir({ token: tokenLink, senhaTemporaria: 'ErradaErrada', novaSenha: 'Nova-Senha-Forte-1', confirmarSenha: 'Nova-Senha-Forte-1' })).status === 400, '');
+  t('recup.', 'Senha', 'Nova senha fraca é recusada', (await redefinir({ token: tokenLink, senhaTemporaria: novoAdmin.senhaTemporaria, novaSenha: '12345678', confirmarSenha: '12345678' })).status === 400, '');
+  t('recup.', 'Senha', 'Confirmação diferente da nova senha é recusada', (await redefinir({ token: tokenLink, senhaTemporaria: novoAdmin.senhaTemporaria, novaSenha: 'Nova-Senha-Forte-1', confirmarSenha: 'Outra-Senha-Forte-2' })).status === 400, '');
+  const okRedef = await redefinir({ token: tokenLink, senhaTemporaria: novoAdmin.senhaTemporaria, novaSenha: 'Nova-Senha-Forte-1', confirmarSenha: 'Nova-Senha-Forte-1' });
+  t('recup.', 'Senha', 'Token + senha temporária + nova senha confirmada trocam a senha', okRedef.status === 200, `HTTP ${okRedef.status}`);
+  t('recup.', 'Senha', 'O mesmo link não pode ser reutilizado', (await redefinir({ token: tokenLink, senhaTemporaria: novoAdmin.senhaTemporaria, novaSenha: 'Outra-Nova-Senha-3', confirmarSenha: 'Outra-Nova-Senha-3' })).status === 400, '');
+
+  const admin = await login(`admin${sufixo}@cliente.test`, 'Nova-Senha-Forte-1');
+  t('papéis', 'Admin', 'Admin entra com a senha que definiu', admin.status === 200 && admin.usuario.tipo === 'admin', `HTTP ${admin.status}`);
+  t('papéis', 'Admin', 'Admin tem todos os acessos do RH (lista fichas)', (await req('GET', '/api/rh/fichas', { token: admin.token })).status === 200, '');
+  t('papéis', 'Admin', 'Admin NÃO acessa a gestão do master (403)', (await req('GET', '/api/master/admins', { token: admin.token })).status === 403, '');
+  t('papéis', 'Admin', 'Operador de RH não acessa a gestão de operadores (403)', (await req('GET', '/api/admin/operadores', { token: rh })).status === 403, '');
+
+  const novoOp = await (await req('POST', '/api/admin/operadores', { token: admin.token, body: { nome: 'Operadora RH', email: `op${sufixo}@cliente.test` } })).json();
+  t('papéis', 'Admin', 'Admin cria operador do RH', !!(novoOp.conta && novoOp.conta.tipo === 'rh' && novoOp.senhaTemporaria), '');
+  t('papéis', 'Admin', 'Admin não cria conta com e-mail já existente (409)', (await req('POST', '/api/admin/operadores', { token: admin.token, body: { nome: 'Dup', email: `op${sufixo}@cliente.test` } })).status === 409, '');
+  await redefinir({ token: (novoOp.linkRecuperacao || '').split('token=')[1], senhaTemporaria: novoOp.senhaTemporaria, novaSenha: 'Operadora-Senha-1', confirmarSenha: 'Operadora-Senha-1' });
+  const op = await login(`op${sufixo}@cliente.test`, 'Operadora-Senha-1');
+  t('papéis', 'Operador', 'Operador define a senha e acessa o painel do RH', op.status === 200 && (await req('GET', '/api/rh/fichas', { token: op.token })).status === 200, '');
+  t('papéis', 'Operador', 'Operador não vira admin: sem acesso à gestão (403)', (await req('GET', '/api/admin/operadores', { token: op.token })).status === 403, '');
+  const idDono = (await (await req('GET', '/api/auth/sessao', { token: dono })).json()).usuario.id;
+  t('papéis', 'Admin', 'Admin não gerencia outra conta admin nem a si mesmo (404)', (await req('PATCH', `/api/admin/operadores/${admin.usuario.id}`, { token: admin.token, body: { ativo: false } })).status === 404, '');
+  t('papéis', 'Admin', 'Admin não gerencia conta de candidato (404)', (await req('PATCH', `/api/admin/operadores/${idDono}`, { token: admin.token, body: { ativo: false } })).status === 404, '');
+  t('papéis', 'Admin', 'Admin renomeia o operador (200)', (await req('PATCH', `/api/admin/operadores/${op.usuario.id}`, { token: admin.token, body: { nome: 'Operadora Renomeada' } })).status === 200, '');
+
+  const desativar = await req('PATCH', `/api/admin/operadores/${op.usuario.id}`, { token: admin.token, body: { ativo: false } });
+  t('papéis', 'Admin', 'Admin desativa o operador', desativar.status === 200, `HTTP ${desativar.status}`);
+  t('papéis', 'Admin', 'Sessão do operador desativado é encerrada (401)', (await req('GET', '/api/rh/fichas', { token: op.token })).status === 401, '');
+  t('papéis', 'Admin', 'Operador desativado não consegue entrar', (await login(`op${sufixo}@cliente.test`, 'Operadora-Senha-1')).status !== 200, '');
+
+  // ---- Recuperação de senha (esqueci minha senha) ----
+  const recDesconhecido = await (await req('POST', '/api/auth/recuperar-senha', { body: { email: `ninguem${sufixo}@exemplo.test` } })).json();
+  const recAdmin = await (await req('POST', '/api/auth/recuperar-senha', { body: { email: `admin${sufixo}@cliente.test` } })).json();
+  t('recup.', 'Recuperação', 'Resposta igual exista a conta ou não (não revela cadastros)', recDesconhecido.mensagem === recAdmin.mensagem, '');
+  t('recup.', 'Recuperação', 'Conta existente recebe link e senha temporária (modo teste)', !!(recAdmin.linkRecuperacao && recAdmin.senhaTemporaria), '');
+  const antigaSessao = admin.token;
+  const trocou = await redefinir({ token: (recAdmin.linkRecuperacao || '').split('token=')[1], senhaTemporaria: recAdmin.senhaTemporaria, novaSenha: 'Senha-Recuperada-7', confirmarSenha: 'Senha-Recuperada-7' });
+  t('recup.', 'Recuperação', 'Redefinição por e-mail troca a senha', trocou.status === 200, `HTTP ${trocou.status}`);
+  t('recup.', 'Recuperação', 'Trocar a senha encerra as sessões abertas', (await req('GET', '/api/auth/sessao', { token: antigaSessao })).status === 401, '');
+  t('recup.', 'Recuperação', 'A senha antiga deixa de valer', (await login(`admin${sufixo}@cliente.test`, 'Nova-Senha-Forte-1')).status === 401, '');
+  t('recup.', 'Recuperação', 'A nova senha vale', (await login(`admin${sufixo}@cliente.test`, 'Senha-Recuperada-7')).status === 200, '');
+  const recMaster = await (await req('POST', '/api/auth/recuperar-senha', { body: { email: 'master@exemplo.test' } })).json();
+  t('recup.', 'Recuperação', 'A conta master não usa a recuperação por e-mail', !recMaster.linkRecuperacao, '');
+  const tentativas = [];
+  const recTent = await (await req('POST', '/api/auth/recuperar-senha', { body: { email: `dono${sufixo}@exemplo.test` } })).json();
+  for (let i = 0; i < 6; i += 1) tentativas.push((await redefinir({ token: (recTent.linkRecuperacao || '').split('token=')[1], senhaTemporaria: 'Errada-Errada-' + i, novaSenha: 'Qualquer-Senha-9', confirmarSenha: 'Qualquer-Senha-9' })).status);
+  t('recup.', 'Recuperação', 'Após 5 senhas temporárias erradas o link é invalidado', (await redefinir({ token: (recTent.linkRecuperacao || '').split('token=')[1], senhaTemporaria: recTent.senhaTemporaria, novaSenha: 'Qualquer-Senha-9', confirmarSenha: 'Qualquer-Senha-9' })).status === 400, tentativas.join(','));
+
   // ---- 2.3 Limites de taxa (por último: consomem o orçamento da janela) ----
   const falhas = [];
   for (let i = 0; i < 6; i += 1) falhas.push((await req('POST', '/api/auth/login', { body: { email: `ninguem${sufixo}@exemplo.test`, senha: 'errada' + i } })).status);
   t('-', 'Limites', 'Login: 5 falhas seguidas levam a 429', falhas.slice(0, 5).every((s) => s === 401) && falhas[5] === 429, falhas.join(','));
   const cad = [];
-  for (let i = 0; i < 16; i += 1) cad.push((await req('POST', '/api/auth/registrar', { body: { nome: 'A', email: 'invalido', senha: '1', confirmarSenha: '1' } })).status);
+  for (let i = 0; i < 24; i += 1) cad.push((await req('POST', '/api/auth/registrar', { body: { nome: 'A', email: 'invalido', senha: '1', confirmarSenha: '1' } })).status);
   t('2.3', 'Limites', 'Cadastro tem limite por hora (429)', cad.includes(429), `${cad.filter((s) => s === 429).length} de 16 bloqueadas`);
   const fichas = [];
   for (let i = 0; i < 16; i += 1) fichas.push((await req('POST', '/api/candidato', { token: dono, body: ficha() })).status);

@@ -247,3 +247,35 @@ input[type="checkbox"] { accent-color: var(--verde-hover); }
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------- Termos de privacidade (aviso + pop-up) ---------- */
+.aviso-termos { font-size: 0.875rem; color: var(--tinta-2); margin: 0.75rem 0; line-height: 1.5; }
+.link-termos { color: var(--verde-texto); font-weight: 600; text-decoration: underline; cursor: pointer; white-space: nowrap; }
+.link-termos:hover { color: var(--floresta); }
+.termos-fundo {
+  position: fixed; inset: 0; z-index: 1000; display: none;
+  align-items: center; justify-content: center; padding: 1rem;
+  background: rgba(15, 30, 22, 0.55);
+}
+.termos-fundo.aberto { display: flex; }
+.termos-caixa {
+  background: var(--papel); border-radius: var(--r-painel);
+  width: min(42rem, 100%); max-height: min(88vh, 46rem);
+  display: flex; flex-direction: column; box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.25);
+  outline: none;
+}
+.termos-topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.25rem 1.5rem 0.75rem; border-bottom: 1px solid var(--borda); }
+.termos-topo h2 { font-size: 1.25rem; }
+.termos-corpo { padding: 1rem 1.5rem; overflow-y: auto; font-size: 0.9375rem; }
+.termos-secao h3 { font-size: 1rem; margin: 1rem 0 0.25rem; }
+.termos-secao p, .termos-secao li { max-width: 62ch; margin: 0.25rem 0; }
+.termos-secao ul { padding-left: 1.25rem; margin: 0.25rem 0; }
+.termos-consentimento { background: var(--menta); border-radius: 0.5rem; padding: 0.75rem 0.875rem; }
+.termos-versao { color: var(--tinta-2); font-size: 0.8125rem; margin-top: 1.25rem; }
+.termos-rodape { padding: 0.75rem 1.5rem 1.25rem; border-top: 1px solid var(--borda); display: flex; justify-content: flex-end; }
+.termos-fechar {
+  min-height: 2.5rem; padding: 0.5rem 1.125rem; border-radius: var(--r-controle);
+  border: 1px solid var(--borda); background: var(--papel); color: var(--tinta);
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+.termos-rodape .termos-fechar { background: var(--verde); border-color: var(--verde); color: var(--tinta-botao); }

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Administração da plataforma - Onboarding Digital</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/tema.css">
+  <link rel="stylesheet" href="/gestao-contas.css">
+</head>
+<body>
+  <!-- LOGIN DO MASTER (externo: conta do dono da plataforma, definida no servidor) -->
+  <main class="gc-pagina gc-login" id="telaLogin">
+    <h1>Administração da plataforma</h1>
+    <p class="gc-sub">Acesso restrito ao administrador da plataforma.</p>
+    <form class="gc-cartao" id="formMaster" style="margin-top:1.5rem">
+      <div class="gc-campo">
+        <label for="mEmail">E-mail</label>
+        <input type="email" id="mEmail" autocomplete="username" required>
+      </div>
+      <div class="gc-campo">
+        <label for="mSenha">Senha</label>
+        <input type="password" id="mSenha" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="gc-btn gc-btn-primario">Entrar</button>
+      <div class="gc-aviso" id="avisoLogin" role="alert"></div>
+    </form>
+  </main>
+
+  <!-- PAINEL DO MASTER: cria e gerencia as contas administradoras (clientes) -->
+  <main class="gc-pagina" id="telaPainel" hidden>
+    <header class="gc-topo">
+      <div>
+        <h1>Administradores (clientes)</h1>
+        <p class="gc-sub">Crie a conta administradora de cada empresa contratante. O administrador recebe por e-mail um link para definir a senha e passa a criar e gerenciar os operadores do próprio RH.</p>
+      </div>
+      <nav class="gc-nav"><button type="button" class="gc-btn" id="btnSair">Sair</button></nav>
+    </header>
+    <section class="gc-cartao" id="areaGestao" aria-live="polite"></section>
+  </main>
+
+  <script src="/gestao-contas.js"></script>
+  <script>
+    (function () {
+      var API = '/api';
+      var telaLogin = document.getElementById('telaLogin');
+      var telaPainel = document.getElementById('telaPainel');
+
+      function limparSessao() {
+        localStorage.removeItem('onboarding_token');
+        localStorage.removeItem('onboarding_usuario');
+      }
+      function sair() {
+        var t = localStorage.getItem('onboarding_token');
+        if (t) fetch(API + '/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + t } }).catch(function () {});
+        limparSessao();
+        window.location.reload();
+      }
+      document.getElementById('btnSair').addEventListener('click', sair);
+
+      function mostrarPainel(token, usuario) {
+        telaLogin.hidden = true;
+        telaPainel.hidden = false;
+        GestaoContas.montar(document.getElementById('areaGestao'), {
+          base: API + '/master/admins', rotulo: 'administrador', token: token, idLogado: usuario.id
+        });
+      }
+
+      // Já logado como master? Vai direto ao painel.
+      var tokenSalvo = localStorage.getItem('onboarding_token');
+      if (tokenSalvo) {
+        fetch(API + '/auth/sessao', { headers: { Authorization: 'Bearer ' + tokenSalvo } })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (c) { if (c && c.usuario.tipo === 'master') mostrarPainel(tokenSalvo, c.usuario); })
+          .catch(function () {});
+      }
+
+      document.getElementById('formMaster').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var aviso = document.getElementById('avisoLogin');
+        aviso.className = 'gc-aviso gc-erro';
+        aviso.textContent = '';
+        fetch(API + '/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: document.getElementById('mEmail').value.trim(), senha: document.getElementById('mSenha').value })
+        }).then(function (r) { return r.json().then(function (c) { return { ok: r.ok, c: c }; }); })
+          .then(function (res) {
+            if (!res.ok) { aviso.textContent = res.c.erro || 'Não foi possível entrar.'; return; }
+            if (res.c.usuario.tipo !== 'master') {
+              // Esta página é só do master: encerra a sessão aberta por engano.
+              fetch(API + '/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + res.c.token } }).catch(function () {});
+              aviso.textContent = 'Esta conta não tem acesso à administração da plataforma.';
+              return;
+            }
+            localStorage.setItem('onboarding_token', res.c.token);
+            localStorage.setItem('onboarding_usuario', JSON.stringify(res.c.usuario));
+            mostrarPainel(res.c.token, res.c.usuario);
+          })
+          .catch(function () { aviso.textContent = 'Não conseguimos falar com o servidor. Tente novamente.'; });
+      });
+    })();
+  </script>
+</body>
+</html>

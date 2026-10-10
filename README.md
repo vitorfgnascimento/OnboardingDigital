@@ -17,7 +17,7 @@ O MVP é dividido em dois módulos, servidos pelo mesmo backend Express e comuni
 ```
 public/
   login.html    -> Autenticação: entrar, criar conta, entrar com o Google
-  index.html    -> Módulo Candidato: ficha de admissão, upload de documentos, chat, banner de decisão, aceite de contrato
+  ficha.html    -> Módulo Candidato: ficha de admissão, upload de documentos, chat, banner de decisão, aceite de contrato
   rh.html       -> Módulo RH: painel de gestão, pendências, decisão final, contrato, exportação e impressão (acesso restrito)
   testes.html   -> bateria de testes automatizados contra a API em execução
 
@@ -67,7 +67,7 @@ Para usar o driver `supabase`:
 
 Os PDFs não são servidos publicamente: o acesso é por URL assinada de 5 minutos (`POST /api/arquivos/assinar`), emitida só ao RH ou à conta dona da ficha. Defina `ARQUIVOS_SEGREDO` (16+ caracteres) para assinar essas URLs.
 
-**Módulo Candidato** (`public/index.html`): formulário de dados pessoais com máscaras e validação estrita, upload dos 6 documentos obrigatórios, envio unificado da ficha, chat com o RH e reabertura pontual de documentos com pendência. Uma ficha já enviada pode ser revisitada pelo link `http://localhost:3001/index.html?id=<candidatoId>`.
+**Módulo Candidato** (`public/ficha.html`): formulário de dados pessoais com máscaras e validação estrita, upload dos 6 documentos obrigatórios, envio unificado da ficha, chat com o RH e reabertura pontual de documentos com pendência. Uma ficha já enviada pode ser revisitada pelo link `http://localhost:3001/ficha.html?id=<candidatoId>` (o antigo `/index.html` redireciona para `/ficha.html`).
 
 > **Nota sobre testes/arquitetura:** o botão "Copiar link" do candidato, no Painel do RH, gera exatamente esse link direto (`?id=<candidatoId>`). É um **recurso utilitário exclusivo da versão MVP/Dev**, pensado para agilizar a validação de testes locais (acessar a ficha de um candidato específico sem precisar procurar o `id` manualmente). Ele **não deve fazer parte do fluxo de produção final**: o lançamento da busca por nome/CPF (ver Etapa 2) cobre essa necessidade de localizar um candidato de forma adequada para uso real, sem depender de compartilhar links com identificadores de ficha.
 
@@ -131,7 +131,7 @@ Módulo de Autenticação e Contratação:
 - **Foto de perfil** - candidatos (card "Seu perfil" na ficha) e RH (Configurações) podem enviar uma foto, recortada e reduzida no navegador (JPEG ~256x256, até 200 KB) e guardada em `usuarios.foto` / `configuracoes.foto_rh`. A foto do candidato aparece para o RH e a do RH para os candidatos. Migração: `supabase/migracao_fotos_mensagem_contratacao.sql`.
 - **Mensagem de contratação concluída** - título e texto do card exibido ao candidato contratado são editáveis em Configurações do RH.
 - **Primeira página** - `/` e qualquer página restrita sem sessão levam ao login, que devolve o usuário à página pedida (somente caminhos internos do mesmo tipo de conta).
-- **Autopreenchimento da ficha** - Nome e E-mail são preenchidos automaticamente a partir do perfil autenticado ao abrir `public/index.html` (campos continuam editáveis).
+- **Autopreenchimento da ficha** - Nome e E-mail são preenchidos automaticamente a partir do perfil autenticado ao abrir `public/ficha.html` (campos continuam editáveis).
 - **Vínculo ficha ↔ perfil** - toda ficha criada por um candidato logado grava `usuarioId`; `GET /api/auth/minhas-fichas` devolve só as fichas do usuário autenticado. O acesso direto por link (`?id=`) continua funcionando por compatibilidade com o recurso "Copiar link" do RH.
 - **Painel do RH protegido** - `public/rh.html` exige sessão do tipo `rh`; sem ela, redireciona para o login. As rotas `/api/rh/*` exigem o mesmo token no backend.
 - **Aceite Virtual de Contratos por Clique (Assinatura Eletrônica Simples)** - liberado para fichas com status `APROVADO`: lista de documentos (Contrato de Trabalho, Termo de Confidencialidade, Política de Privacidade/LGPD), cada um com download da minuta e um botão "Li e Aceito os Termos" próprio. O botão unificado "Concluir Assinatura Digital" só libera quando todos os documentos forem aceitos, e grava timestamp ISO, IP, CPF e um hash SHA-256 das minutas na auditoria. O Painel do RH ganha o card "Contrato de Trabalho - Aceite Digital" (mesmo layout dos cards de documento) com o botão "Validar Contratação", que move o status para o estado terminal `CONTRATACAO_CONCLUIDA`.
@@ -149,11 +149,26 @@ Recursos incluídos depois das Etapas 1 a 4 (cobertos pelas migrações em `supa
 - **Relatório do painel em PDF** - `GET /api/relatorio/dashboard-pdf`.
 - **API REST v1 para sistemas externos (B2B)** - `GET /api/v1/admissoes`, protegida por API Key (header `x-api-key` ou `Authorization: Bearer <chave>`). Defina `API_KEY_ADMISSOES` (mínimo de 16 caracteres) no ambiente; sem ela a API fica desativada e responde 503 - não existe chave padrão.
 
+## Papéis, contas e recuperação de senha
+
+| Papel | Quem é | O que acessa |
+|---|---|---|
+| `master` | Dono da plataforma (externo) | `/master.html`: cria e gerencia as contas **admin** dos clientes. **Não** acessa fichas nem documentos de candidatos |
+| `admin` | Administrador da empresa contratante | Todo o painel do RH (`/rh.html`) + `/admin.html`: cria, desativa e reenvia acesso dos **operadores** |
+| `rh` | Operador do RH da empresa | Painel do RH (`/rh.html`) |
+| `candidato` | Quem está sendo admitido | A própria ficha (`/ficha.html`) |
+
+- **Conta master:** definida no ambiente do servidor (`MASTER_EMAIL` e `MASTER_SENHA`, senha de 12+ caracteres), nunca no código nem no banco de testes. Sem essas variáveis ela não existe.
+- **Contas novas (admin e operador):** criadas sem senha. O titular recebe por e-mail um link e uma **senha temporária**; em `/recuperar-senha.html` informa a senha temporária, a nova senha e a confirmação. O link e a senha temporária valem 30 minutos e só funcionam juntos.
+- **Esqueci minha senha:** botão na tela de login. Envia o mesmo link + senha temporária para o e-mail cadastrado; a resposta é igual exista a conta ou não. Trocar a senha encerra as sessões abertas.
+- **E-mail:** configure `SMTP_URL` (ou `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`), `EMAIL_REMETENTE` e `APP_URL`. Sem SMTP o envio é simulado no log do servidor e, fora de produção, o link e a senha temporária aparecem na tela para teste.
+- **Banco:** rode `supabase/migracao_recuperacao_senha.sql` (tabela `recuperacoes_senha`, só com hashes).
+
 ## Conformidade LGPD nos 3 Momentos da Jornada
 
-- **Momento 1 (login.html):** checkbox obrigatório de aceite dos Termos de Uso/Política de Privacidade antes de criar a conta; backend grava `consentimentoCadastro` no usuário.
-- **Momento 2 (index.html):** card de Consentimento para Tratamento de Dados Pessoais e checkbox obrigatório antes de enviar a ficha; backend grava `consentimentoFichaLGPD` na ficha.
-- **Momento 3 (index.html):** cláusula sobre a validade da assinatura eletrônica e checkbox de ciência antes de concluir a assinatura digital; backend grava `consentimentoContratoLGPD` (com hash SHA-256 das minutas) na ficha.
+- **Momento 1 (login.html):** frase + link "Termos de privacidade" (pop-up) ao lado do botão "Criar Conta"; o servidor exige o aceite (`aceiteTermos`) e grava `consentimentoCadastro` no usuário.
+- **Momento 2 (ficha.html):** frase "Ao continuar você concorda com as políticas de privacidade e os termos de uso" + link "Termos de privacidade" (pop-up com finalidade, base legal, consentimento e direitos do art. 18) ao lado do botão de envio; backend grava `consentimentoFichaLGPD` na ficha.
+- **Momento 3 (ficha.html):** a mesma frase e link ao lado do botão que conclui a assinatura digital (o pop-up traz a cláusula sobre a validade da assinatura eletrônica); backend grava `consentimentoContratoLGPD` (com hash SHA-256 das minutas) na ficha.
 - **Painel do RH (rh.html):** card "Trilha de Auditoria e Conformidade LGPD" mostra o status dos dois consentimentos (data/hora e IP) e um botão "Visualizar Log de Auditoria" que exibe o JSON bruto dos eventos daquela ficha (`GET /api/rh/fichas/:id/auditoria`).
 
 ## Próximas fases do roteiro de desenvolvimento
@@ -208,6 +223,7 @@ cp .env.example .env
    2. `migracao_banco_talentos_configuracoes.sql` - Banco de Talentos e Configurações do RH
    3. `migracao_etiquetas.sql` - etiquetas
    4. `migracao_fotos_mensagem_contratacao.sql` - fotos de perfil e mensagem de contratação
+   4b. `migracao_recuperacao_senha.sql` - recuperação/definição de senha (tabela `recuperacoes_senha`)
    5. `ativar_rls.sql` - **liga o RLS** nas 6 tabelas, sem políticas: só o servidor (chave secret) acessa o banco. Aplique somente depois que o servidor já estiver rodando com `SUPABASE_SERVICE_KEY`.
 3. Para testes pessoais, use um projeto Supabase próprio, para não alterar dados compartilhados.
 

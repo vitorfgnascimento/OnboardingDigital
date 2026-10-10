@@ -119,6 +119,13 @@
     .btn-ver-senha:hover { color: var(--floresta); background: var(--menta); }
     .btn-ver-senha:focus-visible { outline: 2px solid var(--verde); outline-offset: 1px; }
 
+    .btn-link-senha {
+      display: block; margin: 0.75rem auto 0; padding: 0.25rem 0.5rem;
+      background: none; border: 0; cursor: pointer;
+      color: var(--verde-texto); font: inherit; font-size: 0.875rem; font-weight: 600; text-decoration: underline;
+    }
+    .btn-link-senha:hover { color: var(--floresta); }
+    #mensagemSucesso a { color: inherit; font-weight: 700; text-decoration: underline; }
     .aviso-lgpd a, .check-lgpd a {
       color: var(--verde-texto);
       font-weight: 600;
@@ -305,6 +312,7 @@
             <input type="password" id="loginSenha" autocomplete="current-password" required minlength="6">
           </div>
           <button type="submit" class="btn btn-primario">Entrar</button>
+          <button type="button" class="btn-link-senha" id="btnEsqueciSenha">Esqueci minha senha</button>
           <!-- Acesso rápido do RH de testes: só aparece em localhost (ambiente de desenvolvimento). -->
           <button type="button" class="btn btn-secundario" id="btnAcessoRapidoRh" hidden>Entrar como RH (teste)</button>
         </form>
@@ -333,16 +341,11 @@
           </div>
           <div class="campo">
             <label for="registroConfirmarSenha">Confirmação de Senha</label>
-            <input type="password" id="registroConfirmarSenha" required minlength="6" onpaste="return false;" oncopy="return false;">
+            <input type="password" id="registroConfirmarSenha" autocomplete="new-password" required minlength="8" maxlength="72" onpaste="return false;" oncopy="return false;">
           </div>
-          <div class="aviso-lgpd">
-            Declaro que li e aceito os Termos de Uso e a <a href="/politica-privacidade.html" target="_blank" rel="noopener">Política de Privacidade</a> para criação de perfil na plataforma.
-          </div>
-          <label class="check-lgpd">
-            <input type="checkbox" id="checkAceiteTermos" required>
-            <span>Li e aceito os Termos de Uso e a <a href="/politica-privacidade.html" target="_blank" rel="noopener">Política de Privacidade</a>.</span>
-          </label>
-          <button type="submit" class="btn btn-primario" id="btnCriarConta" disabled>Criar Conta</button>
+          <!-- Consentimento LGPD (Momento 1 da jornada): frase + link que abre o pop-up com os termos -->
+          <p class="aviso-termos" data-termos-privacidade="cadastro"></p>
+          <button type="submit" class="btn btn-primario" id="btnCriarConta">Criar Conta</button>
         </form>
 
         <div class="separador">ou</div>
@@ -354,7 +357,7 @@
         <div class="mensagem-erro" id="mensagemErro" role="alert"></div>
         <div class="mensagem-sucesso" id="mensagemSucesso" role="status"></div>
 
-        <a class="link-voltar" href="/index.html"><svg class="ic" aria-hidden="true"><use href="#i-seta-esq"/></svg>Voltar para a Ficha do Candidato</a>
+        <a class="link-voltar" href="/ficha.html"><svg class="ic" aria-hidden="true"><use href="#i-seta-esq"/></svg>Voltar para a Ficha do Candidato</a>
       </div>
     </section>
   </main>
@@ -372,6 +375,7 @@
   </div>
 
   <script src="/ouvir-pagina.js" defer></script>
+  <script src="/termos-privacidade.js" defer></script>
   <script src="https://accounts.google.com/gsi/client" async defer onerror="mostrarGoogleIndisponivel('Script do Google Identity Services não carregou.')"></script>
   <script>
     const API = '/api';
@@ -393,12 +397,21 @@
     // Destino pedido na URL (?destino=) quando o usuário abriu o painel/ficha sem
     // sessão. Só vale se for um caminho interno conhecido e do mesmo tipo de
     // usuário que acabou de entrar - qualquer outra coisa é ignorada (sem open-redirect).
-    const REGEX_DESTINO = /^\/(rh|index)\.html(\?id=[\w-]+)?(#\/candidato\/[\w%-]+(\/documentos)?)?$/;
+    const REGEX_DESTINO = /^\/(rh|ficha|admin)\.html(\?id=[\w-]+)?(#\/candidato\/[\w%-]+(\/documentos)?)?$/;
+    // Página inicial de cada papel: equipe de RH (rh e admin) -> painel; master
+    // -> painel da plataforma; candidato -> ficha.
+    function destinoPadraoPorPapel(tipo) {
+      if (tipo === 'master') return '/master.html';
+      if (tipo === 'rh' || tipo === 'admin') return '/rh.html';
+      return '/ficha.html';
+    }
+    // Quais páginas cada papel pode receber como destino de retorno.
+    const PAGINAS_POR_PAPEL = { candidato: ['ficha'], rh: ['rh'], admin: ['rh', 'admin'], master: [] };
     function destinoPosLogin(tipo) {
-      const padrao = tipo === 'rh' ? '/rh.html' : '/index.html';
+      const padrao = destinoPadraoPorPapel(tipo);
       const pedido = new URLSearchParams(window.location.search).get('destino') || '';
       const m = REGEX_DESTINO.exec(pedido);
-      if (!m || (m[1] === 'rh') !== (tipo === 'rh')) return padrao;
+      if (!m || !(PAGINAS_POR_PAPEL[tipo] || []).includes(m[1])) return padrao;
       return pedido;
     }
 
@@ -413,7 +426,7 @@
     }
 
     // =========================================================================
-    // MÁSCARAS COM PRESERVAÇÃO DE CURSOR (copiadas de public/index.html)
+    // MÁSCARAS COM PRESERVAÇÃO DE CURSOR (copiadas de public/ficha.html)
     // =========================================================================
     function aplicarMascaraComCursor(input, funcaoMascara) {
       const valorOriginal = input.value;
@@ -559,6 +572,39 @@
       }
     });
 
+    // RECUPERAÇÃO DE SENHA: envia um link de redefinição + senha temporária para
+    // o e-mail informado. A resposta é a mesma exista a conta ou não.
+    document.getElementById('btnEsqueciSenha').addEventListener('click', async () => {
+      const email = document.getElementById('loginEmail').value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+        mostrarErro('Informe o seu e-mail no campo acima e clique novamente em "Esqueci minha senha".');
+        document.getElementById('loginEmail').focus();
+        return;
+      }
+      try {
+        const r = await fetch(API + '/auth/recuperar-senha', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const corpo = await r.json();
+        if (!r.ok) { mostrarErro(corpo.erro || 'Não foi possível enviar o link agora.'); return; }
+        mostrarSucesso(corpo.mensagem);
+        // Somente em ambiente de teste (sem e-mail real): mostra o link no próprio modal.
+        if (corpo.linkRecuperacao) {
+          const aviso = document.getElementById('mensagemSucesso');
+          aviso.appendChild(document.createTextNode(' [Teste] '));
+          const a = document.createElement('a');
+          a.href = corpo.linkRecuperacao;
+          a.textContent = 'abrir o link de redefinição';
+          aviso.appendChild(a);
+          aviso.appendChild(document.createTextNode(' (senha temporária: ' + corpo.senhaTemporaria + ')'));
+        }
+      } catch (erro) {
+        mostrarErro('Não conseguimos falar com o servidor. Tente de novo em instantes.');
+      }
+    });
+
     // Acesso rápido do RH de testes (rh@onboarding.local, senha pública do README):
     // preenche os campos e envia o mesmo formulário de login. Só existe em
     // localhost/127.0.0.1 - em qualquer outro endereço o botão continua oculto.
@@ -574,20 +620,13 @@
       });
     })();
 
-    // O botão "Criar Conta" só é liberado depois que o checkbox de aceite dos
-    // Termos de Uso/Política de Privacidade é marcado (LGPD - Momento 1).
-    const checkAceiteTermos = document.getElementById('checkAceiteTermos');
+    // O consentimento LGPD do cadastro (Momento 1) é dado ao continuar: a frase e
+    // o link "Termos de privacidade" ficam ao lado do botão, e o servidor registra
+    // o aceite (data/hora, IP e versão dos termos) ao criar a conta.
     const btnCriarConta = document.getElementById('btnCriarConta');
-    checkAceiteTermos.addEventListener('change', () => {
-      btnCriarConta.disabled = !checkAceiteTermos.checked;
-    });
 
     formCriarConta.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!checkAceiteTermos.checked) {
-        mostrarErro('É necessário aceitar os Termos de Uso e a Política de Privacidade para criar a conta.');
-        return;
-      }
 
       const nome = document.getElementById('registroNome').value.trim();
       const dataNascimento = document.getElementById('registroDataNascimento').value.trim();
@@ -610,7 +649,6 @@
         const corpo = await r.json();
         if (!r.ok) { mostrarErro(corpo.erro || 'Não foi possível criar a conta.'); return; }
         formCriarConta.reset();
-        btnCriarConta.disabled = true;
         if (corpo.linkAtivacao) abrirModalAtivacao(corpo.linkAtivacao);
         else mostrarSucesso(corpo.mensagem || 'Conta criada! Confirme o seu e-mail para ativá-la.');
       } catch (erro) {

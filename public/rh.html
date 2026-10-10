@@ -501,6 +501,10 @@
       <button type="button" class="btn-aba" data-aba="config">
         <svg class="ic" aria-hidden="true"><use href="#i-engrenagem"/></svg>
         Configurações</button>
+      <!-- Só para a conta administradora da empresa: gestão dos operadores do RH -->
+      <a class="btn-aba" id="linkEquipe" href="/admin.html" hidden>
+        <svg class="ic" aria-hidden="true"><use href="#i-pessoas"/></svg>
+        Equipe do RH</a>
     </nav>
 
     <div class="sidebar-rodape">
@@ -928,12 +932,15 @@
 
     // Nome do operador de RH logado (usado como nomeAutor ao enviar mensagens no chat).
     let nomeUsuarioRh = 'RH';
+    // Papel da conta: 'rh' (operador) ou 'admin' (administrador da empresa).
+    let papelUsuarioRh = 'rh';
 
     // Rodapé da sidebar: foto do RH (Configurações) ou iniciais.
     function renderizarSessaoRh() {
       const foto = configuracoesRh && configuracoesRh.fotoRh;
+      const rotulo = papelUsuarioRh === 'admin' ? 'Administrador' : 'Equipe de RH';
       definirHtmlSeMudou(document.getElementById('areaSessaoRh'),
-        `${avatarHtml(nomeUsuarioRh, '', foto)}<span class="sessao-textos"><strong>${escapeHtml(nomeUsuarioRh)}</strong>Equipe de RH</span>`);
+        `${avatarHtml(nomeUsuarioRh, '', foto)}<span class="sessao-textos"><strong>${escapeHtml(nomeUsuarioRh)}</strong>${rotulo}</span>`);
     }
 
     async function exigirSessaoRh() {
@@ -944,11 +951,13 @@
         const r = await fetch(API + '/auth/sessao', { headers: cabecalhosRh() });
         if (!r.ok) { window.location.href = '/login.html'; return false; }
         const corpo = await r.json();
-        if (corpo.usuario.tipo !== 'rh') {
+        if (corpo.usuario.tipo !== 'rh' && corpo.usuario.tipo !== 'admin') {
           alert('Acesso restrito à equipe de RH.');
           window.location.href = '/login.html';
           return false;
         }
+        papelUsuarioRh = corpo.usuario.tipo;
+        document.getElementById('linkEquipe').hidden = papelUsuarioRh !== 'admin';
         nomeUsuarioRh = corpo.usuario.nome || 'RH';
         renderizarSessaoRh();
         return true;
@@ -990,7 +999,7 @@
       };
     }
 
-    // Documentos obrigatórios da jornada do candidato (mesma lista de public/index.html).
+    // Documentos obrigatórios da jornada do candidato (mesma lista de public/ficha.html).
     const DOCUMENTOS = [
       { tipo: 'identidade',              titulo: 'Identidade (RG)' },
       { tipo: 'cpf',                     titulo: 'CPF' },
@@ -1298,7 +1307,7 @@
 
     // Copia o link direto da Ficha do Candidato (?id=) para a área de transferência.
     async function copiarLinkCandidato(id, botao, linkPersonalizado) {
-      const link = linkPersonalizado || `${window.location.origin}/index.html?id=${id}`;
+      const link = linkPersonalizado || `${window.location.origin}/ficha.html?id=${id}`;
       let copiado = false;
 
       if (navigator.clipboard && window.isSecureContext) {

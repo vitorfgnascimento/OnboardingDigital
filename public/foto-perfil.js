@@ -1,4 +1,4 @@
-/* Foto de perfil compartilhada por index.html (candidato) e rh.html (Configurações).
+/* Foto de perfil compartilhada por ficha.html (candidato) e rh.html (Configurações).
    O recorte e a redução acontecem no navegador: a imagem escolhida vira um
    quadrado de 256x256 em JPEG antes de ser enviada ao servidor. */
 (function () {

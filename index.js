@@ -13,6 +13,7 @@ const PDFDocument = require('pdfkit');
 const ExcelJS = require('exceljs');
 const { OAuth2Client } = require('google-auth-library');
 const supabase = require('./db/supabase');
+const { enviarEmail } = require('./lib/email');
 
 const app = express();
 
@@ -66,7 +67,15 @@ app.use(express.json({ limit: '400kb' }));
 
 // A primeira tela do sistema é o login, não a ficha do candidato - só depois
 // de entrar (ou criar conta) é que o candidato é levado à Ficha de Admissão.
-app.get('/', (req, res) => res.redirect('/login.html'));
+// A página principal ("/") é a própria tela de login (arquivo login.html).
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
+
+// Compatibilidade: o antigo /index.html (ficha do candidato) agora é /ficha.html.
+// Links já enviados (ex.: "?id=...") continuam funcionando.
+app.get('/index.html', (req, res) => {
+  const consulta = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  return res.redirect(301, '/ficha.html' + consulta);
+});
 
 // Caminho absoluto (não relativo ao cwd) - na Vercel (serverless), o
 // diretório de trabalho durante a execução da função não é garantidamente a
@@ -245,7 +254,7 @@ function validarDadosPessoais(dados) {
 
 // Mapeia uma linha da tabela "candidatos" (snake_case, Postgres) + as
 // mensagens de chat já carregadas para o objeto camelCase que o resto deste
-// arquivo e os dois frontends (public/index.html, public/rh.html) esperam.
+// arquivo e os dois frontends (public/ficha.html, public/rh.html) esperam.
 function candidatoParaCamelCase(row, mensagens) {
   return {
     id: row.id,
@@ -678,25 +687,42 @@ async function autenticarOpcional(req, res, next) {
   next();
 }
 
-// Middleware: exige sessão válida do papel 'rh' - protege o Painel do RH.
-async function exigirRh(req, res, next) {
-  try {
-    const usuario = await resolverUsuarioPorToken(req);
-    if (!usuario) return res.status(401).json({ erro: 'Sessão inválida ou expirada. Faça login novamente.' });
-    if (usuario.tipo !== 'rh') return res.status(403).json({ erro: 'Acesso restrito à equipe de RH.' });
-    req.usuario = usuario;
-    next();
-  } catch (erro) {
-    console.error('Falha ao resolver sessão RH:', erro.message);
-    return res.status(500).json({ erro: 'Falha ao validar a sessão.' });
-  }
+// PAPÉIS
+//   candidato  preenche a própria ficha
+//   rh         operador do RH da empresa contratante
+//   admin      administrador da empresa contratante: tem todos os acessos do RH
+//              e cria/gerencia os operadores (rh)
+//   master     dono da plataforma (externo): só cria/gerencia contas admin e
+//              NÃO acessa fichas nem documentos de candidatos
+const PAPEIS_EQUIPE_RH = ['rh', 'admin'];
+const ehEquipeRh = (usuario) => !!usuario && PAPEIS_EQUIPE_RH.includes(usuario.tipo);
+
+// Fábrica de middleware: exige sessão válida e um dos papéis informados.
+function exigirPapeis(papeis, mensagem) {
+  return async (req, res, next) => {
+    try {
+      const usuario = await resolverUsuarioPorToken(req);
+      if (!usuario) return res.status(401).json({ erro: 'Sessão inválida ou expirada. Faça login novamente.' });
+      if (!papeis.includes(usuario.tipo)) return res.status(403).json({ erro: mensagem });
+      req.usuario = usuario;
+      return next();
+    } catch (erro) {
+      console.error('Falha ao resolver sessão:', erro.message);
+      return res.status(500).json({ erro: 'Falha ao validar a sessão.' });
+    }
+  };
 }
+
+// Painel do RH: operadores (rh) e administradores (admin) da empresa.
+const exigirRh = exigirPapeis(PAPEIS_EQUIPE_RH, 'Acesso restrito à equipe de RH.');
+const exigirAdmin = exigirPapeis(['admin'], 'Acesso restrito ao administrador da empresa.');
+const exigirMaster = exigirPapeis(['master'], 'Acesso restrito ao administrador da plataforma.');
 
 // Regra de acesso a uma ficha individual: o RH vê qualquer ficha; o candidato
 // só vê a própria (vinculada à conta pelo usuarioId; fichas antigas, criadas
 // sem login, caem no e-mail da conta).
 function usuarioEhDonoDaFicha(usuario, candidato) {
-  if (!usuario || !candidato || usuario.tipo === 'rh') return false;
+  if (!usuario || !candidato || usuario.tipo !== 'candidato') return false;
   if (candidato.usuarioId) return candidato.usuarioId === usuario.id;
   const emailFicha = String(candidato.email || '').trim().toLowerCase();
   return emailFicha !== '' && emailFicha === String(usuario.email || '').trim().toLowerCase();
@@ -704,7 +730,7 @@ function usuarioEhDonoDaFicha(usuario, candidato) {
 
 function usuarioPodeVerFicha(usuario, candidato) {
   if (!usuario || !candidato) return false;
-  return usuario.tipo === 'rh' || usuarioEhDonoDaFicha(usuario, candidato);
+  return ehEquipeRh(usuario) || usuarioEhDonoDaFicha(usuario, candidato);
 }
 
 const ERRO_FICHA_DE_OUTRA_CONTA = 'Esta ficha pertence a outra conta.';
@@ -1038,15 +1064,16 @@ app.post('/api/auth/registrar', limiteCadastros, async (req, res) => {
     ip: req.ip
   });
 
-  console.log('\n=== [SIMULAÇÃO DE E-MAIL] Confirmação de cadastro ===');
-  console.log(`Para: ${emailAparado.replace(/^(.).*(@.*)$/, '$1***$2')}`);
-  console.log(`Link de ativação: http://localhost:${PORTA}/login.html?ativacao=${novoUsuario.tokenAtivacao}`);
-  console.log('=======================================================\n');
+  // Link de ativação por e-mail (SMTP configurado) ou simulado no log do servidor.
+  await enviarEmail({
+    para: emailAparado,
+    assunto: 'Confirme o seu cadastro - Onboarding Digital',
+    texto: `Olá, ${nomeAparado}.\n\nPara ativar a sua conta, abra o link:\n${urlBase(req)}/login.html?ativacao=${novoUsuario.tokenAtivacao}\n\nSe você não fez este cadastro, ignore este e-mail.`
+  });
 
-  // O envio real de e-mail ainda não existe: em desenvolvimento a resposta
-  // devolve o link/token para o modal de teste do login. Em produção isso
-  // NUNCA pode ir na resposta - quem cadastrasse o e-mail de outra pessoa
-  // ativaria a conta sem ter acesso à caixa de entrada dela.
+  // Em desenvolvimento a resposta devolve o link/token para o modal de teste do
+  // login. Em produção isso NUNCA pode ir na resposta - quem cadastrasse o
+  // e-mail de outra pessoa ativaria a conta sem ter acesso à caixa de entrada.
   if (!EXIBIR_LINK_ATIVACAO) {
     return res.status(201).json({
       mensagem: 'Conta criada! A conta só poderá ser usada depois da confirmação do e-mail cadastrado.'
@@ -2408,7 +2435,7 @@ app.post('/api/candidato/:id/mensagens', autenticar, limiteMensagens, async (req
 
     // O papel do autor vem da sessão, não do corpo: só o RH escreve como 'RH'
     // e só a conta dona da ficha escreve como 'Candidato'.
-    if ((autor === 'RH') !== (req.usuario.tipo === 'rh')) {
+    if ((autor === 'RH') !== ehEquipeRh(req.usuario)) {
       return res.status(403).json({ erro: `Sua conta não pode enviar mensagens como '${autor}'.` });
     }
 
@@ -3786,6 +3813,308 @@ app.patch('/api/rh/fichas/:id/contrato/validar', exigirRh, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// RECUPERAÇÃO / DEFINIÇÃO DE SENHA (link por e-mail + senha temporária)
+// O e-mail leva um link com token e uma senha temporária; para trocar a senha
+// é preciso o token E a senha temporária. Só os hashes ficam no banco
+// (tabela recuperacoes_senha). Contas novas criadas pelo master/admin usam o
+// mesmo mecanismo para definir a primeira senha.
+// ---------------------------------------------------------------------------
+const VALIDADE_RECUPERACAO_MS = 30 * 60 * 1000;
+const MAX_TENTATIVAS_SENHA_TEMPORARIA = 5;
+const ALFABETO_SENHA_TEMPORARIA = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+
+function gerarSenhaTemporaria() {
+  let s = '';
+  for (let i = 0; i < 10; i += 1) s += ALFABETO_SENHA_TEMPORARIA[crypto.randomInt(ALFABETO_SENHA_TEMPORARIA.length)];
+  return s;
+}
+
+// Endereço base usado nos links dos e-mails. APP_URL é o recomendado; sem ele,
+// usa o Host da requisição apenas se tiver formato de domínio válido.
+function urlBase(req) {
+  const configurada = String(process.env.APP_URL || '').trim().replace(/\/+$/, '');
+  if (configurada) return configurada;
+  const host = String(req.get('host') || '');
+  return /^[a-z0-9.-]+(:\d{1,5})?$/i.test(host) ? `${req.protocol}://${host}` : `http://localhost:${PORTA}`;
+}
+
+// Cria um pedido de redefinição para o usuário e invalida os anteriores.
+async function criarPedidoRecuperacao(usuario, finalidade) {
+  await supabase.from('recuperacoes_senha').update({ usado: true }).eq('usuario_id', usuario.id).eq('usado', false);
+  const token = crypto.randomBytes(32).toString('hex');
+  const senhaTemporaria = gerarSenhaTemporaria();
+  const agora = Date.now();
+  const { error } = await supabase.from('recuperacoes_senha').insert({
+    id: gerarId(),
+    usuario_id: usuario.id,
+    token_hash: hashToken(token),
+    senha_temp_hash: bcrypt.hashSync(senhaTemporaria, 10),
+    finalidade,
+    tentativas: 0,
+    usado: false,
+    criado_em: agora,
+    expira_em: agora + VALIDADE_RECUPERACAO_MS
+  });
+  if (error) throw error;
+  return { token, senhaTemporaria };
+}
+
+// Envia o e-mail do pedido. Em desenvolvimento (fora de produção) devolve o
+// link e a senha temporária para a tela de teste; em produção nunca.
+async function enviarPedidoRecuperacao(req, usuario, pedido, finalidade) {
+  const link = `${urlBase(req)}/recuperar-senha.html?token=${pedido.token}`;
+  const minutos = Math.round(VALIDADE_RECUPERACAO_MS / 60000);
+  const abertura = finalidade === 'definicao'
+    ? `Olá, ${usuario.nome}. Foi criado um acesso para você ao Onboarding Digital. Para definir a sua senha:`
+    : `Olá, ${usuario.nome}. Recebemos um pedido para redefinir a sua senha. Para continuar:`;
+  const texto = [
+    abertura, '',
+    `1. Abra o link: ${link}`,
+    `2. Informe a senha temporária: ${pedido.senhaTemporaria}`,
+    '3. Escolha a nova senha e confirme.', '',
+    `O link e a senha temporária valem por ${minutos} minutos. Se você não pediu isto, ignore este e-mail: nada será alterado.`
+  ].join('\n');
+  const resultado = await enviarEmail({
+    para: usuario.email,
+    assunto: finalidade === 'definicao' ? 'Defina a sua senha - Onboarding Digital' : 'Redefinição de senha - Onboarding Digital',
+    texto
+  });
+  const teste = EXIBIR_LINK_ATIVACAO
+    ? { linkRecuperacao: `/recuperar-senha.html?token=${pedido.token}`, senhaTemporaria: pedido.senhaTemporaria }
+    : {};
+  return { emailEnviado: resultado.enviado, emailSimulado: resultado.simulado, ...teste };
+}
+
+const limiteRecuperacao = criarLimitador({
+  janelaMs: HORA_MS, max: limiteDoAmbiente('LIMITE_RECUPERACOES_HORA', 5),
+  chave: (req) => `rec|${req.ip}|${String((req.body || {}).email || '').trim().toLowerCase()}`,
+  mensagem: 'Muitos pedidos de recuperação de senha. Tente novamente mais tarde.'
+});
+const limiteRecuperacaoIp = criarLimitador({
+  janelaMs: HORA_MS, max: limiteDoAmbiente('LIMITE_RECUPERACOES_IP_HORA', 20), chave: porIp,
+  mensagem: 'Muitos pedidos de recuperação de senha. Tente novamente mais tarde.'
+});
+const limiteRedefinicao = criarLimitador({
+  janelaMs: 15 * 60 * 1000, max: limiteDoAmbiente('LIMITE_REDEFINICOES_15MIN', 15), chave: porIp,
+  mensagem: 'Muitas tentativas. Aguarde alguns minutos.'
+});
+
+const MENSAGEM_RECUPERACAO = 'Se o e-mail estiver cadastrado, enviamos um link de recuperação e uma senha temporária. Verifique a caixa de entrada.';
+
+app.post('/api/auth/recuperar-senha', limiteRecuperacaoIp, limiteRecuperacao, async (req, res) => {
+  try {
+    const email = String((req.body || {}).email || '').trim().toLowerCase();
+    if (!REGEX_EMAIL_AUTH.test(email) || email.length > 254) {
+      return res.status(400).json({ erro: 'Informe um e-mail válido.' });
+    }
+
+    const { data: linha, error } = await supabase.from('usuarios').select('*').eq('email', email).maybeSingle();
+    if (error) throw error;
+    const usuario = linha ? usuarioParaCamelCase(linha) : null;
+
+    // Resposta idêntica exista a conta ou não (não revela quais e-mails têm cadastro).
+    // A conta master não usa este fluxo: a senha dela vem do ambiente do servidor.
+    let extra = {};
+    if (usuario && usuario.ativo !== false && usuario.tipo !== 'master') {
+      const pedido = await criarPedidoRecuperacao(usuario, 'recuperacao');
+      extra = await enviarPedidoRecuperacao(req, usuario, pedido, 'recuperacao');
+      registrarEventoAuditoria({
+        id: gerarId(), tipoEvento: 'recuperacao_senha_solicitada', usuarioId: usuario.id,
+        timestamp: new Date().toISOString(), ip: req.ip
+      });
+    } else {
+      await new Promise((r) => setTimeout(r, 120)); // iguala o tempo aproximado de resposta
+    }
+    return res.status(200).json({ mensagem: MENSAGEM_RECUPERACAO, ...(EXIBIR_LINK_ATIVACAO ? extra : {}) });
+  } catch (erro) {
+    console.error('Falha ao solicitar recuperação de senha:', erro.message);
+    return res.status(500).json({ erro: 'Não foi possível processar o pedido agora. Tente novamente em instantes.' });
+  }
+});
+
+app.post('/api/auth/redefinir-senha', limiteRedefinicao, async (req, res) => {
+  try {
+    const { token, senhaTemporaria, novaSenha, confirmarSenha } = req.body || {};
+    const invalido = () => res.status(400).json({ erro: 'Link inválido ou expirado, ou senha temporária incorreta.' });
+    if (!token || !senhaTemporaria) return invalido();
+
+    const { data: pedido, error } = await supabase.from('recuperacoes_senha').select('*').eq('token_hash', hashToken(token)).maybeSingle();
+    if (error) throw error;
+    if (!pedido || pedido.usado || Number(pedido.expira_em) <= Date.now() || pedido.tentativas >= MAX_TENTATIVAS_SENHA_TEMPORARIA) {
+      return invalido();
+    }
+
+    if (!bcrypt.compareSync(String(senhaTemporaria), pedido.senha_temp_hash)) {
+      await supabase.from('recuperacoes_senha').update({ tentativas: pedido.tentativas + 1 }).eq('id', pedido.id);
+      return invalido();
+    }
+
+    const erroSenha = erroSenhaFraca(novaSenha);
+    if (erroSenha) return res.status(400).json({ erro: erroSenha });
+    if (novaSenha !== confirmarSenha) return res.status(400).json({ erro: 'A confirmação de senha não confere com a nova senha.' });
+
+    const usuario = await buscarUsuarioPorId(pedido.usuario_id);
+    if (!usuario || usuario.ativo === false || usuario.tipo === 'master') return invalido();
+
+    const { salt, hash } = gerarHashSenha(String(novaSenha));
+    const { error: erroUsuario } = await supabase.from('usuarios')
+      .update({ senha_salt: salt, senha_hash: hash }).eq('id', usuario.id);
+    if (erroUsuario) throw erroUsuario;
+    await supabase.from('recuperacoes_senha').update({ usado: true }).eq('id', pedido.id);
+    // Troca de senha encerra todas as sessões abertas dessa conta.
+    await supabase.from('sessoes').delete().eq('usuario_id', usuario.id);
+
+    registrarEventoAuditoria({
+      id: gerarId(), tipoEvento: 'senha_redefinida', usuarioId: usuario.id, finalidade: pedido.finalidade,
+      timestamp: new Date().toISOString(), ip: req.ip
+    });
+    return res.status(200).json({ mensagem: 'Senha alterada com sucesso. Entre com a nova senha.' });
+  } catch (erro) {
+    console.error('Falha ao redefinir senha:', erro.message);
+    return res.status(500).json({ erro: 'Não foi possível alterar a senha agora. Tente novamente em instantes.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GESTÃO DE CONTAS: MASTER cria administradores (clientes); o ADMIN cria e
+// gerencia os operadores do RH da própria empresa.
+// ---------------------------------------------------------------------------
+const limiteGestaoContas = criarLimitador({
+  janelaMs: HORA_MS, max: limiteDoAmbiente('LIMITE_CONTAS_CRIADAS_HORA', 60), chave: porUsuarioOuIp,
+  mensagem: 'Limite de contas criadas por hora atingido.'
+});
+
+function resumoConta(u) {
+  return { id: u.id, nome: u.nome, email: u.email, tipo: u.tipo, ativo: u.ativo !== false, criadoEm: u.criadoEm };
+}
+
+// Cria uma conta (admin ou rh) sem senha utilizável: o titular define a senha
+// pelo link enviado por e-mail.
+async function criarContaEquipe(req, res, tipo) {
+  const nome = String((req.body || {}).nome || '').trim();
+  const email = String((req.body || {}).email || '').trim().toLowerCase();
+  if (!nome || nome.length > 120) return res.status(400).json({ erro: 'Informe o nome (até 120 caracteres).' });
+  if (!REGEX_EMAIL_AUTH.test(email) || email.length > 254) return res.status(400).json({ erro: 'E-mail inválido.' });
+
+  const { data: existente, error } = await supabase.from('usuarios').select('id').eq('email', email).maybeSingle();
+  if (error) throw error;
+  if (existente) return res.status(409).json({ erro: 'Já existe uma conta com este e-mail.' });
+
+  const { salt, hash } = gerarHashSenha(crypto.randomBytes(24).toString('hex'));
+  const novo = {
+    id: gerarId(), nome, email, senhaSalt: salt, senhaHash: hash, tipo, googleId: null,
+    ativo: true, tokenAtivacao: null, criadoEm: new Date().toISOString()
+  };
+  await salvarUsuarios([novo]);
+
+  const pedido = await criarPedidoRecuperacao(novo, 'definicao');
+  const envio = await enviarPedidoRecuperacao(req, novo, pedido, 'definicao');
+  registrarEventoAuditoria({
+    id: gerarId(), tipoEvento: 'conta_criada', usuarioId: novo.id, tipo, criadoPor: req.usuario.id,
+    timestamp: new Date().toISOString(), ip: req.ip
+  });
+  return res.status(201).json({ conta: resumoConta(novo), ...envio });
+}
+
+async function listarContas(req, res, tipo) {
+  const { data, error } = await supabase.from('usuarios').select('*').eq('tipo', tipo).order('criado_em', { ascending: true });
+  if (error) throw error;
+  return res.status(200).json((data || []).map(usuarioParaCamelCase).map(resumoConta));
+}
+
+async function alterarConta(req, res, tipo) {
+  const conta = await buscarUsuarioPorId(req.params.id);
+  if (!conta || conta.tipo !== tipo) return res.status(404).json({ erro: 'Conta não encontrada.' });
+  if (conta.id === req.usuario.id) return res.status(400).json({ erro: 'Você não pode alterar a própria conta por aqui.' });
+
+  const mudancas = {};
+  const corpo = req.body || {};
+  if (corpo.ativo !== undefined) {
+    if (typeof corpo.ativo !== 'boolean') return res.status(400).json({ erro: 'O campo "ativo" deve ser verdadeiro ou falso.' });
+    mudancas.ativo = corpo.ativo;
+  }
+  if (corpo.nome !== undefined) {
+    const nome = String(corpo.nome).trim();
+    if (!nome || nome.length > 120) return res.status(400).json({ erro: 'Nome inválido (até 120 caracteres).' });
+    mudancas.nome = nome;
+  }
+  if (!Object.keys(mudancas).length) return res.status(400).json({ erro: 'Nada para alterar.' });
+
+  const { error } = await supabase.from('usuarios').update(mudancas).eq('id', conta.id);
+  if (error) throw error;
+  if (mudancas.ativo === false) await supabase.from('sessoes').delete().eq('usuario_id', conta.id);
+
+  registrarEventoAuditoria({
+    id: gerarId(), tipoEvento: 'conta_alterada', usuarioId: conta.id, alteracoes: Object.keys(mudancas),
+    alteradoPor: req.usuario.id, timestamp: new Date().toISOString(), ip: req.ip
+  });
+  return res.status(200).json({ conta: resumoConta({ ...conta, ...mudancas }) });
+}
+
+async function reenviarAcesso(req, res, tipo) {
+  const conta = await buscarUsuarioPorId(req.params.id);
+  if (!conta || conta.tipo !== tipo) return res.status(404).json({ erro: 'Conta não encontrada.' });
+  if (conta.ativo === false) return res.status(400).json({ erro: 'A conta está desativada.' });
+  const pedido = await criarPedidoRecuperacao(conta, 'definicao');
+  const envio = await enviarPedidoRecuperacao(req, conta, pedido, 'definicao');
+  return res.status(200).json({ mensagem: 'Novo acesso enviado ao e-mail da conta.', ...envio });
+}
+
+const comTratamento = (fn) => async (req, res) => {
+  try {
+    return await fn(req, res);
+  } catch (erro) {
+    console.error('Falha na gestão de contas:', erro.message);
+    return res.status(500).json({ erro: 'Não foi possível concluir a operação agora.' });
+  }
+};
+
+// Master -> administradores (clientes)
+app.get('/api/master/admins', exigirMaster, comTratamento((req, res) => listarContas(req, res, 'admin')));
+app.post('/api/master/admins', exigirMaster, limiteGestaoContas, comTratamento((req, res) => criarContaEquipe(req, res, 'admin')));
+app.patch('/api/master/admins/:id', exigirMaster, comTratamento((req, res) => alterarConta(req, res, 'admin')));
+app.post('/api/master/admins/:id/reenviar-acesso', exigirMaster, limiteGestaoContas, comTratamento((req, res) => reenviarAcesso(req, res, 'admin')));
+
+// Admin -> operadores do RH
+app.get('/api/admin/operadores', exigirAdmin, comTratamento((req, res) => listarContas(req, res, 'rh')));
+app.post('/api/admin/operadores', exigirAdmin, limiteGestaoContas, comTratamento((req, res) => criarContaEquipe(req, res, 'rh')));
+app.patch('/api/admin/operadores/:id', exigirAdmin, comTratamento((req, res) => alterarConta(req, res, 'rh')));
+app.post('/api/admin/operadores/:id/reenviar-acesso', exigirAdmin, limiteGestaoContas, comTratamento((req, res) => reenviarAcesso(req, res, 'rh')));
+
+// Conta MASTER: semeada no boot a partir do ambiente do servidor (nunca do
+// código nem do banco de testes). Sem MASTER_EMAIL e MASTER_SENHA, não existe.
+async function garantirUsuarioMaster() {
+  const email = String(process.env.MASTER_EMAIL || '').trim().toLowerCase();
+  const senha = String(process.env.MASTER_SENHA || '');
+  if (!email || !senha) return;
+  if (!REGEX_EMAIL_AUTH.test(email) || senha.length < 12 || erroSenhaFraca(senha)) {
+    console.error('MASTER_EMAIL/MASTER_SENHA inválidos (senha com 12+ caracteres, letras e números): conta master não criada.');
+    return;
+  }
+  const usuarios = await lerUsuarios();
+  const existente = usuarios.find((u) => u.email === email);
+  if (existente && existente.tipo !== 'master') {
+    console.error('MASTER_EMAIL já pertence a uma conta que não é master: conta master não criada.');
+    return;
+  }
+  const { salt, hash } = gerarHashSenha(senha);
+  if (existente) {
+    // A senha do master é a do ambiente (fonte da verdade).
+    if (!existente.senhaHash || !senhaConfere(senha, existente.senhaSalt, existente.senhaHash) || existente.ativo === false) {
+      existente.senhaSalt = salt; existente.senhaHash = hash; existente.ativo = true;
+      await salvarUsuarios(usuarios);
+      console.log('--- Conta master atualizada a partir do ambiente ---');
+    }
+    return;
+  }
+  await salvarUsuarios([{
+    id: gerarId(), nome: 'Administrador da Plataforma', email, senhaSalt: salt, senhaHash: hash,
+    tipo: 'master', googleId: null, ativo: true, tokenAtivacao: null, criadoEm: new Date().toISOString()
+  }]);
+  console.log('--- Conta master criada a partir do ambiente ---');
+}
+
+// ---------------------------------------------------------------------------
 // CONTA DE RH DE TESTES (MVP/Dev) - semeada de forma idempotente no boot,
 // já que o formulário público de registro só cria contas 'candidato'.
 // A senha padrão é pública de propósito (documentada no README.md), para que
@@ -3844,6 +4173,7 @@ async function garantirUsuarioRhTeste() {
 (async () => {
   try {
     await garantirUsuarioRhTeste();
+    await garantirUsuarioMaster();
     // Remove sessões expiradas e as do formato antigo (token em texto puro).
     await limparSessoesAntigas();
     garantirMinutasContrato();

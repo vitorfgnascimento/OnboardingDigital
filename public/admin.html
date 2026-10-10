@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Equipe do RH - Onboarding Digital</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/tema.css">
+  <link rel="stylesheet" href="/gestao-contas.css">
+</head>
+<body>
+  <main class="gc-pagina">
+    <header class="gc-topo">
+      <div>
+        <h1>Equipe do RH</h1>
+        <p class="gc-sub">Crie e gerencie as contas dos operadores de RH da sua empresa. Cada operador recebe por e-mail um link para definir a própria senha.</p>
+      </div>
+      <nav class="gc-nav" aria-label="Navegação">
+        <a class="gc-btn" href="/rh.html">Voltar ao painel do RH</a>
+        <button type="button" class="gc-btn" id="btnSair">Sair</button>
+      </nav>
+    </header>
+    <section class="gc-cartao" id="areaGestao" aria-live="polite"></section>
+  </main>
+
+  <script src="/gestao-contas.js"></script>
+  <script>
+    (function () {
+      function sair() {
+        var t = localStorage.getItem('onboarding_token');
+        if (t) fetch('/api/auth/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + t } }).catch(function () {});
+        localStorage.removeItem('onboarding_token');
+        localStorage.removeItem('onboarding_usuario');
+        window.location.href = '/';
+      }
+      document.getElementById('btnSair').addEventListener('click', sair);
+
+      var token = localStorage.getItem('onboarding_token');
+      if (!token) { window.location.href = '/?destino=' + encodeURIComponent('/admin.html'); return; }
+      fetch('/api/auth/sessao', { headers: { Authorization: 'Bearer ' + token } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (corpo) {
+          if (!corpo || corpo.usuario.tipo !== 'admin') {
+            window.location.href = corpo ? '/rh.html' : '/';
+            return;
+          }
+          GestaoContas.montar(document.getElementById('areaGestao'), {
+            base: '/api/admin/operadores', rotulo: 'operador', token: token, idLogado: corpo.usuario.id
+          });
+        })
+        .catch(function () { window.location.href = '/'; });
+    })();
+  </script>
+</body>
+</html>

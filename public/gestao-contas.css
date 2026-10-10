@@ -1,0 +1,45 @@
+/* Estilos das páginas de gestão de contas (master.html e admin.html). */
+.gc-pagina { max-width: 62rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+.gc-topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.gc-topo h1 { font-size: 2rem; }
+.gc-sub { color: var(--tinta-2); max-width: 46ch; margin: 0.5rem 0 0; }
+.gc-nav { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.gc-cartao { background: var(--papel); border: 1px solid var(--borda); border-radius: var(--r-painel); padding: 1.25rem; }
+
+.gc-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 2.5rem; padding: 0.5rem 1rem; border-radius: var(--r-controle);
+  border: 1px solid var(--borda); background: var(--papel); color: var(--tinta);
+  font: inherit; font-size: 0.9375rem; font-weight: 600; text-decoration: none; cursor: pointer;
+}
+.gc-btn:hover { background: var(--creme-2); }
+.gc-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.gc-btn-primario { background: var(--verde); border-color: var(--verde); color: var(--tinta-botao); }
+.gc-btn-primario:hover { background: var(--verde-hover); color: #fff; }
+
+.gc-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 0.75rem; align-items: end; }
+.gc-campo { display: flex; flex-direction: column; gap: 0.375rem; }
+.gc-aviso { margin: 1rem 0; font-size: 0.9375rem; }
+.gc-aviso:empty { display: none; }
+.gc-aviso.gc-ok { background: var(--menta); border-radius: 0.5rem; padding: 0.625rem 0.875rem; }
+.gc-aviso.gc-erro { background: var(--perigo-fundo); color: var(--perigo); border: 1px solid var(--perigo-borda); border-radius: 0.5rem; padding: 0.625rem 0.875rem; }
+.gc-aviso a { color: inherit; font-weight: 700; text-decoration: underline; }
+
+.gc-tabela-caixa { overflow-x: auto; margin-top: 0.5rem; }
+.gc-tabela { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+.gc-tabela th, .gc-tabela td { text-align: left; padding: 0.625rem 0.75rem; border-bottom: 1px solid var(--borda); vertical-align: middle; }
+.gc-tabela th { background: var(--menta); color: var(--floresta); font-size: 0.8125rem; }
+.gc-acoes { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.gc-vazio { color: var(--tinta-2); text-align: center; padding: 1.5rem; }
+.gc-voce { color: var(--tinta-2); font-size: 0.875rem; }
+.gc-situacao { font-weight: 600; font-size: 0.875rem; padding: 0.125rem 0.5rem; border-radius: 999px; }
+.gc-ativa { background: var(--menta); color: var(--floresta); }
+.gc-inativa { background: var(--creme-2); color: var(--tinta-2); }
+
+.gc-login { max-width: 26rem; margin: 3rem auto; }
+.gc-login .gc-campo { margin-bottom: 1rem; }
+.gc-login .gc-btn { width: 100%; }
+
+@media (max-width: 40rem) {
+  .gc-form { grid-template-columns: 1fr; }
+}

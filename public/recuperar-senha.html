@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Redefinir senha - Onboarding Digital</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/tema.css">
+  <link rel="stylesheet" href="/gestao-contas.css">
+  <style>
+    .rs-campo { position: relative; display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 1rem; }
+    .rs-campo .rs-entrada { position: relative; display: flex; }
+    .rs-campo input { flex: 1; min-width: 0; padding-right: 5.5rem; }
+    .rs-ver {
+      position: absolute; top: 50%; right: 0.375rem; transform: translateY(-50%);
+      min-height: 2rem; padding: 0.25rem 0.625rem; background: transparent; border: 0; border-radius: 0.375rem;
+      color: var(--verde-texto); font: inherit; font-size: 0.875rem; font-weight: 600; cursor: pointer;
+    }
+    .rs-ver:hover { color: var(--floresta); background: var(--menta); }
+    .rs-dica { color: var(--tinta-2); font-size: 0.8125rem; }
+    .rs-voltar { display: block; text-align: center; margin-top: 1rem; color: var(--verde-texto); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main class="gc-pagina gc-login">
+    <h1>Redefinir senha</h1>
+    <p class="gc-sub">Informe a senha temporária que enviamos por e-mail e escolha a nova senha.</p>
+
+    <form class="gc-cartao" id="formRedefinir" style="margin-top:1.5rem" novalidate>
+      <div class="rs-campo">
+        <label for="rsTemporaria">Senha temporária (recebida por e-mail)</label>
+        <div class="rs-entrada"><input type="password" id="rsTemporaria" autocomplete="one-time-code" required><button type="button" class="rs-ver" aria-controls="rsTemporaria">Mostrar</button></div>
+      </div>
+      <div class="rs-campo">
+        <label for="rsNova">Nova senha</label>
+        <div class="rs-entrada"><input type="password" id="rsNova" autocomplete="new-password" required minlength="8" maxlength="72"><button type="button" class="rs-ver" aria-controls="rsNova">Mostrar</button></div>
+        <span class="rs-dica">8 a 72 caracteres, com letras e números.</span>
+      </div>
+      <div class="rs-campo">
+        <label for="rsConfirmar">Confirmação da nova senha</label>
+        <div class="rs-entrada"><input type="password" id="rsConfirmar" autocomplete="new-password" required minlength="8" maxlength="72"><button type="button" class="rs-ver" aria-controls="rsConfirmar">Mostrar</button></div>
+      </div>
+      <button type="submit" class="gc-btn gc-btn-primario" id="btnSalvar">Alterar senha</button>
+      <div class="gc-aviso" id="aviso" role="alert"></div>
+    </form>
+    <a class="rs-voltar" href="/">Voltar ao login</a>
+  </main>
+
+  <script>
+    (function () {
+      var token = new URLSearchParams(window.location.search).get('token') || '';
+      var aviso = document.getElementById('aviso');
+      var form = document.getElementById('formRedefinir');
+      var botao = document.getElementById('btnSalvar');
+
+      function msg(texto, erro) { aviso.textContent = texto; aviso.className = 'gc-aviso ' + (erro ? 'gc-erro' : 'gc-ok'); }
+
+      // Mostrar / ocultar (oculta por padrão)
+      Array.prototype.forEach.call(document.querySelectorAll('.rs-ver'), function (b) {
+        var campo = document.getElementById(b.getAttribute('aria-controls'));
+        b.addEventListener('click', function () {
+          var visivel = campo.type === 'password';
+          campo.type = visivel ? 'text' : 'password';
+          b.textContent = visivel ? 'Ocultar' : 'Mostrar';
+          campo.focus();
+        });
+      });
+
+      if (!token) {
+        msg('Link inválido. Peça um novo link em "Esqueci minha senha", na tela de login.', true);
+        botao.disabled = true;
+      }
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var temporaria = document.getElementById('rsTemporaria').value;
+        var nova = document.getElementById('rsNova').value;
+        var confirmar = document.getElementById('rsConfirmar').value;
+        if (!temporaria) return msg('Informe a senha temporária recebida por e-mail.', true);
+        if (nova.length < 8) return msg('A nova senha deve ter pelo menos 8 caracteres.', true);
+        if (nova !== confirmar) return msg('A confirmação não confere com a nova senha.', true);
+
+        botao.disabled = true;
+        fetch('/api/auth/redefinir-senha', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: token, senhaTemporaria: temporaria, novaSenha: nova, confirmarSenha: confirmar })
+        }).then(function (r) { return r.json().then(function (c) { return { ok: r.ok, c: c }; }); })
+          .then(function (res) {
+            if (!res.ok) { botao.disabled = false; return msg(res.c.erro || 'Não foi possível alterar a senha.', true); }
+            form.reset();
+            msg(res.c.mensagem, false);
+            setTimeout(function () { window.location.href = '/'; }, 2500);
+          })
+          .catch(function () { botao.disabled = false; msg('Não conseguimos falar com o servidor. Tente novamente.', true); });
+      });
+    })();
+  </script>
+</body>
+</html>

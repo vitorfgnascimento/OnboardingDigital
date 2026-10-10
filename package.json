@@ -30,6 +30,7 @@
     "express": "^5.2.1",
     "google-auth-library": "^11.1.0",
     "multer": "^2.3.0",
+    "nodemailer": "^10.1.0",
     "pdfkit": "^0.20.2"
   }
 }
