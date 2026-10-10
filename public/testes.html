@@ -185,14 +185,16 @@
     let tokenRhTestes = null;
     async function loginRh() {
       if (tokenRhTestes) return tokenRhTestes;
-      // A senha do RH não fica no código: é a SENHA_RH_TESTE definida no .env do servidor.
-      let senha = null;
-      try { senha = sessionStorage.getItem('senhaRhTestes'); } catch (e) { /* storage indisponível */ }
-      if (!senha) {
-        senha = window.prompt('Senha da conta rh@onboarding.local (valor de SENHA_RH_TESTE no .env do servidor):') || '';
+      // Senha pública de testes do README; se o servidor usa outra
+      // (SENHA_RH_TESTE no .env), ela é pedida uma única vez.
+      let senha = 'onboarding123';
+      try { senha = sessionStorage.getItem('senhaRhTestes') || senha; } catch (e) { /* storage indisponível */ }
+      let r = await postJson('/auth/login', { email: 'rh@onboarding.local', senha });
+      if (r.status !== 200) {
+        senha = window.prompt('A senha padrão do RH não foi aceita. Informe a senha de rh@onboarding.local (SENHA_RH_TESTE do servidor):') || '';
         try { sessionStorage.setItem('senhaRhTestes', senha); } catch (e) { /* ignora */ }
+        r = await postJson('/auth/login', { email: 'rh@onboarding.local', senha });
       }
-      const r = await postJson('/auth/login', { email: 'rh@onboarding.local', senha });
       tokenRhTestes = r.corpo.token;
       return tokenRhTestes;
     }

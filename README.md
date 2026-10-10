@@ -110,7 +110,7 @@ Módulo de Autenticação e Contratação:
 - **Painel do RH protegido** - `public/rh.html` exige sessão do tipo `rh`; sem ela, redireciona para o login. As rotas `/api/rh/*` exigem o mesmo token no backend.
 - **Aceite Virtual de Contratos por Clique (Assinatura Eletrônica Simples)** - liberado para fichas com status `APROVADO`: lista de documentos (Contrato de Trabalho, Termo de Confidencialidade, Política de Privacidade/LGPD), cada um com download da minuta e um botão "Li e Aceito os Termos" próprio. O botão unificado "Concluir Assinatura Digital" só libera quando todos os documentos forem aceitos, e grava timestamp ISO, IP, CPF e um hash SHA-256 das minutas na auditoria. O Painel do RH ganha o card "Contrato de Trabalho - Aceite Digital" (mesmo layout dos cards de documento) com o botão "Validar Contratação", que move o status para o estado terminal `CONTRATACAO_CONCLUIDA`.
 
-> **Conta de RH:** semeada no boot do servidor com e-mail `rh@onboarding.local` e a senha da variável de ambiente `SENHA_RH_TESTE` (10+ caracteres). Sem a variável, a conta **não** é criada. Definir ou alterar a variável e reiniciar redefine a senha do RH. Se a conta ainda usar a senha antiga que já esteve versionada neste repositório, ela é bloqueada no boot até que uma senha nova seja definida. O formulário público de registro sempre cria contas do tipo `candidato`.
+> **Conta de RH de testes:** semeada de forma idempotente no boot do servidor (não recriada se já existir) - `rh@onboarding.local` / `onboarding123`. A senha é pública de propósito, para que qualquer pessoa consiga testar a aplicação; para usar outra, defina `SENHA_RH_TESTE` no ambiente (vale também para uma conta de RH já existente, após reiniciar). O formulário público de registro sempre cria contas do tipo `candidato`.
 
 ## Funcionalidades adicionais do painel do RH
 
@@ -165,7 +165,7 @@ cp .env.example .env
 | `SUPABASE_URL` | *(obrigatória)* | URL do projeto Supabase (Project Settings > API). |
 | `SUPABASE_KEY` | *(obrigatória)* | Chave `anon public` do projeto. O acesso ao banco é feito apenas pelo backend Express. |
 | `API_KEY_ADMISSOES` | *(vazia = API desativada)* | Chave da API REST v1 (`/api/v1/admissoes`), mínimo de 16 caracteres. |
-| `SENHA_RH_TESTE` | *(vazia = conta de RH não criada)* | Senha da conta `rh@onboarding.local`, mínimo de 10 caracteres. |
+| `SENHA_RH_TESTE` | `onboarding123` | Senha da conta de RH de testes `rh@onboarding.local`. Opcional: define outra senha (e a aplica a uma conta já existente ao reiniciar). |
 | `PORT` | `3001` | Porta em que o servidor escuta. Injetada automaticamente por plataformas de deploy em nuvem (Render, Railway, etc.). |
 | `GOOGLE_CLIENT_ID` | *(vazio)* | Client ID OAuth 2.0 do Google (Google Cloud Console), necessário para o botão "Entrar com o Google" funcionar de verdade. Sem ela, o botão fica desabilitado e a rota `/api/auth/google` responde 400. |
 
