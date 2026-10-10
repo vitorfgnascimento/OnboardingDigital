@@ -7,6 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
     "verificar:rls": "node scripts/verificar-rls.js",
+    "teste:seguranca": "node scripts/teste-seguranca.js",
     "build": "echo \"Nenhum build necessario - aplicacao servida diretamente pelo Express (local) ou pela funcao serverless da Vercel.\""
   },
   "repository": {

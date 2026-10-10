@@ -41,6 +41,15 @@ relatorio_geral_admissoes.xlsx -> planilha Mestre, regenerada a cada gravação 
 
 > **Atenção (deploy na Vercel):** a Vercel é serverless e só permite gravar em `/tmp`, que é efêmero. Lá, `auditoria.json` e a planilha Mestre **não persistem** entre execuções (a trilha de auditoria ainda precisa migrar para uma tabela do Supabase - veja "Próximas fases"). Os PDFs persistem se `ARMAZENAMENTO_DRIVER=supabase`.
 
+### Segurança: cabeçalhos, limites e testes
+
+- **Cabeçalhos:** todas as respostas levam CSP, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy` e, em HTTPS, HSTS. A CSP libera só as origens usadas pelas telas (Google, VLibras, pdf.js, ViaCEP); ao adicionar um serviço externo, inclua a origem em `POLITICA_CSP` (`index.js`).
+- **Limites de taxa:** login, cadastro, ativação, criação de ficha, envio de documentos e chat têm limite por IP ou usuário (variáveis `LIMITE_*` no `.env.example`).
+- **Contas e dados:** senha de 8 a 72 caracteres com letras e números (fora de uma lista de senhas comuns); CPF validado pelos dígitos verificadores; campos de texto com limite de tamanho; IDs novos em UUID.
+- **Sessões:** o token entregue ao navegador não é guardado: a tabela `sessoes` só tem o SHA-256 dele.
+- **Gravações:** cada operação grava apenas as fichas/usuários alterados, evitando que ações simultâneas se desfaçam.
+- **Bateria de testes de segurança:** `npm run teste:seguranca` sobe um banco falso e uma instância isolada (sem tocar no Supabase real) e confere cabeçalhos, autorização, acesso aos documentos, upload e limites. Itens do roadmap ainda não tratados aparecem como PENDENTE.
+
 ### Armazenamento de arquivos
 
 Os PDFs passam por uma interface única (`storage/armazenamento.js`: `salvar`, `ler`, `existe`, `remover`), então trocar de plataforma é trocar o *driver*:

@@ -23,6 +23,44 @@ if (process.env.VERCEL || process.env.TRUST_PROXY === '1') {
   app.set('trust proxy', 1);
 }
 
+// ---------------------------------------------------------------------------
+// CABEÇALHOS DE SEGURANÇA (aplicados a todas as respostas)
+// A CSP libera só as origens que as telas realmente usam (fontes, Google
+// Identity, VLibras, pdf.js, ViaCEP). 'unsafe-inline' é necessário porque as
+// páginas têm scripts e estilos embutidos; o restante da política continua
+// bloqueando scripts e quadros de origens desconhecidas, objetos e clickjacking.
+// ---------------------------------------------------------------------------
+app.disable('x-powered-by');
+const POLITICA_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' https://accounts.google.com https://vlibras.gov.br https://*.vlibras.gov.br https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com https://vlibras.gov.br https://*.vlibras.gov.br https://cdn.jsdelivr.net",
+  "font-src 'self' data: https://fonts.gstatic.com https://vlibras.gov.br https://*.vlibras.gov.br",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' blob: https://vlibras.gov.br https://*.vlibras.gov.br",
+  "connect-src 'self' https://viacep.com.br https://accounts.google.com https://vlibras.gov.br https://*.vlibras.gov.br https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+  "frame-src 'self' https://accounts.google.com https://vlibras.gov.br https://*.vlibras.gov.br",
+  "worker-src 'self' blob: https://cdnjs.cloudflare.com",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'self'"
+].join('; ');
+
+app.use((req, res, next) => {
+  res.set({
+    'Content-Security-Policy': POLITICA_CSP,
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'SAMEORIGIN',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=()',
+    'Cross-Origin-Opener-Policy': 'same-origin-allow-popups'
+  });
+  // HSTS só faz sentido (e só é honrado) em HTTPS; req.secure respeita o trust proxy.
+  if (req.secure) res.set('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+  next();
+});
+
 // 400 KB: comporta a foto de perfil (até ~200 KB) em base64 dentro do JSON.
 app.use(express.json({ limit: '400kb' }));
 
@@ -48,7 +86,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // momento. Para persistência real na Vercel, é necessário migrar para um
 // banco de dados gerenciado (Vercel Postgres/KV, Supabase etc.) - fora do
 // escopo desta adaptação, que só garante compatibilidade estrutural.
-const DIRETORIO_DADOS = process.env.VERCEL ? '/tmp' : __dirname;
+const DIRETORIO_DADOS = process.env.DIRETORIO_DADOS || (process.env.VERCEL ? '/tmp' : __dirname);
 
 // Caminho absoluto do arquivo de persistência local (banco de dados simples em JSON)
 const ARQUIVO_CANDIDATOS = path.join(DIRETORIO_DADOS, 'candidatos.json');
@@ -133,6 +171,34 @@ function dataNascimentoValida(digitosData) {
 const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const REGEX_REPETICAO = /(.)\1{2,}/i;
 
+// CPF válido: 11 dígitos, não todos iguais e com os dois dígitos verificadores corretos.
+function cpfValido(valor) {
+  const d = somenteDigitos(valor);
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  const digito = (n) => {
+    let soma = 0;
+    for (let i = 0; i < n; i += 1) soma += Number(d[i]) * (n + 1 - i);
+    const resto = (soma * 10) % 11;
+    return resto === 10 ? 0 : resto;
+  };
+  return digito(9) === Number(d[9]) && digito(10) === Number(d[10]);
+}
+
+// Política de senha: 8 a 72 caracteres (o bcrypt ignora o que passa de 72),
+// com letras e números, e fora de uma lista de senhas triviais. Retorna a
+// mensagem de erro ou null se a senha é aceitável.
+const SENHAS_COMUNS = new Set([
+  '12345678', '123456789', '1234567890', '11111111', '00000000', 'password', 'password1', 'senha123',
+  'senha1234', 'qwerty123', 'abc12345', 'admin123', 'onboarding', 'mudar123', 'brasil123', 'abcd1234'
+]);
+function erroSenhaFraca(senha) {
+  const s = String(senha || '');
+  if (s.length < 8 || s.length > 72) return 'A senha deve ter de 8 a 72 caracteres.';
+  if (!/[A-Za-z]/.test(s) || !/\d/.test(s)) return 'A senha deve conter letras e números.';
+  if (SENHAS_COMUNS.has(s.toLowerCase())) return 'Esta senha é muito comum. Escolha outra.';
+  return null;
+}
+
 // Retorna a lista de erros de validação dos dados pessoais (vazia = tudo ok).
 function validarDadosPessoais(dados) {
   const erros = [];
@@ -148,8 +214,13 @@ function validarDadosPessoais(dados) {
   if (!dados.genero || !GENEROS_VALIDOS.includes(dados.genero)) {
     erros.push('Gênero inválido.');
   }
-  if (somenteDigitos(dados.cpf).length !== 11) {
+  if (!cpfValido(dados.cpf)) {
     erros.push('CPF incompleto ou inválido.');
+  }
+  // Limites de tamanho: evitam abuso de armazenamento e textos gigantes na tela.
+  const limites = [['nomeCompleto', 120], ['email', 254], ['logradouro', 150], ['bairro', 80], ['numero', 20], ['complemento', 80]];
+  if (limites.some(([campo, max]) => String(dados[campo] || '').length > max)) {
+    erros.push('Algum campo excede o tamanho permitido.');
   }
   if (somenteDigitos(dados.cep).length !== 8) {
     erros.push('CEP incompleto ou inválido.');
@@ -287,6 +358,9 @@ async function lerCandidatos() {
   });
 
   const candidatos = (linhas || []).map((row) => candidatoParaCamelCase(row, mensagensPorCandidato[row.id] || []));
+  // Foto do estado lido (antes das migrações abaixo): salvarCandidatos grava só
+  // as fichas que mudaram em relação a ela.
+  candidatos.forEach((c) => marcarEstadoLido(c, candidatoParaSnakeCase));
 
   // Migração leve: fichas criadas antes do módulo de contratação/autenticação
   // não têm os campos "contrato"/"usuarioId" preenchidos - aplica o mesmo
@@ -319,15 +393,36 @@ async function lerCandidatos() {
 // atualização da planilha Mestre em Excel, em segundo plano - não bloqueia a
 // resposta da requisição que originou a gravação.
 async function salvarCandidatos(lista) {
-  const linhas = lista.map(candidatoParaSnakeCase);
-  const { error } = await supabase.from('candidatos').upsert(linhas, { onConflict: 'id' });
-  if (error) throw error;
+  // Só as fichas alteradas (ou novas) são gravadas: regravar a lista inteira com
+  // os dados lidos antes desfazia, em silêncio, mudanças feitas em paralelo em
+  // outras fichas.
+  const linhas = linhasAlteradas(lista, candidatoParaSnakeCase);
+  if (linhas.length) {
+    const { error } = await supabase.from('candidatos').upsert(linhas, { onConflict: 'id' });
+    if (error) throw error;
+  }
   atualizarPlanilhaMestre();
 }
 
-// Gera um identificador único para cada ficha (baseado em timestamp + sufixo aleatório).
+// Guarda, fora do objeto (propriedade não enumerável), a linha como foi lida.
+function marcarEstadoLido(objeto, paraLinha) {
+  Object.defineProperty(objeto, '__lido', {
+    value: JSON.stringify(paraLinha(objeto)), enumerable: false, writable: true, configurable: true
+  });
+}
+
+// Linhas (já no formato do banco) dos itens novos ou alterados desde a leitura.
+function linhasAlteradas(lista, paraLinha) {
+  return lista
+    .map((item) => ({ item, linha: paraLinha(item) }))
+    .filter(({ item, linha }) => item.__lido === undefined || item.__lido !== JSON.stringify(linha))
+    .map(({ linha }) => linha);
+}
+
+// Gera um identificador único e imprevisível (UUID v4, do gerador criptográfico).
+// Fichas, usuários e eventos criados antes desta mudança mantêm o formato antigo.
 function gerarId() {
-  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+  return crypto.randomUUID();
 }
 
 // ---------------------------------------------------------------------------
@@ -403,53 +498,56 @@ function usuarioParaSnakeCase(u) {
 async function lerUsuarios() {
   const { data, error } = await supabase.from('usuarios').select('*');
   if (error) throw error;
-  return (data || []).map(usuarioParaCamelCase);
+  const usuarios = (data || []).map(usuarioParaCamelCase);
+  usuarios.forEach((u) => marcarEstadoLido(u, usuarioParaSnakeCase));
+  return usuarios;
+}
+
+// Busca um único usuário pelo id (usado a cada requisição autenticada).
+async function buscarUsuarioPorId(id) {
+  const { data, error } = await supabase.from('usuarios').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data ? usuarioParaCamelCase(data) : null;
 }
 
 async function salvarUsuarios(lista) {
-  const linhas = lista.map(usuarioParaSnakeCase);
+  const linhas = linhasAlteradas(lista, usuarioParaSnakeCase);
+  if (!linhas.length) return;
   const { error } = await supabase.from('usuarios').upsert(linhas, { onConflict: 'id' });
   if (error) throw error;
 }
 
-// Mapeia uma linha da tabela "sessoes" (snake_case) para o objeto camelCase
-// que o restante do arquivo espera. criadoEm/expiraEm continuam números
-// (epoch ms), como sempre foram - a coluna é "bigint" justamente para isso.
-function sessaoParaCamelCase(row) {
-  return {
-    token: row.token,
-    usuarioId: row.usuario_id,
-    criadoEm: Number(row.criado_em),
-    expiraEm: Number(row.expira_em)
-  };
-}
+// SESSÕES
+// O token entregue ao navegador é aleatório (256 bits) e NUNCA é guardado: a
+// tabela "sessoes" só tem o SHA-256 dele. Quem ler o banco (backup, acesso
+// indevido) não consegue usar as sessões. Cada operação mexe em uma linha só,
+// sem regravar a tabela inteira.
+const hashToken = (token) => crypto.createHash('sha256').update(String(token)).digest('hex');
+const REGEX_HASH_TOKEN = /^[0-9a-f]{64}$/;
 
-function sessaoParaSnakeCase(s) {
-  return {
-    token: s.token,
-    usuario_id: s.usuarioId,
-    criado_em: s.criadoEm,
-    expira_em: s.expiraEm
-  };
-}
-
-async function lerSessoes() {
-  const { data, error } = await supabase.from('sessoes').select('*');
+async function inserirSessao(token, usuarioId, criadoEm, expiraEm) {
+  const { error } = await supabase.from('sessoes').insert({
+    token: hashToken(token), usuario_id: usuarioId, criado_em: criadoEm, expira_em: expiraEm
+  });
   if (error) throw error;
-  return (data || []).map(sessaoParaCamelCase);
 }
 
-// "lista" representa o estado completo desejado das sessões - mesmo padrão
-// do antigo arquivo JSON, que era sobrescrito por inteiro (ex.: no logout, o
-// token removido não pode "sobrar" no banco) - por isso a tabela é
-// substituída por completo a cada gravação, em vez de um upsert simples.
-async function salvarSessoes(lista) {
-  const { error: erroDelete } = await supabase.from('sessoes').delete().neq('token', '');
-  if (erroDelete) throw erroDelete;
-  if (!lista.length) return;
-  const linhas = lista.map(sessaoParaSnakeCase);
-  const { error } = await supabase.from('sessoes').insert(linhas);
+async function removerSessaoPorToken(token) {
+  const { error } = await supabase.from('sessoes').delete().eq('token', hashToken(token));
   if (error) throw error;
+}
+
+// Remove sessões antigas: expiradas e as gravadas no formato legado (token em
+// texto puro, anterior ao hash). Melhor esforço, roda no boot.
+async function limparSessoesAntigas() {
+  const { data, error } = await supabase.from('sessoes').select('token, expira_em');
+  if (error) throw error;
+  const agora = Date.now();
+  const obsoletas = (data || []).filter((s) => !REGEX_HASH_TOKEN.test(String(s.token)) || Number(s.expira_em) <= agora);
+  for (const s of obsoletas) {
+    await supabase.from('sessoes').delete().eq('token', s.token);
+  }
+  return obsoletas.length;
 }
 
 // Tempo de validade de um token de sessão: 7 dias.
@@ -534,11 +632,9 @@ async function baixarFotoGoogle(url) {
 
 // Cria uma sessão para o usuário e persiste o token (login e registro reutilizam isso).
 async function criarSessao(usuarioId) {
-  const sessoes = await lerSessoes();
   const token = crypto.randomBytes(32).toString('hex');
   const agora = Date.now();
-  sessoes.push({ token, usuarioId, criadoEm: agora, expiraEm: agora + DURACAO_SESSAO_MS });
-  await salvarSessoes(sessoes);
+  await inserirSessao(token, usuarioId, agora, agora + DURACAO_SESSAO_MS);
   return token;
 }
 
@@ -549,12 +645,11 @@ async function resolverUsuarioPorToken(req) {
   const token = cabecalho.startsWith('Bearer ') ? cabecalho.slice(7) : null;
   if (!token) return null;
 
-  const sessoes = await lerSessoes();
-  const sessao = sessoes.find((s) => s.token === token && s.expiraEm > Date.now());
-  if (!sessao) return null;
+  const { data: sessao, error } = await supabase.from('sessoes').select('usuario_id, expira_em').eq('token', hashToken(token)).maybeSingle();
+  if (error) throw error;
+  if (!sessao || Number(sessao.expira_em) <= Date.now()) return null;
 
-  const usuarios = await lerUsuarios();
-  return usuarios.find((u) => u.id === sessao.usuarioId) || null;
+  return buscarUsuarioPorId(sessao.usuario_id);
 }
 
 // Middleware: exige sessão válida (qualquer papel) e anexa req.usuario.
@@ -800,6 +895,64 @@ const upload = multer({
 });
 
 // ---------------------------------------------------------------------------
+// LIMITES DE TAXA (anti spam e abuso de custo)
+// Contadores em memória, por processo: protegem o servidor local e cada
+// instância em nuvem; em serverless (várias instâncias) o limite vale por
+// instância. Valores ajustáveis por variável de ambiente (ver .env.example).
+// ---------------------------------------------------------------------------
+function limiteDoAmbiente(nome, padrao) {
+  const valor = Number(process.env[nome]);
+  return Number.isFinite(valor) && valor > 0 ? valor : padrao;
+}
+
+function criarLimitador({ janelaMs, max, chave, mensagem }) {
+  const registros = new Map();
+  return (req, res, next) => {
+    const agora = Date.now();
+    const k = chave(req);
+    let registro = registros.get(k);
+    if (!registro || registro.fim <= agora) {
+      registro = { n: 0, fim: agora + janelaMs };
+      registros.set(k, registro);
+    }
+    registro.n += 1;
+    if (registros.size > 5000) {
+      for (const [c, v] of registros) if (v.fim <= agora) registros.delete(c);
+    }
+    if (registro.n > max) {
+      res.set('Retry-After', String(Math.max(1, Math.ceil((registro.fim - agora) / 1000))));
+      return res.status(429).json({ erro: mensagem });
+    }
+    return next();
+  };
+}
+
+const HORA_MS = 60 * 60 * 1000;
+const porIp = (req) => `ip|${req.ip}`;
+const porUsuarioOuIp = (req) => (req.usuario ? `u|${req.usuario.id}` : `ip|${req.ip}`);
+
+const limiteCadastros = criarLimitador({
+  janelaMs: HORA_MS, max: limiteDoAmbiente('LIMITE_CADASTROS_HORA', 20), chave: porIp,
+  mensagem: 'Muitos cadastros a partir deste endereço. Tente novamente mais tarde.'
+});
+const limiteAtivacoes = criarLimitador({
+  janelaMs: 15 * 60 * 1000, max: limiteDoAmbiente('LIMITE_ATIVACOES_15MIN', 30), chave: porIp,
+  mensagem: 'Muitas tentativas de ativação. Aguarde alguns minutos.'
+});
+const limiteFichas = criarLimitador({
+  janelaMs: HORA_MS, max: limiteDoAmbiente('LIMITE_FICHAS_HORA', 30), chave: porUsuarioOuIp,
+  mensagem: 'Limite de fichas por hora atingido. Tente novamente mais tarde.'
+});
+const limiteUploads = criarLimitador({
+  janelaMs: HORA_MS, max: limiteDoAmbiente('LIMITE_UPLOADS_HORA', 120), chave: porUsuarioOuIp,
+  mensagem: 'Limite de envios de documentos por hora atingido. Tente novamente mais tarde.'
+});
+const limiteMensagens = criarLimitador({
+  janelaMs: 10 * 60 * 1000, max: limiteDoAmbiente('LIMITE_MENSAGENS_10MIN', 60), chave: porUsuarioOuIp,
+  mensagem: 'Muitas mensagens em pouco tempo. Aguarde um instante.'
+});
+
+// ---------------------------------------------------------------------------
 // ROTAS DE AUTENTICAÇÃO (registro, login, Google Sign-In, sessão, logout)
 // ---------------------------------------------------------------------------
 
@@ -821,22 +974,24 @@ const VERSAO_TERMOS_CADASTRO = 'v1.0';
 // Link/token de ativação só é devolvido na resposta fora de produção (NODE_ENV).
 const EXIBIR_LINK_ATIVACAO = process.env.NODE_ENV !== 'production';
 
-app.post('/api/auth/registrar', async (req, res) => {
+app.post('/api/auth/registrar', limiteCadastros, async (req, res) => {
   try {
   const { nome, email, senha, confirmarSenha, dataNascimento, cpf, aceiteTermos } = req.body;
   const nomeAparado = String(nome || '').trim();
   const emailAparado = String(email || '').trim().toLowerCase();
 
   if (!nomeAparado) return res.status(400).json({ erro: 'Informe seu nome.' });
+  if (nomeAparado.length > 120 || emailAparado.length > 254) return res.status(400).json({ erro: 'Nome ou e-mail acima do tamanho permitido.' });
   if (!REGEX_EMAIL_AUTH.test(emailAparado)) return res.status(400).json({ erro: 'E-mail inválido.' });
-  if (!senha || String(senha).length < 6) return res.status(400).json({ erro: 'A senha deve ter pelo menos 6 caracteres.' });
+  const erroSenha = erroSenhaFraca(senha);
+  if (erroSenha) return res.status(400).json({ erro: erroSenha });
   if (senha !== confirmarSenha) {
     return res.status(400).json({ erro: 'As senhas não coincidem.' });
   }
   if (!dataNascimentoValida(somenteDigitos(dataNascimento))) {
     return res.status(400).json({ erro: 'Data de nascimento incompleta ou inválida.' });
   }
-  if (somenteDigitos(cpf).length !== 11) {
+  if (!cpfValido(cpf)) {
     return res.status(400).json({ erro: 'CPF incompleto ou inválido.' });
   }
   if (aceiteTermos !== true) {
@@ -884,7 +1039,7 @@ app.post('/api/auth/registrar', async (req, res) => {
   });
 
   console.log('\n=== [SIMULAÇÃO DE E-MAIL] Confirmação de cadastro ===');
-  console.log(`Para: ${emailAparado}`);
+  console.log(`Para: ${emailAparado.replace(/^(.).*(@.*)$/, '$1***$2')}`);
   console.log(`Link de ativação: http://localhost:${PORTA}/login.html?ativacao=${novoUsuario.tokenAtivacao}`);
   console.log('=======================================================\n');
 
@@ -911,7 +1066,7 @@ app.post('/api/auth/registrar', async (req, res) => {
 
 // Ativa a conta a partir do token de ativação enviado (simulado) por e-mail,
 // e já cria a sessão em seguida (auto-login pós-confirmação).
-app.post('/api/auth/ativar', async (req, res) => {
+app.post('/api/auth/ativar', limiteAtivacoes, async (req, res) => {
   try {
   const { token } = req.body;
   if (!token) return res.status(400).json({ erro: 'Token de ativação ausente.' });
@@ -1136,8 +1291,7 @@ app.post('/api/auth/logout', async (req, res) => {
     const cabecalho = req.headers.authorization || '';
     const token = cabecalho.startsWith('Bearer ') ? cabecalho.slice(7) : null;
     if (token) {
-      const sessoes = (await lerSessoes()).filter((s) => s.token !== token);
-      await salvarSessoes(sessoes);
+      await removerSessaoPorToken(token);
     }
     return res.status(200).json({ mensagem: 'Sessão encerrada.' });
   } catch (erro) {
@@ -1166,7 +1320,7 @@ app.get('/api/auth/minhas-fichas', autenticar, async (req, res) => {
 const VERSAO_TERMO_FICHA_LGPD = '1.0';
 const FINALIDADE_TERMO_FICHA_LGPD = 'Processo Admissional e Validação de Documentos';
 
-app.post('/api/candidato', autenticarOpcional, async (req, res) => {
+app.post('/api/candidato', autenticarOpcional, limiteFichas, async (req, res) => {
   try {
   const {
     nomeCompleto,
@@ -1184,7 +1338,7 @@ app.post('/api/candidato', autenticarOpcional, async (req, res) => {
   } = req.body;
 
   const errosValidacao = validarDadosPessoais({
-    nomeCompleto, dataNascimento, cpf, logradouro, bairro, cep, numero, email, whatsapp, genero
+    nomeCompleto, dataNascimento, cpf, logradouro, bairro, cep, numero, complemento, email, whatsapp, genero
   });
 
   if (errosValidacao.length) {
@@ -1246,12 +1400,8 @@ app.post('/api/candidato', autenticarOpcional, async (req, res) => {
     ip: req.ip
   });
 
-  console.log('--- Novo Candidato Recebido ---');
-  console.log('ID:', novoCandidato.id);
-  console.log('Nome:', nomeCompleto);
-  console.log('CPF:', cpf);
-  console.log('E-mail:', email);
-  console.log('Gênero:', novoCandidato.genero);
+  // Sem dados pessoais nos logs (LGPD): só o identificador da ficha.
+  console.log('--- Novo Candidato Recebido --- ID:', novoCandidato.id);
 
   return res.status(201).json({
     mensagem: 'Ficha do candidato cadastrada com sucesso!',
@@ -1314,7 +1464,7 @@ app.patch('/api/candidato/:id/dados', autenticar, async (req, res) => {
 // Exige login (antes do multer, para que visitantes anônimos não gravem
 // arquivos em disco); só a conta dona da ficha envia.
 // ---------------------------------------------------------------------------
-app.post('/api/candidato/:id/documento', autenticar, (req, res) => {
+app.post('/api/candidato/:id/documento', autenticar, limiteUploads, (req, res) => {
   upload.single('arquivo')(req, res, async (erroUpload) => {
     if (erroUpload) {
       if (erroUpload.code === 'LIMIT_FILE_SIZE') {
@@ -2247,7 +2397,7 @@ app.get('/api/candidato/:id/mensagens', autenticar, async (req, res) => {
 // ROTA: envio de mensagem no chat da ficha (RH <-> Candidato), com histórico
 // ordenado por data/hora persistido junto da ficha em candidatos.json
 // ---------------------------------------------------------------------------
-app.post('/api/candidato/:id/mensagens', autenticar, async (req, res) => {
+app.post('/api/candidato/:id/mensagens', autenticar, limiteMensagens, async (req, res) => {
   try {
     const { id } = req.params;
     const { autor, texto, nomeAutor } = req.body;
@@ -2265,6 +2415,9 @@ app.post('/api/candidato/:id/mensagens', autenticar, async (req, res) => {
     const textoAparado = String(texto || '').trim();
     if (!textoAparado) {
       return res.status(400).json({ erro: 'Mensagem vazia.' });
+    }
+    if (textoAparado.length > 2000) {
+      return res.status(400).json({ erro: 'A mensagem pode ter no máximo 2000 caracteres.' });
     }
 
     // Busca só a linha do candidato (não a lista inteira) - o suficiente para
@@ -3691,6 +3844,8 @@ async function garantirUsuarioRhTeste() {
 (async () => {
   try {
     await garantirUsuarioRhTeste();
+    // Remove sessões expiradas e as do formato antigo (token em texto puro).
+    await limparSessoesAntigas();
     garantirMinutasContrato();
     await migrarTagsLegadasParaEtiquetas();
     // Gera a planilha Mestre já no boot, refletindo a carga inicial existente

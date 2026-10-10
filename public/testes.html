@@ -393,7 +393,7 @@
       {
         nome: 'Consentimento LGPD da ficha grava timestamp, IP, versão e finalidade',
         run: async () => {
-          const r = await postJson('/candidato', fichaValida({ cpf: '852.741.963-20' }));
+          const r = await postJson('/candidato', fichaValida({ cpf: '852.741.963-73' }));
           const c = r.corpo.candidato?.consentimentoFichaLGPD;
           const ok = r.status === 201 && c?.aceito === true && !!c?.dataHora && !!c?.ip && c?.versaoTermo === '1.0' && !!c?.finalidade;
           return { ok, detalhe: `consentimentoFichaLGPD: ${JSON.stringify(c)}` };
@@ -517,7 +517,7 @@
         // de reenvio de documento.
         nome: 'CPF incluso: aceitar a Identidade também aceita o CPF automaticamente',
         run: async () => {
-          const rc = await postJson('/candidato', fichaValida({ cpf: '741.852.963-00' }));
+          const rc = await postJson('/candidato', fichaValida({ cpf: '741.852.963-55' }));
           const idCpfSync = rc.corpo.candidato?.id;
           window.__idCpfSync = idCpfSync;
           await patchJsonDono('/candidato/' + idCpfSync + '/dados', { cpfInclusoNaIdentidade: true });
@@ -897,7 +897,7 @@
       {
         nome: 'PATCH .../visualizado mantém o status em EM_ANALISE (documento novo)',
         run: async () => {
-          const r2 = await postJson('/candidato', fichaValida({ cpf: '111.222.333-44' }));
+          const r2 = await postJson('/candidato', fichaValida({ cpf: '111.222.333-96' }));
           window.__idVisualizado = r2.corpo.candidato?.id;
           const r = await patchJsonRh('/rh/fichas/' + window.__idVisualizado + '/documento/identidade/visualizado', {});
           return { ok: r.status === 200 && r.corpo.candidato?.status === 'EM_ANALISE', detalhe: `status ${r.status}, status geral ${r.corpo.candidato?.status}` };
@@ -940,11 +940,11 @@
         run: async () => {
           const email = 'auth' + Date.now() + '@teste.com';
           const r = await postJson('/auth/registrar', {
-            nome: 'Fulano de Teste', email, senha: 'senha123', confirmarSenha: 'senha123',
+            nome: 'Fulano de Teste', email, senha: 'Senha-Forte-123', confirmarSenha: 'Senha-Forte-123',
             dataNascimento: '10/05/1990', cpf: '123.456.789-09', aceiteTermos: true
           });
           window.__emailAuth = email;
-          window.__senhaAuth = 'senha123';
+          window.__senhaAuth = 'Senha-Forte-123';
           window.__tokenAtivacaoAuth = r.corpo.tokenAtivacao;
           const ok = r.status === 201 && !r.corpo.token && !!r.corpo.tokenAtivacao && !!r.corpo.linkAtivacao;
           return { ok, detalhe: `status ${r.status}, token imediato? ${!!r.corpo.token}, tokenAtivacao? ${!!r.corpo.tokenAtivacao}, linkAtivacao ${r.corpo.linkAtivacao}` };
@@ -954,7 +954,7 @@
         nome: 'Registro com e-mail já cadastrado é recusado (400)',
         run: async () => {
           const r = await postJson('/auth/registrar', {
-            nome: 'Duplicado', email: window.__emailAuth, senha: 'senha123', confirmarSenha: 'senha123',
+            nome: 'Duplicado', email: window.__emailAuth, senha: 'Senha-Forte-123', confirmarSenha: 'Senha-Forte-123',
             dataNascimento: '10/05/1990', cpf: '123.456.789-09', aceiteTermos: true
           });
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
@@ -971,7 +971,7 @@
         nome: 'Registro com senhas que não coincidem é recusado (400)',
         run: async () => {
           const r = await postJson('/auth/registrar', {
-            nome: 'Senha Diferente', email: 'senhadif' + Date.now() + '@teste.com', senha: 'senha123', confirmarSenha: 'outraSenha',
+            nome: 'Senha Diferente', email: 'senhadif' + Date.now() + '@teste.com', senha: 'Senha-Forte-123', confirmarSenha: 'outraSenha',
             dataNascimento: '10/05/1990', cpf: '123.456.789-09', aceiteTermos: true
           });
           return { ok: r.status === 400 && /coincidem/i.test(r.corpo.erro || ''), detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
@@ -981,7 +981,7 @@
         nome: 'Registro com CPF inválido é recusado (400)',
         run: async () => {
           const r = await postJson('/auth/registrar', {
-            nome: 'CPF Invalido', email: 'cpfinvalido' + Date.now() + '@teste.com', senha: 'senha123', confirmarSenha: 'senha123',
+            nome: 'CPF Invalido', email: 'cpfinvalido' + Date.now() + '@teste.com', senha: 'Senha-Forte-123', confirmarSenha: 'Senha-Forte-123',
             dataNascimento: '10/05/1990', cpf: '123', aceiteTermos: true
           });
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
@@ -991,7 +991,7 @@
         nome: 'Registro com data de nascimento inválida é recusado (400)',
         run: async () => {
           const r = await postJson('/auth/registrar', {
-            nome: 'Data Invalida', email: 'datainvalida' + Date.now() + '@teste.com', senha: 'senha123', confirmarSenha: 'senha123',
+            nome: 'Data Invalida', email: 'datainvalida' + Date.now() + '@teste.com', senha: 'Senha-Forte-123', confirmarSenha: 'Senha-Forte-123',
             dataNascimento: '31/02/2000', cpf: '123.456.789-09', aceiteTermos: true
           });
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
@@ -1002,7 +1002,7 @@
         nome: 'Registro sem aceitar os Termos de Uso/Política de Privacidade é recusado (400)',
         run: async () => {
           const r = await postJson('/auth/registrar', {
-            nome: 'Sem Aceite', email: 'semaceite' + Date.now() + '@teste.com', senha: 'senha123', confirmarSenha: 'senha123',
+            nome: 'Sem Aceite', email: 'semaceite' + Date.now() + '@teste.com', senha: 'Senha-Forte-123', confirmarSenha: 'Senha-Forte-123',
             dataNascimento: '10/05/1990', cpf: '123.456.789-09'
           });
           return { ok: r.status === 400, detalhe: `status ${r.status} — ${r.corpo.erro || ''}` };
@@ -1081,7 +1081,7 @@
           const r = await fetch(API + '/candidato', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + window.__tokenAuth },
-            body: JSON.stringify(fichaValida({ cpf: '741.963.852-10' }))
+            body: JSON.stringify(fichaValida({ cpf: '741.963.852-73' }))
           });
           const corpo = await r.json();
           window.__idAuthFicha = corpo.candidato?.id;
@@ -1305,7 +1305,7 @@
       {
         nome: 'Cria candidato para os testes de nomeAutor no chat',
         run: async () => {
-          const r = await postJson('/candidato', fichaValida({ nomeCompleto: 'Candidato Chat Teste', cpf: '222.333.444-55' }));
+          const r = await postJson('/candidato', fichaValida({ nomeCompleto: 'Candidato Chat Teste', cpf: '222.333.444-05' }));
           window.__idChatNomeAutor = r.corpo.candidato?.id;
           window.__nomeChatNomeAutor = r.corpo.candidato?.nomeCompleto;
           return { ok: r.status === 201 && !!window.__idChatNomeAutor, detalhe: `status ${r.status}, id ${window.__idChatNomeAutor}` };
@@ -1360,7 +1360,7 @@
       {
         nome: 'Cria e reprova um candidato para testar o bloqueio definitivo do chat',
         run: async () => {
-          const r = await postJson('/candidato', fichaValida({ nomeCompleto: 'Candidato Reprovado Chat', cpf: '333.444.555-66' }));
+          const r = await postJson('/candidato', fichaValida({ nomeCompleto: 'Candidato Reprovado Chat', cpf: '333.444.555-08' }));
           window.__idChatReprovado = r.corpo.candidato?.id;
           const rDecisao = await patchJsonRh('/rh/fichas/' + window.__idChatReprovado + '/decisao', { decisao: 'REPROVADO' });
           const ok = r.status === 201 && rDecisao.status === 200 && rDecisao.corpo.candidato?.status === 'REPROVADO';
