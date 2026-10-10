@@ -106,6 +106,12 @@
       margin-bottom: 0.75rem;
       line-height: 1.5;
     }
+    .aviso-lgpd a, .check-lgpd a {
+      color: var(--verde-texto);
+      font-weight: 600;
+      text-decoration: underline;
+    }
+    .aviso-lgpd a:hover, .check-lgpd a:hover { color: var(--floresta); }
     .check-lgpd {
       display: flex; align-items: flex-start; gap: 0.625rem;
       font-size: 0.9375rem; font-weight: 500;
@@ -315,11 +321,11 @@
             <input type="password" id="registroConfirmarSenha" required minlength="6" onpaste="return false;" oncopy="return false;">
           </div>
           <div class="aviso-lgpd">
-            Declaro que li e aceito os Termos de Uso e a Política de Privacidade para criação de perfil na plataforma.
+            Declaro que li e aceito os Termos de Uso e a <a href="/politica-privacidade.html" target="_blank" rel="noopener">Política de Privacidade</a> para criação de perfil na plataforma.
           </div>
           <label class="check-lgpd">
             <input type="checkbox" id="checkAceiteTermos" required>
-            Li e aceito os Termos de Uso e a Política de Privacidade.
+            <span>Li e aceito os Termos de Uso e a <a href="/politica-privacidade.html" target="_blank" rel="noopener">Política de Privacidade</a>.</span>
           </label>
           <button type="submit" class="btn btn-primario" id="btnCriarConta" disabled>Criar Conta</button>
         </form>

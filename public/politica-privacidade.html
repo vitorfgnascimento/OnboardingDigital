@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Política de Privacidade - Onboarding Digital</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/tema.css">
+  <style>
+    .pagina { max-width: 46rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+    .topo { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+    .voltar { color: var(--verde-texto); font-weight: 600; text-decoration: underline; }
+    .meta { color: var(--tinta-2); font-size: 0.9375rem; margin: 0.5rem 0 2rem; }
+    h2 { margin: 2rem 0 0.5rem; font-size: 1.375rem; }
+    p, li { max-width: 68ch; }
+    ul { padding-left: 1.25rem; }
+    li { margin-bottom: 0.375rem; }
+    table { border-collapse: collapse; width: 100%; margin: 0.75rem 0; font-size: 0.9375rem; }
+    th, td { text-align: left; vertical-align: top; padding: 0.625rem 0.75rem; border-bottom: 1px solid var(--borda); }
+    th { background: var(--menta); color: var(--floresta); }
+    .contato { background: var(--menta); border-radius: 0.625rem; padding: 0.875rem 1rem; }
+  </style>
+</head>
+<body>
+  <main class="pagina">
+    <div class="topo">
+      <a class="voltar" href="/login.html">&larr; Voltar ao cadastro</a>
+    </div>
+
+    <h1>Política de Privacidade</h1>
+    <p class="meta">Onboarding Digital &middot; Versão v1.0 &middot; Lei Geral de Proteção de Dados (Lei nº 13.709/2018 - LGPD)</p>
+
+    <p>Esta política explica quais dados pessoais o sistema de admissão digital coleta, para que os usa, com quem os compartilha, por quanto tempo os mantém e como você pode exercer seus direitos. Ela vale para a criação da conta, o preenchimento da ficha de admissão, o envio de documentos, o chat com o RH e a assinatura eletrônica dos documentos de contratação.</p>
+
+    <h2>1. Quem trata os seus dados</h2>
+    <p>O tratamento é feito pela empresa contratante, por meio da sua equipe de Recursos Humanos (RH), que decide as finalidades e os meios do tratamento. O Onboarding Digital é a ferramenta usada para conduzir a sua admissão.</p>
+
+    <h2>2. Quais dados coletamos</h2>
+    <table>
+      <thead><tr><th>Momento</th><th>Dados</th></tr></thead>
+      <tbody>
+        <tr><td>Criação da conta</td><td>Nome, e-mail, data de nascimento, CPF e senha (guardada somente em forma de hash, nunca em texto puro). Ao entrar com o Google, usamos o nome, o e-mail e a foto da sua conta Google.</td></tr>
+        <tr><td>Ficha de admissão</td><td>Nome completo, data de nascimento, CPF, e-mail, WhatsApp, gênero e endereço (CEP, logradouro, bairro, número e complemento).</td></tr>
+        <tr><td>Documentos</td><td>Arquivos PDF enviados por você: identidade, CPF, comprovante de residência, comprovante de escolaridade, certificado de reservista (quando exigido) e carteira de trabalho.</td></tr>
+        <tr><td>Comunicação</td><td>Mensagens trocadas com o RH no chat da ficha.</td></tr>
+        <tr><td>Registros de segurança e auditoria</td><td>Endereço IP, data e hora e o tipo de cada ação relevante (cadastro, login, aceite de termos, mudança de status, mensagens, aceite e conclusão da assinatura) e o código (hash) dos documentos aceitos.</td></tr>
+        <tr><td>Foto de perfil (opcional)</td><td>Imagem enviada por você ou obtida da conta Google.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>3. Para que usamos os dados</h2>
+    <ul>
+      <li>Identificar você e manter o acesso à sua conta.</li>
+      <li>Conduzir o processo admissional: conferência dos dados e dos documentos, pendências e decisão final.</li>
+      <li>Comunicar-se com você durante o processo.</li>
+      <li>Colher o aceite dos documentos de contratação por assinatura eletrônica simples e comprovar essa assinatura.</li>
+      <li>Cumprir obrigações legais e manter uma trilha de auditoria para segurança e prestação de contas.</li>
+    </ul>
+
+    <h2>4. Bases legais</h2>
+    <ul>
+      <li><strong>Consentimento</strong> (art. 7º, I): para a criação da conta e para o tratamento da ficha, registrado nos momentos de aceite do sistema.</li>
+      <li><strong>Procedimentos preliminares relacionados a contrato</strong> (art. 7º, V): para viabilizar a sua contratação.</li>
+      <li><strong>Cumprimento de obrigação legal ou regulatória</strong> (art. 7º, II): para exigências trabalhistas e de comprovação da assinatura.</li>
+    </ul>
+
+    <h2>5. Com quem compartilhamos</h2>
+    <p>Seus dados são acessados pela equipe de RH responsável pela sua admissão. Para o sistema funcionar, usamos também prestadores de serviço:</p>
+    <ul>
+      <li><strong>Supabase</strong>: banco de dados em que ficam as contas, fichas, mensagens e demais registros.</li>
+      <li><strong>Google</strong>: apenas se você escolher entrar com a sua conta Google.</li>
+      <li><strong>ViaCEP</strong>: consulta de endereço, que recebe somente o CEP digitado.</li>
+      <li><strong>Provedor de hospedagem</strong> da aplicação.</li>
+    </ul>
+    <p>Não vendemos os seus dados e não os usamos para publicidade.</p>
+
+    <h2>6. Por quanto tempo guardamos</h2>
+    <p>Mantemos os dados pelo tempo necessário para conduzir o processo admissional e para cumprir obrigações legais e de comprovação. Depois disso, eles são eliminados ou anonimizados, salvo quando a lei exigir a guarda por mais tempo.</p>
+
+    <h2>7. Como protegemos</h2>
+    <ul>
+      <li>Senhas armazenadas somente em forma de hash.</li>
+      <li>Acesso às fichas restrito à própria pessoa e à equipe de RH, mediante login.</li>
+      <li>Bloqueio temporário após várias tentativas de login malsucedidas.</li>
+      <li>Registro de ações relevantes, com data, hora e IP.</li>
+    </ul>
+
+    <h2>8. Seus direitos</h2>
+    <p>Nos termos do art. 18 da LGPD, você pode solicitar, a qualquer momento:</p>
+    <ul>
+      <li>confirmação de que tratamos os seus dados e acesso a eles;</li>
+      <li>correção de dados incompletos, inexatos ou desatualizados;</li>
+      <li>anonimização, bloqueio ou eliminação de dados desnecessários ou tratados em desconformidade;</li>
+      <li>portabilidade dos dados;</li>
+      <li>informação sobre com quem os compartilhamos;</li>
+      <li>revogação do consentimento, ciente de que isso pode inviabilizar a continuidade da admissão.</li>
+    </ul>
+
+    <h2>9. Fale com a gente</h2>
+    <p class="contato" id="blocoContato">Para exercer seus direitos ou tirar dúvidas sobre esta política, procure a equipe de RH da empresa contratante.</p>
+
+    <h2>10. Alterações</h2>
+    <p>Esta política pode ser atualizada. A versão vigente é sempre a exibida nesta página, identificada acima, e a versão aceita por você fica registrada junto ao seu cadastro.</p>
+  </main>
+
+  <script>
+    // Mostra o e-mail de contato do RH, quando configurado no painel.
+    (async function () {
+      try {
+        const r = await fetch('/api/configuracoes/publicas');
+        if (!r.ok) return;
+        const { emailContatoRh } = await r.json();
+        const email = String(emailContatoRh || '').trim();
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+        const bloco = document.getElementById('blocoContato');
+        bloco.textContent = 'Para exercer seus direitos ou tirar dúvidas sobre esta política, escreva para ';
+        const a = document.createElement('a');
+        a.href = 'mailto:' + email;
+        a.textContent = email;
+        bloco.appendChild(a);
+        bloco.appendChild(document.createTextNode('.'));
+      } catch (e) { /* mantém o texto padrão */ }
+    })();
+  </script>
+</body>
+</html>
