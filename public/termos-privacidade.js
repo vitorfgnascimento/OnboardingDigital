@@ -1,4 +1,4 @@
-/* Termos de privacidade (LGPD) em pop-up, compartilhado por login.html e ficha.html.
+/* Termos de privacidade (LGPD) em pop-up, compartilhado pela página de login (/) e ficha.html.
  *
  * Uso: coloque <p data-termos-privacidade="cadastro|ficha|contrato"></p> perto do
  * botão de continuar. O script escreve a frase "Ao continuar você concorda com as

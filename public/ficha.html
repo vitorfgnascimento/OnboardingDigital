@@ -1855,7 +1855,7 @@
 
     // Leva ao login guardando a página pedida; o login só a reaproveita se for do mesmo tipo de usuário.
     function irParaLogin() {
-      window.location.href = '/login.html?destino=' + encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
+      window.location.href = '/?destino=' + encodeURIComponent(window.location.pathname + window.location.search + window.location.hash);
     }
 
     // =========================================================================
@@ -1979,7 +1979,7 @@
       atualizarSaudacao();
       atualizarCartaoPerfil();
       if (!sessaoUsuario) {
-        area.innerHTML = '<a href="/login.html">Entrar / Criar Conta</a>';
+        area.innerHTML = '<a href="/">Entrar / Criar Conta</a>';
         return;
       }
       area.innerHTML = `<span class="avatar area-avatar" aria-hidden="true">${conteudoAvatar(sessaoUsuario.foto, sessaoUsuario.nome)}</span>Olá, <span class="nome-sessao">${escapeHtml(sessaoUsuario.nome)}</span> <button type="button" id="btnSair">${icone('sair')}Sair</button>`;
@@ -2015,7 +2015,7 @@
     }
 
     // Exige sessão válida para abrir uma ficha NOVA (ainda não enviada) - sem
-    // login, volta para /login.html (mesma trava já aplicada ao Painel do
+    // login, volta para / (mesma trava já aplicada ao Painel do
     // RH). Com sessão válida, preenche automaticamente Nome/E-mail/CPF/Data
     // de Nascimento a partir do perfil autenticado - os campos continuam
     // editáveis pelo candidato.

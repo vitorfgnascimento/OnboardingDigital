@@ -77,6 +77,14 @@ app.get('/index.html', (req, res) => {
   return res.redirect(301, '/ficha.html' + consulta);
 });
 
+// O login só existe em "/": o endereço antigo /login.html redireciona (301)
+// para a raiz, preservando a query. Os e-mails de ativação já enviados apontam
+// para "/login.html?ativacao=...".
+app.get('/login.html', (req, res) => {
+  const consulta = req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : '';
+  return res.redirect(301, '/' + consulta);
+});
+
 // Caminho absoluto (não relativo ao cwd) - na Vercel (serverless), o
 // diretório de trabalho durante a execução da função não é garantidamente a
 // raiz do projeto, então 'public' relativo pode não resolver para a pasta
@@ -1068,7 +1076,7 @@ app.post('/api/auth/registrar', limiteCadastros, async (req, res) => {
   await enviarEmail({
     para: emailAparado,
     assunto: 'Confirme o seu cadastro - Onboarding Digital',
-    texto: `Olá, ${nomeAparado}.\n\nPara ativar a sua conta, abra o link:\n${urlBase(req)}/login.html?ativacao=${novoUsuario.tokenAtivacao}\n\nSe você não fez este cadastro, ignore este e-mail.`
+    texto: `Olá, ${nomeAparado}.\n\nPara ativar a sua conta, abra o link:\n${urlBase(req)}/?ativacao=${novoUsuario.tokenAtivacao}\n\nSe você não fez este cadastro, ignore este e-mail.`
   });
 
   // Em desenvolvimento a resposta devolve o link/token para o modal de teste do
@@ -1082,7 +1090,7 @@ app.post('/api/auth/registrar', limiteCadastros, async (req, res) => {
 
   return res.status(201).json({
     mensagem: 'Conta criada! Confirme seu cadastro pelo link de ativação (verifique o console do servidor nesse ambiente de testes).',
-    linkAtivacao: `/login.html?ativacao=${novoUsuario.tokenAtivacao}`,
+    linkAtivacao: `/?ativacao=${novoUsuario.tokenAtivacao}`,
     tokenAtivacao: novoUsuario.tokenAtivacao
   });
   } catch (erro) {

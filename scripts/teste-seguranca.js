@@ -54,7 +54,7 @@ async function iniciarAmbiente() {
     stdio: 'ignore'
   });
   processos.push(app);
-  await aguardar(`http://localhost:${PORTA_APP}/login.html`);
+  await aguardar(`http://localhost:${PORTA_APP}/`);
   return `http://localhost:${PORTA_APP}`;
 }
 
@@ -95,7 +95,7 @@ async function suite(BASE, urlFalso) {
   const arquivo = up.candidato.documentos.identidade.arquivo;
 
   // ---- 2.1 Cabeçalhos ----
-  const h = (await req('GET', '/login.html')).headers;
+  const h = (await req('GET', '/')).headers;
   t('2.1', 'Cabeçalhos', 'Content-Security-Policy com frame-ancestors e object-src none', /frame-ancestors/.test(h.get('content-security-policy') || '') && /object-src 'none'/.test(h.get('content-security-policy') || ''), h.get('content-security-policy') ? 'presente' : 'ausente');
   t('2.1', 'Cabeçalhos', 'X-Content-Type-Options: nosniff', h.get('x-content-type-options') === 'nosniff', h.get('x-content-type-options') || 'ausente');
   t('2.1', 'Cabeçalhos', 'X-Frame-Options (anti clickjacking)', !!h.get('x-frame-options'), h.get('x-frame-options') || 'ausente');
@@ -177,9 +177,11 @@ async function suite(BASE, urlFalso) {
   t('pág.', 'Páginas', 'A raiz "/" é a tela de login', raiz.status === 200 && /Esqueci minha senha/.test(htmlRaiz), `HTTP ${raiz.status}`);
   const legado = await fetch(BASE + '/index.html?id=abc-123', { redirect: 'manual' });
   t('pág.', 'Páginas', '/index.html redireciona para /ficha.html preservando o ?id=', legado.status === 301 && legado.headers.get('location') === '/ficha.html?id=abc-123', `${legado.status} ${legado.headers.get('location')}`);
+  const loginAntigo = await fetch(BASE + '/login.html?ativacao=tok-1', { redirect: 'manual' });
+  t('pág.', 'Páginas', '/login.html redireciona para / preservando a query', loginAntigo.status === 301 && loginAntigo.headers.get('location') === '/?ativacao=tok-1', `${loginAntigo.status} ${loginAntigo.headers.get('location')}`);
   const fichaHtml = await (await fetch(BASE + '/ficha.html')).text();
   t('pág.', 'Páginas', '/ficha.html existe e não tem mais a caixa de consentimento LGPD', fichaHtml.includes('data-termos-privacidade="ficha"') && !fichaHtml.includes('checkConsentimentoFicha'), '');
-  const loginHtml = await (await fetch(BASE + '/login.html')).text();
+  const loginHtml = await (await fetch(BASE + '/')).text();
   t('pág.', 'Páginas', 'Cadastro com frase + link "Termos de privacidade" (sem checkbox)', loginHtml.includes('data-termos-privacidade="cadastro"') && !loginHtml.includes('checkAceiteTermos'), '');
   const jsTermos = await (await fetch(BASE + '/termos-privacidade.js')).text();
   t('pág.', 'Páginas', 'Pop-up cita direitos do art. 18, finalidade, base legal e consentimento', ['art. 18', 'Por que coletamos', 'Base legal', 'Consentimento', 'Termos de privacidade', 'concorda com as políticas de privacidade e os termos de uso'].every((x) => jsTermos.includes(x)), '');
